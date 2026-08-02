@@ -37,10 +37,12 @@ from diandianreading.domain import (
     JobStatus,
     JobStep,
     KnowledgeStatus,
+    PreparationManifest,
     RemoteOperation,
     RemoteOperationKind,
     RemoteOperationStatus,
     RepositoryConflict,
+    SourceOrigin,
     StorageKey,
     UnsafePathError,
     utc_now,
@@ -292,12 +294,22 @@ class SQLiteCatalogRepository(_SQLiteRepository, CatalogRepository):
 
     def add_asset(self, book_id: str, asset: DocumentAsset) -> None:
         with self._connect(write=True) as connection:
+            if asset.derived_from_asset_id is not None:
+                parent = connection.execute(
+                    "SELECT book_id FROM document_assets WHERE id = ?",
+                    (asset.derived_from_asset_id,),
+                ).fetchone()
+                if parent is None or str(parent["book_id"]) != book_id:
+                    raise RepositoryConflict(
+                        "Derived DocumentAsset parent is not owned by the Book"
+                    )
             connection.execute(
                 """
                 INSERT INTO document_assets(
                     id, book_id, storage_key, display_filename, mime_type, size_bytes,
-                    sha256, title, author, origin, origin_locator, rights_provenance_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    sha256, title, author, origin, origin_locator, rights_provenance_id,
+                    derived_from_asset_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     asset.id,
@@ -312,8 +324,21 @@ class SQLiteCatalogRepository(_SQLiteRepository, CatalogRepository):
                     asset.origin.value,
                     asset.origin_locator,
                     asset.rights_provenance_id,
+                    asset.derived_from_asset_id,
                 ),
             )
+
+    def list_assets(self, book_id: str) -> Sequence[DocumentAsset]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM document_assets
+                WHERE book_id = ?
+                ORDER BY derived_from_asset_id IS NOT NULL, id
+                """,
+                (book_id,),
+            ).fetchall()
+        return tuple(_asset_from_row(row) for row in rows)
 
     def add_part(self, part: DocumentPart) -> None:
         with self._connect(write=True) as connection:
@@ -321,8 +346,8 @@ class SQLiteCatalogRepository(_SQLiteRepository, CatalogRepository):
                 """
                 INSERT INTO document_parts(
                     id, asset_id, sequence, storage_key, mime_type, word_count, sha256,
-                    chapter_refs_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    chapter_refs_json, size_bytes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     part.id,
@@ -333,6 +358,7 @@ class SQLiteCatalogRepository(_SQLiteRepository, CatalogRepository):
                     part.word_count,
                     part.sha256,
                     json.dumps(part.chapter_refs, ensure_ascii=False),
+                    part.size_bytes,
                 ),
             )
 
@@ -349,6 +375,37 @@ class SQLiteCatalogRepository(_SQLiteRepository, CatalogRepository):
                 (book_id,),
             ).fetchall()
         return tuple(_part_from_row(row) for row in rows)
+
+    def add_manifest(self, book_id: str, manifest: PreparationManifest) -> None:
+        with self._connect(write=True) as connection:
+            asset = connection.execute(
+                "SELECT book_id FROM document_assets WHERE id = ?",
+                (manifest.root_asset_id,),
+            ).fetchone()
+            if asset is None or str(asset["book_id"]) != book_id:
+                raise RepositoryConflict("Preparation manifest root asset is not owned by the Book")
+            connection.execute(
+                """
+                INSERT INTO document_manifests(
+                    root_asset_id, book_id, storage_key, sha256, created_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    manifest.root_asset_id,
+                    book_id,
+                    manifest.storage_key.value,
+                    manifest.sha256,
+                    utc_now().isoformat(),
+                ),
+            )
+
+    def get_manifest(self, root_asset_id: str) -> PreparationManifest | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM document_manifests WHERE root_asset_id = ?",
+                (root_asset_id,),
+            ).fetchone()
+        return _manifest_from_row(row) if row is not None else None
 
 
 class SQLiteJobRepository(_SQLiteRepository, JobRepository):
@@ -745,6 +802,33 @@ def _book_from_row(row: sqlite3.Row) -> Book:
     )
 
 
+def _asset_from_row(row: sqlite3.Row) -> DocumentAsset:
+    return DocumentAsset(
+        id=str(row["id"]),
+        storage_key=StorageKey(str(row["storage_key"])),
+        display_filename=str(row["display_filename"]),
+        mime_type=str(row["mime_type"]),
+        size_bytes=int(row["size_bytes"]),
+        sha256=str(row["sha256"]),
+        title=str(row["title"]) if row["title"] is not None else None,
+        author=str(row["author"]) if row["author"] is not None else None,
+        origin=SourceOrigin(str(row["origin"])),
+        origin_locator=str(row["origin_locator"]) if row["origin_locator"] is not None else None,
+        rights_provenance_id=str(row["rights_provenance_id"]),
+        derived_from_asset_id=(
+            str(row["derived_from_asset_id"]) if row["derived_from_asset_id"] is not None else None
+        ),
+    )
+
+
+def _manifest_from_row(row: sqlite3.Row) -> PreparationManifest:
+    return PreparationManifest(
+        root_asset_id=str(row["root_asset_id"]),
+        storage_key=StorageKey(str(row["storage_key"])),
+        sha256=str(row["sha256"]),
+    )
+
+
 def _part_from_row(row: sqlite3.Row) -> DocumentPart:
     chapter_refs = json.loads(str(row["chapter_refs_json"]))
     if not isinstance(chapter_refs, list) or not all(
@@ -760,6 +844,7 @@ def _part_from_row(row: sqlite3.Row) -> DocumentPart:
         word_count=int(row["word_count"]),
         sha256=str(row["sha256"]),
         chapter_refs=tuple(chapter_refs),
+        size_bytes=int(row["size_bytes"]),
     )
 
 

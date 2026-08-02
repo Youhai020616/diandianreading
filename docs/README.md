@@ -18,6 +18,7 @@
 | [本地 API 安全 ADR](architecture/adr/0005-local-api-security.md) | 每安装实例认证、同源浏览器边界、SSE/WS 与资源限制 | Proposed |
 | [AI 对话功能设计](features/ai-chat.md) | 可视化对话、引用、会话与 API 设计 | Proposed |
 | [Phase 0 本地 E2E](development/phase-0-e2e.md) | Fake Adapter、SQLite 与 Job 全链路验证 | Active |
+| [Phase 1 文档处理 E2E](development/phase-1-e2e.md) | 本地 Acquisition、Markdown/EPUB/PDF Preparation 与真实对象存储验证 | Active |
 
 ## 推荐阅读顺序
 
@@ -28,6 +29,7 @@
 5. [架构决策记录](architecture/README.md)：了解关键选择及其代价；实现本地 API 前阅读 [ADR-0005](architecture/adr/0005-local-api-security.md)。
 6. [AI 对话功能设计](features/ai-chat.md)：了解第一个 NotebookLM 用户界面。
 7. [Phase 0 本地 E2E](development/phase-0-e2e.md)：验证架构地基的可执行链路。
+8. [Phase 1 文档处理 E2E](development/phase-1-e2e.md)：验证真实本地文档处理、对象存储和持久化链路。
 
 ## 状态词
 

@@ -16,10 +16,12 @@ from diandianreading.domain import (
     Job,
     JobStep,
     KnowledgeStatus,
+    PreparationManifest,
     RemoteOperation,
     RemoteOperationKind,
     RemoteOperationStatus,
     RepositoryConflict,
+    StorageKey,
     UnsafePathError,
 )
 from diandianreading.infrastructure.persistence import (
@@ -41,8 +43,8 @@ def make_database(tmp_path) -> SQLiteDatabase:
 
 def test_migrations_are_idempotent_verified_and_database_is_private(tmp_path) -> None:
     database = make_database(tmp_path)
-    assert database.migrate() == 1
-    assert database.schema_version() == 1
+    assert database.migrate() == 2
+    assert database.schema_version() == 2
     assert database.integrity_check()
     if os.name != "nt":
         assert stat.S_IMODE(database.path.stat().st_mode) == 0o600
@@ -97,13 +99,31 @@ def test_sqlite_repositories_round_trip_and_prevent_status_regression(tmp_path) 
     )
     catalog.add_book(book)
     catalog.add_asset(book.id, command.asset)
+    derived = replace(
+        command.asset,
+        id="asset-derived",
+        storage_key=StorageKey("derived/asset-1/derived.md"),
+        display_filename="derived.md",
+        sha256="derived-hash",
+        derived_from_asset_id=command.asset.id,
+    )
+    catalog.add_asset(book.id, derived)
     for part in command.parts:
         catalog.add_part(part)
+    manifest = PreparationManifest(
+        root_asset_id=command.asset.id,
+        storage_key=StorageKey("manifests/asset-1/manifest.json"),
+        sha256="manifest-hash",
+    )
+    catalog.add_manifest(book.id, manifest)
     ready_book = replace(book, status=BookStatus.READY)
     catalog.update_book(ready_book)
 
     assert catalog.get_book(book.id) == ready_book
+    assert set(catalog.list_assets(book.id)) == {command.asset, derived}
     assert tuple(catalog.list_parts(book.id)) == command.parts
+    assert catalog.get_manifest(command.asset.id) == manifest
+    assert catalog.get_manifest("missing") is None
     assert catalog.get_book("missing") is None
 
     workspace = ExternalWorkspace(
@@ -144,6 +164,56 @@ def test_sqlite_repositories_round_trip_and_prevent_status_regression(tmp_path) 
         mappings.save_source(source)
     with pytest.raises(RepositoryConflict, match="identity collision"):
         mappings.save_source(replace(ready_source, checksum="different"))
+
+
+def test_asset_and_manifest_repositories_reject_missing_or_cross_book_roots(tmp_path) -> None:
+    database = make_database(tmp_path)
+    catalog = SQLiteCatalogRepository(database)
+    command = make_import_command(tmp_path, part_count=1)
+    first_book = Book(
+        id="book-1",
+        title=command.title,
+        author=command.author,
+        source_hash=command.asset.sha256,
+        status=BookStatus.IMPORTING,
+        created_at=FIXED_NOW,
+        updated_at=FIXED_NOW,
+    )
+    second_book = replace(first_book, id="book-2", source_hash="second-book-hash")
+    catalog.add_book(first_book)
+    catalog.add_book(second_book)
+    catalog.add_asset(first_book.id, command.asset)
+
+    derived = replace(
+        command.asset,
+        id="derived-asset",
+        storage_key=StorageKey("derived/asset-1/derived.md"),
+        sha256="derived-hash",
+        derived_from_asset_id=command.asset.id,
+    )
+    with pytest.raises(RepositoryConflict, match="parent is not owned"):
+        catalog.add_asset(second_book.id, derived)
+    with pytest.raises(RepositoryConflict, match="parent is not owned"):
+        catalog.add_asset(
+            first_book.id,
+            replace(derived, id="missing-parent-derived", derived_from_asset_id="missing-asset"),
+        )
+
+    manifest = PreparationManifest(
+        root_asset_id=command.asset.id,
+        storage_key=StorageKey("manifests/asset-1/manifest.json"),
+        sha256="manifest-hash",
+    )
+    with pytest.raises(RepositoryConflict, match="not owned"):
+        catalog.add_manifest(second_book.id, manifest)
+    with pytest.raises(RepositoryConflict, match="not owned"):
+        catalog.add_manifest(
+            first_book.id,
+            replace(manifest, root_asset_id="missing-asset"),
+        )
+
+    assert catalog.list_assets(second_book.id) == ()
+    assert catalog.get_manifest(command.asset.id) is None
 
 
 def test_job_and_operation_repositories_preserve_history_and_versions(tmp_path) -> None:

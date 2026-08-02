@@ -106,6 +106,7 @@ async def run_phase0_demo(database_path: Path, workspace_path: Path) -> dict[str
             word_count=len(content.split()),
             sha256=_sha256(path),
             chapter_refs=(f"chapter-{index + 1}",),
+            size_bytes=path.stat().st_size,
         )
         for index, (path, content) in enumerate(zip(part_paths, part_contents, strict=True))
     )

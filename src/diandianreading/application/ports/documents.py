@@ -6,14 +6,24 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from diandianreading.application.ports.progress import ProgressSink
-from diandianreading.domain import DocumentAsset, DocumentPart, StorageKey, TargetCapabilities
+from diandianreading.domain import (
+    DocumentAsset,
+    DocumentPart,
+    PreparationManifest,
+    StorageKey,
+    TargetCapabilities,
+)
 
 
 @dataclass(frozen=True, slots=True)
 class PreparedDocument:
     derived_assets: tuple[DocumentAsset, ...]
     parts: tuple[DocumentPart, ...]
-    manifest_key: StorageKey
+    manifest: PreparationManifest
+
+    @property
+    def manifest_key(self) -> StorageKey:
+        return self.manifest.storage_key
 
 
 class DocumentPreparationPort(Protocol):

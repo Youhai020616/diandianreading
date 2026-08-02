@@ -14,11 +14,12 @@ from tests.support import RecordingProgressSink, make_import_command
 def capabilities(
     *,
     max_source_words: int = 350_000,
+    max_source_bytes: int = 10_000_000,
     max_sources_per_workspace: int = 50,
 ) -> TargetCapabilities:
     return TargetCapabilities(
         max_source_words=max_source_words,
-        max_source_bytes=10_000_000,
+        max_source_bytes=max_source_bytes,
         max_sources_per_workspace=max_sources_per_workspace,
         accepted_mime_types=frozenset({"text/markdown"}),
     )
@@ -125,6 +126,22 @@ def test_fake_preparation_rejects_part_over_word_limit(tmp_path) -> None:
             FakeDocumentPreparationAdapter((oversized,)).prepare(
                 command.asset,
                 capabilities(max_source_words=4),
+                NullProgressSink("job-1"),
+            )
+        )
+
+    assert raised.value.code is ErrorCode.SOURCE_LIMIT_EXCEEDED
+    assert raised.value.retryable is False
+
+
+def test_fake_preparation_rejects_part_over_byte_limit(tmp_path) -> None:
+    command = make_import_command(tmp_path, part_count=1)
+
+    with pytest.raises(DiandianError) as raised:
+        asyncio.run(
+            FakeDocumentPreparationAdapter(command.parts).prepare(
+                command.asset,
+                capabilities(max_source_bytes=1),
                 NullProgressSink("job-1"),
             )
         )

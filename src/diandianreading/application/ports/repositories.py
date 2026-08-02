@@ -13,6 +13,7 @@ from diandianreading.domain import (
     ExternalWorkspace,
     Job,
     JobEvent,
+    PreparationManifest,
     RemoteOperation,
 )
 
@@ -26,9 +27,15 @@ class CatalogRepository(Protocol):
 
     def add_asset(self, book_id: str, asset: DocumentAsset) -> None: ...
 
+    def list_assets(self, book_id: str) -> Sequence[DocumentAsset]: ...
+
     def add_part(self, part: DocumentPart) -> None: ...
 
     def list_parts(self, book_id: str) -> Sequence[DocumentPart]: ...
+
+    def add_manifest(self, book_id: str, manifest: PreparationManifest) -> None: ...
+
+    def get_manifest(self, root_asset_id: str) -> PreparationManifest | None: ...
 
 
 class JobRepository(Protocol):

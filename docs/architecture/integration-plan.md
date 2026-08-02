@@ -167,6 +167,7 @@ class DocumentAsset:
     origin: SourceOrigin
     origin_locator: str | None
     rights_provenance_id: str
+    derived_from_asset_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -179,6 +180,14 @@ class DocumentPart:
     word_count: int
     sha256: str
     chapter_refs: tuple[str, ...]
+    size_bytes: int
+
+
+@dataclass(frozen=True)
+class PreparationManifest:
+    root_asset_id: str
+    storage_key: StorageKey
+    sha256: str
 ```
 
 `StorageKey` 是应用生成的不透明逻辑键，不是绝对/相对路径，也不接受 URL、上传文件名或 Archive Entry 名。`display_filename` 只用于展示，不能参与物理路径拼接。`DocumentPart` 是 NotebookLM Source 与本地原文之间的映射单位；分块不能只返回 `list[Path]`。
@@ -521,6 +530,8 @@ diandianreading/
 
 ### Phase 1 / PR 2：文档处理
 
+> 实现状态：Active。可执行边界与验证命令见 [Phase 1 文档处理 E2E](../development/phase-1-e2e.md)。
+
 交付：
 
 - 本地文件导入与 `DocumentPreparationPort` 的真实 Infrastructure 实现。
@@ -531,6 +542,14 @@ diandianreading/
 - 下载/Archive/Parser 的大小、路径、链接、资源、无网络与输出限制。
 
 退出标准：PDF/EPUB/Markdown 生成确定性 Part；所有 Part 满足目标限制并可回溯章节，恶意 Archive/Parser fixture 在超限或越界前 fail closed。
+
+已落实的 Phase 1 边界：
+
+- 使用 Python 3.11 标准库完成 ZIP central-directory 校验、HTML text-only 解析、XML 解析、受限子进程和确定性 JSON，不新增生产依赖。
+- Markdown 按 UTF-8/NFC、标题章节、词数与 UTF-8 字节双限制生成确定性 Part；相同内容去重并合并章节引用。
+- EPUB 在无网络的隔离子进程中按 spine 顺序解析，保留原 EPUB，并生成可追溯的派生 Markdown Asset。
+- PDF 当前只做文件头/EOF 检查和目标字节限制内的原文件 passthrough；超限时 fail closed。拆页或文本抽取仍是待确认产品策略，当前实现不伪装成完整 PDF parser。
+- 派生 Asset、Part、canonical manifest 与 Job transition 在同一个 Unit of Work 中保存；manifest 同时记录安全预算与 target capabilities，对象内容由私有 `LocalFileStore` 以 SHA-256 校验。
 
 ### Phase 2 / PR 3：NotebookLM Python Adapter
 
@@ -742,7 +761,7 @@ attestation_version, attested_at, acquisition_job_id?, content_sha256?
 - AI 对话第一版是否仅允许每本书一个活跃 Provider Conversation。
 - 派生 Markdown/Part 成功上传后保留多久。
 - 浏览器 Session Bootstrap 最终采用 OS IPC 还是短时单次 Fragment Nonce。
-- 每种格式的下载、Archive 与 Parser 有限阈值，以及低配置设备的默认预算。
+- Phase 1 已提供有限默认阈值；仍需根据低配置设备实测决定是否收紧或分级配置。
 - `RightsProvenance` 各 `rights_basis` 所需证据、保留期与用户更正流程。
 - Live-provider CI 使用哪个 protected environment、专用账号和运行频率。
 

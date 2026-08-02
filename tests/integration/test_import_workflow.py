@@ -17,8 +17,10 @@ from diandianreading.domain import (
     JobStatus,
     KnowledgeSourceRef,
     KnowledgeStatus,
+    PreparationManifest,
     ProgressEvent,
     RemoteOperationRef,
+    StorageKey,
     WorkspaceRef,
 )
 from diandianreading.infrastructure.fakes import FakeKnowledgeAdapter
@@ -56,7 +58,25 @@ def build_use_case(tmp_path, adapter):
 def test_import_workflow_persists_complete_fake_import_and_operations(tmp_path) -> None:
     adapter = FakeKnowledgeAdapter()
     use_case, database, catalog, jobs, mappings = build_use_case(tmp_path, adapter)
-    command = make_import_command(tmp_path)
+    base_command = make_import_command(tmp_path)
+    derived = replace(
+        base_command.asset,
+        id="asset-derived",
+        storage_key=StorageKey("derived/asset-1/book.md"),
+        display_filename="derived.md",
+        sha256="derived-hash",
+        derived_from_asset_id=base_command.asset.id,
+    )
+    command = replace(
+        base_command,
+        derived_assets=(derived,),
+        parts=tuple(replace(part, asset_id=derived.id) for part in base_command.parts),
+        manifest=PreparationManifest(
+            root_asset_id=base_command.asset.id,
+            storage_key=StorageKey("manifests/asset-1/manifest.json"),
+            sha256="manifest-hash",
+        ),
+    )
     progress = RecordingProgressSink(events=[])
 
     result = asyncio.run(use_case.execute(command, progress))
@@ -65,7 +85,9 @@ def test_import_workflow_persists_complete_fake_import_and_operations(tmp_path) 
     assert result.book.status is BookStatus.READY
     assert all(source.status is KnowledgeStatus.READY for source in result.sources)
     assert catalog.get_book(result.book.id) == result.book
+    assert set(catalog.list_assets(result.book.id)) == {command.asset, derived}
     assert len(catalog.list_parts(result.book.id)) == 2
+    assert catalog.get_manifest(command.asset.id) == command.manifest
     assert mappings.get_workspace(result.workspace.id) is not None
     assert all(
         source.status is KnowledgeStatus.READY
@@ -88,6 +110,55 @@ def test_import_workflow_persists_complete_fake_import_and_operations(tmp_path) 
         ).fetchall()
     assert len(rows) == 3
     assert all(row["status"] == "completed" and row["external_id"] for row in rows)
+
+
+def test_preparation_manifest_failure_rolls_back_derived_assets_parts_and_transition(
+    tmp_path,
+) -> None:
+    use_case, database, catalog, jobs, _ = build_use_case(tmp_path, FakeKnowledgeAdapter())
+    base = make_import_command(tmp_path, part_count=1)
+    derived = replace(
+        base.asset,
+        id="asset-derived",
+        storage_key=StorageKey("derived/asset-1/book.md"),
+        display_filename="derived.md",
+        sha256="derived-hash",
+        derived_from_asset_id=base.asset.id,
+    )
+    manifest = PreparationManifest(
+        root_asset_id=base.asset.id,
+        storage_key=StorageKey("manifests/asset-1/manifest.json"),
+        sha256="manifest-hash",
+    )
+    command = replace(
+        base,
+        derived_assets=(derived,),
+        parts=(replace(base.parts[0], asset_id=derived.id),),
+        manifest=manifest,
+    )
+    with database.connect(immediate=True) as connection:
+        connection.execute(
+            """
+            CREATE TRIGGER reject_document_manifest
+            BEFORE INSERT ON document_manifests
+            BEGIN
+                SELECT RAISE(ABORT, 'forced manifest failure');
+            END
+            """
+        )
+
+    with pytest.raises(DiandianError) as raised:
+        asyncio.run(use_case.execute(command))
+
+    assert raised.value.code is ErrorCode.UNEXPECTED
+    assert tuple(catalog.list_assets("book-1")) == (base.asset,)
+    assert tuple(catalog.list_parts("book-1")) == ()
+    assert catalog.get_manifest(base.asset.id) is None
+    persisted_job = jobs.get("job-1")
+    assert persisted_job is not None
+    assert persisted_job.status is JobStatus.FAILED_TERMINAL
+    assert persisted_job.step.value == "storing"
+    assert all(event.step.value != "preparing" for event in jobs.list_events("job-1"))
 
 
 def test_progress_observer_failure_cannot_fail_or_strand_import(tmp_path) -> None:

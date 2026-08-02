@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
+
 from diandianreading.application.ports.documents import (
     DocumentPreparationPort,
     PreparedDocument,
 )
-from diandianreading.application.ports.progress import ProgressSink
+from diandianreading.application.ports.progress import BestEffortProgressSink, ProgressSink
 from diandianreading.domain import (
     DiandianError,
     DocumentAsset,
     DocumentPart,
     ErrorCode,
+    PreparationManifest,
     ProgressEvent,
     StorageKey,
     TargetCapabilities,
@@ -32,6 +35,7 @@ class FakeDocumentPreparationAdapter(DocumentPreparationPort):
         capabilities: TargetCapabilities,
         progress: ProgressSink,
     ) -> PreparedDocument:
+        sink = BestEffortProgressSink(progress)
         if asset.mime_type not in self.supported_input_mime_types:
             raise DiandianError(
                 ErrorCode.FORMAT_UNSUPPORTED,
@@ -65,26 +69,37 @@ class FakeDocumentPreparationAdapter(DocumentPreparationPort):
                     f"Unsupported prepared source MIME type: {part.mime_type}",
                     retryable=False,
                 )
-            if part.word_count > capabilities.max_source_words:
+            if (
+                part.word_count > capabilities.max_source_words
+                or part.size_bytes > capabilities.max_source_bytes
+            ):
                 raise DiandianError(
                     ErrorCode.SOURCE_LIMIT_EXCEEDED,
-                    "Fake prepared Part exceeds word capability",
+                    "Fake prepared Part exceeds target capabilities",
                     retryable=False,
                 )
             part_ids.add(part.id)
             storage_keys.add(part.storage_key)
             checksums.add(part.sha256)
-        await progress.emit(
+        await sink.emit(
             ProgressEvent(
-                job_id=progress.job_id,
+                job_id=sink.job_id,
                 step="preparing",
                 current=len(self._parts),
                 total=len(self._parts),
                 message="Prepared fake document parts",
             )
         )
+        manifest_key = StorageKey(f"manifests/{asset.id}.json")
+        manifest_sha256 = hashlib.sha256(
+            f"fake-preparation-manifest:{asset.id}".encode()
+        ).hexdigest()
         return PreparedDocument(
             derived_assets=(),
             parts=self._parts,
-            manifest_key=StorageKey(f"manifests/{asset.id}.json"),
+            manifest=PreparationManifest(
+                root_asset_id=asset.id,
+                storage_key=manifest_key,
+                sha256=manifest_sha256,
+            ),
         )

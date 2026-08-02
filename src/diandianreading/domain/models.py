@@ -96,6 +96,7 @@ class DocumentAsset:
     origin: SourceOrigin
     origin_locator: str | None
     rights_provenance_id: str
+    derived_from_asset_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.size_bytes < 0:
@@ -106,6 +107,8 @@ class DocumentAsset:
             raise ValueError("DocumentAsset display_filename cannot be empty")
         if not self.rights_provenance_id.strip():
             raise ValueError("DocumentAsset rights_provenance_id cannot be empty")
+        if self.derived_from_asset_id == self.id:
+            raise ValueError("DocumentAsset cannot derive from itself")
         if self.origin_locator is not None:
             parsed = urlsplit(self.origin_locator)
             if parsed.username or parsed.password or parsed.query or parsed.fragment:
@@ -125,14 +128,30 @@ class DocumentPart:
     word_count: int
     sha256: str
     chapter_refs: tuple[str, ...]
+    size_bytes: int = 0
 
     def __post_init__(self) -> None:
         if self.sequence < 0:
             raise ValueError("DocumentPart sequence cannot be negative")
         if self.word_count < 0:
             raise ValueError("DocumentPart word_count cannot be negative")
+        if self.size_bytes < 0:
+            raise ValueError("DocumentPart size_bytes cannot be negative")
         if not self.sha256:
             raise ValueError("DocumentPart sha256 cannot be empty")
+
+
+@dataclass(frozen=True, slots=True)
+class PreparationManifest:
+    root_asset_id: str
+    storage_key: StorageKey
+    sha256: str
+
+    def __post_init__(self) -> None:
+        if not self.root_asset_id:
+            raise ValueError("PreparationManifest root_asset_id cannot be empty")
+        if not self.sha256:
+            raise ValueError("PreparationManifest sha256 cannot be empty")
 
 
 @dataclass(frozen=True, slots=True)

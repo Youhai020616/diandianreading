@@ -48,7 +48,7 @@ uv run diandian phase0-e2e \
 ```json
 {
   "status": "ok",
-  "schema_version": 1,
+  "schema_version": 2,
   "part_count": 2,
   "source_count": 2,
   "preparation_manifest_key": "manifests/<asset-id>.json",
@@ -63,7 +63,7 @@ ID、数据库绝对路径和 progress 数量会随本次运行输出。
 
 命令只有在以下条件全部满足时才返回退出码 `0`：
 
-- migration 升级到 schema version 1；
+- migration 升级到当前 schema version 2（Phase 1 增加文档派生与 manifest）；
 - Fake Preparation 根据 `TargetCapabilities` 返回确定性的两个 `DocumentPart` 和受限 `manifest StorageKey`；
 - Fake Knowledge Adapter 创建 workspace；
 - 两个已准备的 `DocumentPart` 均保存并生成 Source 映射；

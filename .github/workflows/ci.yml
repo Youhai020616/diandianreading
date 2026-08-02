@@ -58,11 +58,18 @@ jobs:
             --no-deps \
             ./dist/diandianreading-0.1.0-py3-none-any.whl
 
-      - name: Run installed-wheel migration and import smoke
+      - name: Run installed-wheel Phase 0 migration and import smoke
         run: >-
           .tmp/ci-wheel-venv/bin/diandian phase0-e2e
-          --database .tmp/ci-wheel/app.sqlite3
-          --workspace .tmp/ci-wheel/workspace
+          --database .tmp/ci-wheel/phase0/app.sqlite3
+          --workspace .tmp/ci-wheel/phase0/workspace
+
+      - name: Run installed-wheel Phase 1 document-processing smoke
+        run: >-
+          .tmp/ci-wheel-venv/bin/diandian phase1-e2e
+          --database .tmp/ci-wheel/phase1/app.sqlite3
+          --object-root .tmp/ci-wheel/phase1/objects
+          --workspace .tmp/ci-wheel/phase1/workspace
 
   test:
     name: Test Python ${{ matrix.python-version }}

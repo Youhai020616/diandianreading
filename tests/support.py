@@ -86,6 +86,7 @@ def make_import_command(tmp_path: Path, *, part_count: int = 2) -> ImportBookCom
                 word_count=4,
                 sha256=_hash(path),
                 chapter_refs=(f"chapter-{index + 1}",),
+                size_bytes=path.stat().st_size,
             )
         )
     return ImportBookCommand(
