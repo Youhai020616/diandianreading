@@ -5,7 +5,7 @@
 > 一键将 Z-Library 书籍自动下载并上传到 Google NotebookLM
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Claude Skill](https://img.shields.io/badge/Claude-Skill-success.svg)](https://claude.ai/claude-code)
 
 ---
@@ -55,7 +55,7 @@ python3 scripts/login.py
 
 ```text
 用 zlib-to-notebooklm skill 处理这个 Z-Library 链接：
-https://zh.zlib.li/book/25314781/aa05a1/书的标题
+https://z-library.sk/book/25314781/aa05a1/书的标题
 ```
 
 Claude 会自动：
@@ -90,6 +90,19 @@ playwright install chromium
 python3 scripts/login.py
 ```
 
+默认入口无法访问时，请使用你已在普通浏览器中确认可访问、且有合法使用权限的 HTTPS 入口：
+
+```bash
+python3 scripts/login.py --url "https://你的可访问入口/"
+```
+
+也可以持久设置：
+
+```bash
+export ZLIBRARY_LOGIN_URL="https://你的可访问入口/"
+python3 scripts/login.py
+```
+
 **操作步骤：**
 
 1. 浏览器会自动打开并访问 Z-Library
@@ -100,7 +113,7 @@ python3 scripts/login.py
 ### 3. 下载并上传书籍
 
 ```bash
-python3 scripts/upload.py "https://zh.zlib.li/book/..."
+python3 scripts/upload.py "https://z-library.sk/book/..."
 ```
 
 **自动完成：**
@@ -119,7 +132,7 @@ python3 scripts/upload.py "https://zh.zlib.li/book/..."
 
 ```bash
 # 下载单本书籍
-python3 scripts/upload.py "https://zh.zlib.li/book/12345/..."
+python3 scripts/upload.py "https://z-library.sk/book/12345/..."
 ```
 
 ### 批量处理
@@ -204,7 +217,7 @@ zlibrary-to-notebooklm/
 
 ## 🛠️ 依赖项
 
-- **Python 3.8+**
+- **Python 3.10+**
 - **playwright** - 浏览器自动化
 - **ebooklib** - EPUB 文件处理
 - **NotebookLM CLI** - Google NotebookLM 命令行工具
@@ -289,7 +302,7 @@ python3 scripts/login.py
 
 ## 🙏 致谢
 
-- [Z-Library](https://zh.zlib.li/) - 世界上最大的数字图书馆
+- [Z-Library](https://z-library.sk/) - 世界上最大的数字图书馆
 - [Google NotebookLM](https://notebooklm.google.com/) - AI 驱动的笔记工具
 - [Playwright](https://playwright.dev/) - 强大的浏览器自动化工具
 

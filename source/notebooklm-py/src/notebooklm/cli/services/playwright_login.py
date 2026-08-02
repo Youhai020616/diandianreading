@@ -202,12 +202,23 @@ def repair_playwright_account_metadata(
 # ---------------------------------------------------------------------------
 
 
+def _install_location_has_content(location: Path) -> bool:
+    """Treat only a populated Playwright install location as usable."""
+    try:
+        return location.is_file() or (
+            location.is_dir() and next(location.iterdir(), None) is not None
+        )
+    except OSError:
+        return False
+
+
 def ensure_chromium_installed(io: LoginIO) -> None:
     """Check if Chromium is installed and install if needed.
 
     Runs ``playwright install --dry-run chromium`` to detect a missing browser,
-    then auto-installs. Silently proceeds on any error so Playwright handles it
-    during launch. Both subprocess calls are timeout-bounded (30 s dry-run,
+    supporting both the legacy ``will download`` marker and modern Playwright's
+    ``Install location:`` output. Then auto-installs. Silently proceeds on any
+    error so Playwright handles it during launch. Both subprocess calls are timeout-bounded (30 s dry-run,
     300 s install) so a network-stalled CLI cannot hang ``notebooklm login``;
     ``TimeoutExpired`` is a pre-flight failure — the warning surfaces and login
     continues. ``io`` carries the presentation / exit sink (an install failure
@@ -222,11 +233,19 @@ def ensure_chromium_installed(io: LoginIO) -> None:
             timeout=30,
         )
         stdout_lower = result.stdout.lower()
-        if "chromium" not in stdout_lower or "will download" not in stdout_lower:
-            # The dry-run probe succeeded but didn't see a "will download"
-            # marker; nothing to do. If the probe printed an unexpected
-            # diagnostic to stderr, surface a sanitised version at debug
-            # level so operators can investigate without leaking env values.
+        install_locations = [
+            Path(line.split("Install location:", 1)[1].strip())
+            for line in result.stdout.splitlines()
+            if "Install location:" in line and line.split("Install location:", 1)[1].strip()
+        ]
+        browser_missing = "chromium" in stdout_lower and (
+            "will download" in stdout_lower
+            or any(not _install_location_has_content(location) for location in install_locations)
+        )
+        if not browser_missing:
+            # Nothing to do. If the probe printed an unexpected diagnostic to
+            # stderr, surface a sanitised version at debug level so operators
+            # can investigate without leaking env values.
             if result.stderr:
                 logger.debug(
                     "playwright install --dry-run stderr: %s",

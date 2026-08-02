@@ -2,7 +2,7 @@
 
 ## 系统要求
 
-- Python 3.8 或更高版本
+- Python 3.10 或更高版本
 - macOS / Linux / Windows
 - 网络连接
 
@@ -59,7 +59,7 @@ playwright install --with-deps chromium
 ### Python 版本问题
 
 ```bash
-# 使用 pyenv 安装 Python 3.8+
+# 使用 pyenv 安装 Python 3.10+
 pyenv install 3.11.0
 pyenv global 3.11.0
 ```

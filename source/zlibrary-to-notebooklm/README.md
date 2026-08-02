@@ -5,7 +5,7 @@
 > Automatically download books from Z-Library and upload them to Google NotebookLM with one command.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Claude Skill](https://img.shields.io/badge/Claude-Skill-success.svg)](https://claude.ai/claude-code)
 
 ---
@@ -55,7 +55,7 @@ After installation, simply tell Claude Code:
 
 ```text
 Use zlib-to-notebooklm skill to process this Z-Library link:
-https://zh.zlib.li/book/25314781/aa05a1/book-title
+https://z-library.sk/book/25314781/aa05a1/book-title
 ```
 
 Claude will automatically:
@@ -90,6 +90,19 @@ playwright install chromium
 python3 scripts/login.py
 ```
 
+If the default endpoint is unavailable, pass an HTTPS endpoint that you have verified in a normal browser and are legally authorized to use:
+
+```bash
+python3 scripts/login.py --url "https://your-accessible-endpoint/"
+```
+
+Alternatively, set it persistently for the current shell:
+
+```bash
+export ZLIBRARY_LOGIN_URL="https://your-accessible-endpoint/"
+python3 scripts/login.py
+```
+
 **Steps:**
 1. Browser will automatically open and visit Z-Library
 2. Complete login in the browser
@@ -99,7 +112,7 @@ python3 scripts/login.py
 ### 3. Download and Upload Books
 
 ```bash
-python3 scripts/upload.py "https://zh.zlib.li/book/..."
+python3 scripts/upload.py "https://z-library.sk/book/..."
 ```
 
 **Automatically completes:**
@@ -118,7 +131,7 @@ python3 scripts/upload.py "https://zh.zlib.li/book/..."
 
 ```bash
 # Download single book
-python3 scripts/upload.py "https://zh.zlib.li/book/12345/..."
+python3 scripts/upload.py "https://z-library.sk/book/12345/..."
 ```
 
 ### Batch Processing
@@ -203,7 +216,7 @@ All configurations are saved in `~/.zlibrary/` directory:
 
 ## 🛠️ Dependencies
 
-- **Python 3.8+**
+- **Python 3.10+**
 - **playwright** - Browser automation
 - **ebooklib** - EPUB file processing
 - **NotebookLM CLI** - Google NotebookLM command-line tool
@@ -288,7 +301,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- [Z-Library](https://zh.zlib.li/) - World's largest digital library
+- [Z-Library](https://z-library.sk/) - World's largest digital library
 - [Google NotebookLM](https://notebooklm.google.com/) - AI-powered note-taking tool
 - [Playwright](https://playwright.dev/) - Powerful browser automation tool
 

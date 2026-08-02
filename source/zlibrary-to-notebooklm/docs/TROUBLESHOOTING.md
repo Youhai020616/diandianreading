@@ -11,7 +11,7 @@
 **症状：**
 ```
 ❌ 未找到会话状态
-💡 请先运行: python3 /tmp/zlibrary_login.py
+💡 请先运行: python scripts/login.py
 ```
 
 **解决方案：**
@@ -34,29 +34,30 @@
    ```
    应该显示一个约 2KB 的文件
 
-### 问题：登录失败
+### 问题：登录入口连接失败
 
 **症状：**
-- 浏览器打开但无法登录
-- 提示"网络错误"
+- `Page.goto: net::ERR_CONNECTION_CLOSED`
+- 浏览器在显示登录页面之前就断开连接
+
+这发生在认证之前，因此不是账号、密码或已保存会话的问题。清除 cookies 也无法修复一个不可达的入口。
 
 **解决方案：**
 
-1. **检查网络连接**
+1. **先在普通浏览器中访问完全相同的 URL**。如果普通浏览器也打不开，请检查本机 VPN、代理、DNS 或网络策略。
+
+2. **使用你已确认可访问且有合法使用权限的 HTTPS 入口**：
    ```bash
-   ping -c 3 zh.zlib.li
+   python3 scripts/login.py --url "https://你的可访问入口/"
    ```
 
-2. **尝试备用域名**
-   - https://zh.zlib.li/
-   - https://z-lib.org/
-   - https://zlibrary.org/
-
-3. **清除缓存重试**
+3. **通过环境变量保存入口**：
    ```bash
-   rm ~/.zlibrary/storage_state.json
+   export ZLIBRARY_LOGIN_URL="https://你的可访问入口/"
    python3 scripts/login.py
    ```
+
+不要使用来源不明的所谓镜像站点，也不要在未经验证的域名输入账号或付款信息。
 
 ---
 
@@ -102,7 +103,7 @@
 1. **检查网络稳定性**
    ```bash
    # 测试连接
-   curl -I https://zh.zlib.li
+   curl -I https://z-library.sk
    ```
 
 2. **增加等待时间**
@@ -337,13 +338,13 @@ Failed to connect to github.com port 443
 1. **检查 DNS**
    ```bash
    # 查看是否为 Z-Library 域名解析问题
-   nslookup zh.zlib.li
+   nslookup z-library.sk
    ```
 
-2. **尝试备用域名**
-   - https://zh.zlib.li/
-   - https://z-lib.org/
-   - https://zlibrary.org/
+2. **核对当前入口**
+   - 默认入口：<https://z-library.sk/>
+   - 只使用你已在普通浏览器中验证过的 HTTPS 地址，避免仿冒网站
+   - 自定义入口：`python3 scripts/login.py --url "https://你的可访问入口/"`
 
 3. **检查代理设置**
    - 如果使用 VPN，尝试切换节点

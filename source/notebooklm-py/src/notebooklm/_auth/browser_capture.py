@@ -52,7 +52,11 @@ from urllib.parse import urlparse
 from .._atomic_io import atomic_write_json
 from ..config import get_base_host, get_base_url
 from ..exceptions import HeadlessLoginRequiredError
-from .cookie_policy import build_cookie_domain_allowlist
+from .cookie_policy import (
+    _validate_required_cookies,
+    build_cookie_domain_allowlist,
+    cookie_names_from_storage,
+)
 
 if TYPE_CHECKING:
     from playwright.sync_api import BrowserContext, Page
@@ -114,6 +118,13 @@ CHANNEL_BROWSERS: dict[str, tuple[str, str]] = {
     "msedge": ("Microsoft Edge", "https://www.microsoft.com/edge"),
     "chrome": ("Google Chrome", "https://www.google.com/chrome"),
 }
+
+# Google renamed the consumer NotebookLM frontend to Gemini Notebook and now
+# redirects the legacy app host to notebook.google.com. RPC traffic still uses
+# notebooklm.google.com, so this alias is intentionally limited to browser
+# landing detection. Custom/enterprise NOTEBOOKLM_BASE_URL hosts remain exact.
+_CONSUMER_BASE_HOST = "notebooklm.google.com"
+_CONSUMER_BROWSER_HOSTS = frozenset({_CONSUMER_BASE_HOST, "notebook.google.com"})
 
 
 # ---------------------------------------------------------------------------
@@ -340,9 +351,25 @@ def is_navigation_interrupted_error(error: str | Exception) -> bool:
 
 
 def url_matches_base_host(url: str) -> bool:
-    """Return True when ``url`` is on the configured NotebookLM host."""
+    """Return True when ``url`` is on an accepted Notebook browser host.
+
+    The default consumer service accepts both the legacy API/app host and the
+    rebranded Gemini Notebook frontend. A custom or enterprise base URL remains
+    an exact-host match so aliases never weaken that boundary.
+    """
     current_host = (urlparse(url).hostname or "").lower()
-    return current_host == get_base_host().lower()
+    configured_host = get_base_host().lower()
+    if configured_host == _CONSUMER_BASE_HOST:
+        return current_host in _CONSUMER_BROWSER_HOSTS
+    return current_host == configured_host
+
+
+def validate_captured_storage_state(state: dict[str, Any]) -> None:
+    """Reject a host landing that did not capture a usable Google session."""
+    _validate_required_cookies(
+        cookie_names_from_storage(state),
+        context=" in browser capture",
+    )
 
 
 def connection_error_help() -> str:
@@ -621,7 +648,7 @@ def run_browser_capture(
                     # host. Cookies are read later at storage_state() (after the
                     # cookie-forcing round-trips), so resolving early is safe;
                     # page.content() at capture time is best-effort/None-tolerant.
-                    page.wait_for_url(f"{get_base_url()}/**", wait_until="commit", timeout=300_000)
+                    page.wait_for_url(url_matches_base_host, wait_until="commit", timeout=300_000)
                 except PlaywrightTimeout:
                     io.emit(
                         "[red]Login not detected within 5 minutes.[/red]\n"
@@ -694,6 +721,11 @@ def run_browser_capture(
             filtered_state: dict[str, Any] = filter_storage_state_cookies_by_domain_policy(
                 dict(playwright_state), include_domains=include_domains
             )
+            try:
+                validate_captured_storage_state(filtered_state)
+            except ValueError as exc:
+                io.emit(f"[red]Captured browser session is incomplete: {exc}[/red]")
+                io.fail(1)
             atomic_write_json(storage_path, filtered_state)
             captured_page_html = active_page_html
 
@@ -873,6 +905,12 @@ def run_cdp_capture(
             filtered_state: dict[str, Any] = filter_storage_state_cookies_by_domain_policy(
                 dict(playwright_state), include_domains=include_domains
             )
+            try:
+                validate_captured_storage_state(filtered_state)
+            except ValueError as exc:
+                raise HeadlessLoginRequiredError(
+                    f"CDP re-auth captured an incomplete browser session: {exc}"
+                ) from exc
             atomic_write_json(storage_path, filtered_state)
         finally:
             # Close ONLY the temporary page we created — never the operator's
