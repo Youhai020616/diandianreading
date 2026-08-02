@@ -3,7 +3,7 @@
 > 版本：v0.1（概念验证版）  
 > 文档状态：产品方向与 MVP 规划  
 > 产品形态：个人优先的 AI 阅读、知识沉淀与内容发布工作台  
-> 更新时间：2026-07-26
+> 更新时间：2026-08-03
 
 ---
 
@@ -434,7 +434,7 @@ NotebookLM 的程序化能力层：
 
 ### 集成策略
 
-第一阶段通过 CLI 适配器调用，降低接入成本；稳定后改为 Python API 直接调用。
+旧版“第一阶段先通过 CLI、稳定后切换 Python API”的方案已由 [ADR-0002](docs/architecture/adr/0002-notebooklm-public-python-api.md) **Superseded**。目标生产集成从首个 NotebookLM Adapter 起直接使用固定版本的公开 `NotebookLMClient` Python API；CLI 只用于人工诊断，或作为有退出期限、`shell=False` 且通过同一 Contract Test 的临时兼容 Adapter。
 
 ```text
 diandianreading Orchestrator
@@ -450,8 +450,9 @@ NotebookLM Adapter
 ### 设计约束
 
 - NotebookLM 为异步服务，必须使用任务队列。
-- 记录 task_id、notebook_id、source_id 和 artifact_id。
-- 对接口变化、超时和限流进行重试。
+- 记录 task_id、notebook_id、source_id 和 artifact_id，但外部 ID 存在独立 Provider 映射，不写入 `Book`。
+- 每个远程写在调用前持久化 operation intent、唯一 correlation key 和输入指纹；超时、断连、取消或 Worker 失租后先 reconciliation，不按空 ID 盲目重建。
+- 重试遵守 SDK 操作幂等矩阵与 Job attempt/max elapsed 上限；`AUTH_REQUIRED` 进入独立 blocked reason，不伪装成普通失败。
 - 生成结果必须保存原始来源和提示词版本。
 
 ## 7.2 zlibrary-to-notebooklm
@@ -469,9 +470,11 @@ NotebookLM Adapter
 
 ### 生产环境边界
 
-- 默认只接受用户上传、用户拥有或明确授权的内容。
-- 不对公众暴露未经授权的下载流程。
-- 不绕过 DRM。
+- 本地上传是默认入口；Z-Library Adapter 默认关闭。
+- 调用 Z-Library Adapter 前必须逐项保存不可预选的 `RightsProvenance`（权利依据、政策版本、确认时间、脱敏来源定位，完成后绑定内容哈希）；缺失或不匹配时拒绝创建 Acquisition Job。
+- 用户声明用于执行产品政策与审计，不包装成法律验证；不对公众暴露未经授权或通用下载流程。
+- 初始 URL、每次 Redirect、浏览器子请求、下载、Archive 和 Parser 都执行 allowlist、非公网地址拒绝、大小/时间/类型、防穿越/解压炸弹、无网络和资源上限。
+- 不绕过访问控制、验证码、付费限制或 DRM。
 - 不把第三方来源当作产品的唯一内容供应链。
 
 ## 7.3 SocialCLI
@@ -568,8 +571,19 @@ Vault/
 | status | importing / reading / completed |
 | progress | 阅读进度 |
 | source_hash | 文件哈希 |
-| notebooklm_id | NotebookLM ID |
+| original_asset_id | 原始 `DocumentAsset` ID；Asset 使用逻辑 `StorageKey`，不保存物理路径 |
 | created_at | 导入时间 |
+
+旧字段 `Book.notebooklm_id` 已由 [集成计划](docs/architecture/integration-plan.md) **Superseded**。NotebookLM 等 Provider 映射独立保存，避免把 Book 绑定到单一 Provider：
+
+| ExternalWorkspace 字段 | 说明 |
+|---|---|
+| id | 本地映射 ID |
+| book_id | 所属书籍 |
+| provider | Provider 名称 |
+| credential_profile | 逻辑 Profile；不是路径 |
+| external_id | Provider Workspace ID |
+| status | Provider 映射状态 |
 
 ### 8.3 Annotation
 
@@ -616,10 +630,12 @@ Vault/
 
 ## 9. 技术架构建议
 
+下图箭头表示 **runtime call/data flow**，不是模块 import 方向；编译时依赖遵守 `interfaces → application → domain`、`infrastructure → application ports`。
+
 ```text
 Web Client
    ↓
-API / Application Layer
+Authenticated Local API / Application Layer
    ├── Library Service
    ├── Reader & Annotation Service
    ├── Topic Service
@@ -627,20 +643,20 @@ API / Application Layer
    ├── Publish Service
    └── Obsidian Export Service
            ↓
-     Task Queue / Worker
-       ├── File Parser
+     Durable Job Queue / Worker
+       ├── Restricted Document Preparation Adapter
        ├── NotebookLM Adapter
        ├── Media Processor
        └── SocialCLI Adapter
            ↓
-     PostgreSQL + Object Storage + Search Index
+     SQLite + Private FileStore + SQLite FTS
 ```
 
 ### 推荐技术选择（个人版）
 
 - 前端：React / Next.js 或当前静态原型继续演进。
 - 阅读器：PDF.js + epub.js。
-- 后端：Python FastAPI 或 TypeScript API。
+- 后端：按 [ADR-0001](docs/architecture/adr/0001-local-first-modular-monolith.md) 使用 local-first Python 模块化单体；前端技术选择不改变领域边界。
 - 数据库：SQLite 起步，后续 PostgreSQL。
 - 文件：本地文件夹起步，后续 S3/MinIO。
 - 任务：本地队列起步，后续 Redis + Celery/RQ。
@@ -710,20 +726,21 @@ API / Application Layer
 - 对长引用、连续章节引用和完整内容导出进行提示或限制。
 - 不提供 DRM 破解或未经授权的书籍下载服务。
 
-### 11.2 凭证安全
+### 11.2 凭证与私有文件安全
 
-需要独立保存并加密保护：
+- `CredentialRef` 是只有 `provider/profile` 的不透明引用；Domain、业务数据库和 API 不保存 Credential 物理路径或 Secret。
+- Google/NotebookLM、外部资料源和社交平台凭据按 Provider 物理隔离。只有 Infrastructure Resolver 能映射到应用凭据根目录中的路径并传给 SDK。
+- POSIX 上应用根目录、凭据、文档、Job 与备份目录使用当前用户所有的 `0700`，数据库、WAL/SHM、Credential、文档对象、Job 文件和备份使用 `0600`；拒绝符号链接、错误 owner/type 和越界路径。
+- 普通文件使用同目录 staging、`fsync` 和原子发布；SQLite 使用事务/backup API，不 replace 活跃数据库。默认备份排除凭据。
+- Obsidian Vault 是用户选择的外部边界，不与应用私有 FileStore 混为同一受管根目录；写入前单独校验授权目录和链接边界。
 
-- Google/NotebookLM Cookie 或 Token。
-- 外部资料源的登录会话。
-- 社交媒体账号 Cookie 或 Token。
-- Obsidian Vault 路径和本地文件权限。
-
-### 11.3 第三方接口风险
+### 11.3 第三方接口与任务风险
 
 - NotebookLM 使用的接口可能发生变化。
 - SocialCLI 的部分平台依赖浏览器 Cookie 或非稳定接口。
-- 长任务必须具备超时、重试、断点和错误恢复。
+- Job 生命周期 `queued/running/blocked/completed/failed/cancelled` 与业务 `current_step`、`blocked_reason`、取消请求和 Lease 正交；UI/API 分字段展示。
+- 长任务具备有界超时/重试、Step checkpoint、调用前远程 Intent、Lease fencing、取消安全点和 reconciliation。
+- `AUTH_REQUIRED` 是 `blocked_reason`；Provider 结果不确定时使用 `REMOTE_OUTCOME_AMBIGUOUS`，不能 blind recreation。
 - 第三方失败不能导致用户草稿或笔记丢失。
 
 ### 11.4 AI 内容风险
@@ -732,6 +749,22 @@ API / Application Layer
 - 回答需要显示引用或来源。
 - 发布前必须由用户确认。
 - 医疗、法律、金融等高风险内容增加人工核验提示。
+
+### 11.5 本地 API 安全
+
+- `localhost:3000` 只是网络暴露边界，不是用户授权。
+- 每安装实例使用独立 Token；浏览器使用短期服务端 Session。所有业务 API、SSE 和 WebSocket 都认证。
+- 同时校验实际 Peer 与 `Host`，默认 same-origin；浏览器写请求校验精确 `Origin` 和 Session 绑定 CSRF Token。
+- 默认拒绝 CORS，不接受 Token 查询参数；SSE/WS 单独执行握手认证、Origin 和连接/消息上限。
+- trusted proxy/转发 Header 支持默认关闭；Header、Body、上传、批量、并发和超时都有显式上限。
+- 完整约束与 fail-closed 回滚见 [ADR-0005](docs/architecture/adr/0005-local-api-security.md)。
+
+### 11.6 不可信资料与权利来源
+
+- URL、Redirect、下载名、Archive Entry、文档 metadata/正文和 Parser 输出都按敌对输入处理。
+- 下载不得写入或扫描通用 `~/Downloads`；使用私有 Job staging、应用生成对象名、流式硬上限、类型/魔数、哈希和原子发布。
+- EPUB/Archive 限制 Entry、解压后大小、压缩比、嵌套与路径/链接类型；Parser 最小权限、无网络并限制 CPU/内存/时间/输出。
+- Z-Library 导入必须绑定可审计 `RightsProvenance`；无确认、未知权利类型或证据政策不满足时在 Adapter 调用前拒绝。
 
 ---
 
