@@ -18,7 +18,7 @@ description: 自动从 Z-Library 下载书籍并上传到 Google NotebookLM。�
 
 当用户提到以下需求时，使用此 Skill：
 
-- 用户提供 Z-Library 书籍链接（包含 `zlib.li`、`z-lib.org`、`zh.zlib.li` 等域名）
+- 用户提供 Z-Library 书籍链接（当前入口域名为 `z-library.sk`）
 - 用户说"帮我把这本书上传到 NotebookLM"
 - 用户说"自动下载并读这本书"
 - 用户说"用 Z-Library 链接创建 NotebookLM 知识库"
@@ -108,7 +108,7 @@ notebooklm source add "文件路径"
 
 ```
 帮我把这本书上传到 NotebookLM：
-https://zh.zlib.li/book/25314781/aa05a1/钱的第四维
+https://z-library.sk/book/25314781/aa05a1/钱的第四维
 ```
 
 ### 执行流程
@@ -116,13 +116,13 @@ https://zh.zlib.li/book/25314781/aa05a1/钱的第四维
 1. **确认并提取信息**
    ```
    书名：钱的第四维
-   URL：https://zh.zlib.li/book/25314781/aa05a1/钱的第四维
+   URL：https://z-library.sk/book/25314781/aa05a1/钱的第四维
    ```
 
 2. **执行下载脚本**
    ```bash
    cd ~/.claude/skills/zlibrary-to-notebooklm
-   python3 scripts/upload.py "https://zh.zlib.li/book/25314781/aa05a1/钱的第四维"
+   python3 scripts/upload.py "https://z-library.sk/book/25314781/aa05a1/钱的第四维"
    ```
 
 3. **返回结果**
@@ -239,7 +239,7 @@ A: 检查文件大小（NotebookLM 有上传限制）
 ## 📚 相关资源
 
 - [NotebookLM 官方文档](https://notebooklm.google.com/)
-- [Z-Library 网站](https://zh.zlib.li/)
+- [Z-Library 网站](https://z-library.sk/)
 - [Playwright 文档](https://playwright.dev/)
 - [项目 GitHub](https://github.com/zstmfhy/zlibrary-to-notebooklm)
 

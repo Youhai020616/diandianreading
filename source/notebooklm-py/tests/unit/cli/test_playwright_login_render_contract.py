@@ -186,7 +186,7 @@ def _drive_login(
     the Playwright service's own render lines.
     """
     if storage_state is None:
-        storage_state = {"cookies": [], "origins": []}
+        storage_state = _required_cookie_state()
     with ExitStack() as stack:
         if patch_ensure:
             stack.enter_context(patch.object(_pl, "ensure_chromium_installed"))
@@ -419,6 +419,66 @@ class TestEnsureChromiumInstalled:
             "\n"
             f"Authentication saved to: {_STORAGE}\n"
         )
+
+    @pytest.mark.requires_playwright
+    def test_modern_dry_run_missing_location_triggers_install(self, runner, tmp_path):
+        """Playwright 1.62+ reports paths instead of a ``will download`` marker."""
+        missing_location = tmp_path / "chromium-1234"
+        calls = []
+
+        def fake_run(cmd, **_):
+            calls.append(cmd)
+            if "--dry-run" in cmd:
+                return _dry_run_says_missing(
+                    "Chrome for Testing (playwright chromium v1234)\n"
+                    f"  Install location:    {missing_location}\n"
+                )
+            return SimpleNamespace(stdout="", stderr="", returncode=0)
+
+        result, _ = _drive_login(runner, subprocess_run=fake_run, patch_ensure=False)
+
+        assert result.exit_code == 0
+        assert len(calls) == 2
+        assert "Chromium browser not installed. Installing now" in result.output
+
+    @pytest.mark.requires_playwright
+    def test_modern_dry_run_existing_location_skips_install(self, runner, tmp_path):
+        installed_location = tmp_path / "chromium-1234"
+        installed_location.mkdir()
+        (installed_location / "INSTALLATION_COMPLETE").write_text("ok", encoding="utf-8")
+        calls = []
+
+        def fake_run(cmd, **_):
+            calls.append(cmd)
+            return _dry_run_says_missing(
+                "Chrome for Testing (playwright chromium v1234)\n"
+                f"  Install location:    {installed_location}\n"
+            )
+
+        result, _ = _drive_login(runner, subprocess_run=fake_run, patch_ensure=False)
+
+        assert result.exit_code == 0
+        assert len(calls) == 1
+        assert "Chromium browser not installed" not in result.output
+
+    @pytest.mark.requires_playwright
+    def test_modern_dry_run_empty_location_triggers_repair_install(self, runner, tmp_path):
+        empty_location = tmp_path / "chromium-1234"
+        empty_location.mkdir()
+        calls = []
+
+        def fake_run(cmd, **_):
+            calls.append(cmd)
+            return _dry_run_says_missing(
+                "Chrome for Testing (playwright chromium v1234)\n"
+                f"  Install location:    {empty_location}\n"
+            )
+
+        result, _ = _drive_login(runner, subprocess_run=fake_run, patch_ensure=False)
+
+        assert result.exit_code == 0
+        assert len(calls) == 2
+        assert "Chromium browser not installed. Installing now" in result.output
 
     @pytest.mark.requires_playwright
     def test_install_failure_exits_with_markup_false_diagnostic(self, runner):

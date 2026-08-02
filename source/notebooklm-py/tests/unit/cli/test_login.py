@@ -67,9 +67,11 @@ class TestLoginUrlValidation:
         )
 
         assert _url_matches_base_host("https://notebooklm.google.com/notebook/abc")
+        assert _url_matches_base_host("https://notebook.google.com/notebook/abc")
         assert not _url_matches_base_host(
             "https://example.com/path?next=https://notebooklm.google.com/"
         )
+        assert not _url_matches_base_host("https://notebook.google.com.evil.example/notebook/abc")
 
     def test_url_matches_enterprise_base_host(self, monkeypatch):
         monkeypatch.setenv("NOTEBOOKLM_BASE_URL", "https://notebooklm.cloud.google.com")
@@ -80,6 +82,7 @@ class TestLoginUrlValidation:
 
         assert _url_matches_base_host("https://notebooklm.cloud.google.com/notebook/abc")
         assert not _url_matches_base_host("https://notebooklm.google.com/notebook/abc")
+        assert not _url_matches_base_host("https://notebook.google.com/notebook/abc")
 
     def test_connection_error_help_uses_enterprise_base_host(self, monkeypatch):
         monkeypatch.setenv("NOTEBOOKLM_BASE_URL", "https://notebooklm.cloud.google.com")
@@ -308,8 +311,21 @@ class TestLoginCommand:
             # yielded page (e.g. to make ``storage_state()`` raise) without
             # rebuilding this harness.
             mock_page.context = mock_context
-            # storage_state() now returns a dict; atomic_write_json writes it.
-            mock_context.storage_state.return_value = {"cookies": [], "origins": []}
+            # A host landing is not enough: successful capture also requires the
+            # minimum usable Google cookie set before replacing stored auth.
+            mock_context.storage_state.return_value = {
+                "cookies": [
+                    {"name": "SID", "value": "sid", "domain": ".google.com", "path": "/"},
+                    {
+                        "name": "__Secure-1PSIDTS",
+                        "value": "psidts",
+                        "domain": ".google.com",
+                        "path": "/",
+                    },
+                    {"name": "OSID", "value": "osid", "domain": ".google.com", "path": "/"},
+                ],
+                "origins": [],
+            }
             mock_launch = (
                 mock_pw.return_value.__enter__.return_value.chromium.launch_persistent_context
             )
@@ -405,6 +421,33 @@ class TestLoginCommand:
         assert "Already logged in" in result.output
         mock_page.wait_for_url.assert_not_called()
 
+    def test_login_recognizes_rebranded_consumer_host(
+        self, runner, mock_login_browser_with_storage
+    ):
+        """The Gemini Notebook frontend is a successful authenticated landing."""
+        mock_page = mock_login_browser_with_storage
+        mock_page.url = "https://notebook.google.com/"
+
+        result = runner.invoke(cli, ["login"])
+
+        assert result.exit_code == 0
+        assert "Already logged in" in result.output
+        mock_page.wait_for_url.assert_not_called()
+
+    def test_login_rejects_host_landing_without_required_cookies(
+        self, runner, mock_login_browser_with_storage
+    ):
+        """Do not overwrite a valid profile with an empty browser capture."""
+        mock_page = mock_login_browser_with_storage
+        mock_page.url = "https://notebook.google.com/"
+        mock_page.context.storage_state.return_value = {"cookies": [], "origins": []}
+
+        result = runner.invoke(cli, ["login"])
+
+        assert result.exit_code == 1
+        assert "Captured browser session is incomplete" in result.output
+        assert "Authentication saved" not in result.output
+
     def test_login_auto_detect_waits_for_url_when_not_logged_in(
         self, runner, mock_login_browser_with_storage
     ):
@@ -424,6 +467,11 @@ class TestLoginCommand:
 
         assert result.exit_code == 0
         mock_page.wait_for_url.assert_called_once()
+        url_matcher = mock_page.wait_for_url.call_args.args[0]
+        assert callable(url_matcher)
+        assert url_matcher("https://notebooklm.google.com/")
+        assert url_matcher("https://notebook.google.com/")
+        assert not url_matcher("https://accounts.google.com/")
         # Verify timeout=300_000 (5 minutes) is passed
         assert mock_page.wait_for_url.call_args.kwargs.get("timeout") == 300_000
         # The detector must NOT inherit Playwright's default wait_until="load":
@@ -650,7 +698,7 @@ class TestLoginCommand:
             mock_page = MagicMock()
             mock_page.url = "https://notebooklm.google.com/"
             mock_context.pages = [mock_page]
-            mock_context.storage_state.return_value = {"cookies": [], "origins": []}
+            mock_context.storage_state.return_value = _required_cookie_state()
             mock_launch = (
                 mock_pw.return_value.__enter__.return_value.chromium.launch_persistent_context
             )
@@ -687,7 +735,7 @@ class TestLoginCommand:
             mock_page = MagicMock()
             mock_page.url = "https://notebooklm.google.com/"
             mock_context.pages = [mock_page]
-            mock_context.storage_state.return_value = {"cookies": [], "origins": []}
+            mock_context.storage_state.return_value = _required_cookie_state()
             mock_launch = (
                 mock_pw.return_value.__enter__.return_value.chromium.launch_persistent_context
             )
@@ -1096,7 +1144,7 @@ class TestLoginCommand:
             mock_page = MagicMock()
             mock_page.url = "https://notebooklm.google.com/"
             mock_context.pages = [mock_page]
-            mock_context.storage_state.return_value = {"cookies": [], "origins": []}
+            mock_context.storage_state.return_value = _required_cookie_state()
             mock_launch = (
                 mock_pw.return_value.__enter__.return_value.chromium.launch_persistent_context
             )
@@ -1182,7 +1230,7 @@ class TestLoginCommand:
             mock_context.pages = [mock_page_stale]
             # new_page() returns a working fresh page
             mock_context.new_page.return_value = mock_page_fresh
-            mock_context.storage_state.return_value = {"cookies": [], "origins": []}
+            mock_context.storage_state.return_value = _required_cookie_state()
 
             mock_launch = (
                 mock_pw.return_value.__enter__.return_value.chromium.launch_persistent_context
@@ -1244,7 +1292,7 @@ class TestLoginCommand:
             mock_page_stale.url = "https://notebooklm.google.com/"
             mock_context.pages = [mock_page_stale]
             mock_context.new_page.return_value = mock_page_fresh
-            mock_context.storage_state.return_value = {"cookies": [], "origins": []}
+            mock_context.storage_state.return_value = _required_cookie_state()
 
             mock_launch = (
                 mock_pw.return_value.__enter__.return_value.chromium.launch_persistent_context
@@ -1300,7 +1348,7 @@ class TestLoginCommand:
             )
             mock_context.pages = [mock_page_stale]
             mock_context.new_page.return_value = mock_page_recovered
-            mock_context.storage_state.return_value = {"cookies": [], "origins": []}
+            mock_context.storage_state.return_value = _required_cookie_state()
 
             mock_launch = (
                 mock_pw.return_value.__enter__.return_value.chromium.launch_persistent_context

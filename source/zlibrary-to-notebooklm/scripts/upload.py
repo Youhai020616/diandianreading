@@ -113,7 +113,7 @@ class ZLibraryAutoUploader:
 
         if not storage_state.exists():
             print("❌ 未找到会话状态")
-            print("💡 请先运行: python3 /tmp/zlibrary_login.py")
+            print("💡 请先运行: python scripts/login.py")
             return None
 
         print(f"✅ 使用已保存的会话")
