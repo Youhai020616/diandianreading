@@ -3,7 +3,7 @@
 > 路线版本：v0.1  
 > 对应 PRD：[diandianreading-PRD.md](./diandianreading-PRD.md)  
 > 目标：从产品 PRD 走到可持续运营的正式版本  
-> 更新时间：2026-07-26
+> 更新时间：2026-08-03
 
 ---
 
@@ -147,12 +147,14 @@ diandianreading 采用“个人优先、验证先行、逐步开放”的路线�
 - 项目仓库和分支策略。
 - 本地开发环境和环境变量管理。
 - 数据库迁移机制。
-- 书籍、章节、标注、内容、任务的基础数据模型。
-- 文件存储目录规范。
+- 书籍、章节、标注、内容、任务，以及最小 `DocumentAsset`/`DocumentPart`/`StorageKey` 基础模型；业务模型不含物理路径。
+- 私有文件存储规范：数据库/WAL/SHM、文档、Job、备份的当前用户所有权、`0700/0600`、原子发布与 no-symlink 规则。
 - 统一错误码和日志格式。
-- 基础任务队列接口。
-- 外部服务 Adapter 接口。
-- 本地备份和恢复脚本。
+- 正交 Job status/current step/blocked reason/cancel/Lease Schema，以及调用前 `remote_operation_intents`/correlation key。
+- `DocumentPreparationPort`、基础任务队列和外部服务 Adapter 接口；Phase 0 使用 Fake Preparation/Fake Knowledge Adapter。
+- 只有 provider/profile 的 `CredentialRef` 与 Infrastructure Resolver 契约。
+- 本地 API 每安装实例 Token/Session、Peer+Host、same-origin/CSRF、SSE/WS 与资源限制骨架。
+- 不含凭据的本地原子备份和恢复脚本。
 
 ### 推荐模块
 
@@ -192,8 +194,9 @@ class Publisher:
 
 - 新开发者可以按文档启动项目。
 - 数据库可以初始化、迁移和备份。
-- 一个假的 NotebookLM Adapter 可以跑通测试。
-- 外部服务失败时不会导致主流程崩溃或丢失草稿。
+- Fake Document Preparation + Fake NotebookLM Adapter 可以跑通含调用前 Intent 的持久 Job。
+- Job 非法状态转换、过期 Lease 写入、取消竞态和 remote outcome 歧义被测试拒绝；外部服务失败不会导致主流程崩溃或丢失草稿。
+- 未认证、错误 Host/Origin/CSRF 的本地 API 请求被拒绝；不存在“仅因回环而授权”的业务路由。
 
 ---
 
@@ -207,7 +210,8 @@ class Publisher:
 
 - PDF/EPUB 导入。
 - 书库列表。
-- 章节解析。
+- `DocumentPreparationPort` 的真实实现：章节解析、确定性 Part 与 manifest。
+- Archive 防穿越/解压炸弹、Parser 无网络/资源上限、私有 staging 和文件类型/魔数校验。
 - 阅读器。
 - 阅读进度。
 - 划线。
@@ -226,7 +230,7 @@ class Publisher:
 
 ### Alpha 测试内容
 
-使用 5～10 本真实的、用户有权使用的资料进行测试：
+使用 5～10 本真实的、用户有权使用且带 `RightsProvenance` 的资料进行测试：
 
 - 3 本 PDF。
 - 3 本 EPUB。
@@ -267,18 +271,28 @@ class Publisher:
 8. 生成测验或闪卡。
 9. 下载生成结果。
 
-### 任务状态
+### 任务状态与恢复
+
+生命周期与业务步骤分开：
 
 ```text
-created → queued → running → completed
-                       ↘ failed → retrying
+status: queued → running → completed
+                  ├→ queued      # 有界重试
+                  ├→ blocked     # AUTH_REQUIRED / REMOTE_OUTCOME_AMBIGUOUS
+                  ├→ failed
+                  └→ cancelled
+
+current_step: creating_workspace → uploading → processing → verifying
 ```
+
+`cancel_requested_at` 和 Lease owner/expiry/generation 是独立字段。每个 Notebook/Source/Artifact 写调用前必须持久化 Intent、correlation key、输入指纹和调用前 baseline；超时、断连、取消、进程终止或 Lease 过期后先 reconciliation，禁止按空外部 ID blind recreation。
 
 ### 用户体验要求
 
 - 任务执行期间显示明确状态。
-- 长任务可以离开页面后继续运行。
-- 结果失败时显示原因和重试按钮。
+- 长任务可以离开页面后继续运行；API 分别显示 status、current step、blocked reason 与取消是否仍在处理。
+- `AUTH_REQUIRED` 提示重新登录并暂停，不消耗后台重试；结果不确定时提示待对账而不是提供盲目重建按钮。
+- 结果明确失败时显示脱敏原因和符合操作幂等策略的重试按钮。
 - AI 回答显示输入来源。
 - 每个生成结果都保存提示词和输入来源。
 
@@ -296,6 +310,8 @@ created → queued → running → completed
 - 80% 以上测试问题能够给出可接受回答。
 - 用户能明显感受到“基于我的标注”比普通摘要更有价值。
 - NotebookLM API 失败时，书籍阅读和本地笔记仍然可用。
+- 故障注入覆盖调用前 Intent、Provider commit 后响应丢失、ID checkpoint 前崩溃、过期 Lease 与取消竞态，均不会重复创建远程资源。
+- 真实 Provider E2E 仅由受信任维护者在受保护、人工批准的 CI environment 中使用授权 fixture；默认/Fork PR CI 只能使用 Fake/Contract/脱敏 fixture。
 
 ---
 
@@ -377,7 +393,8 @@ created → queued → running → completed
 - 不使用不安全的 `shell=True` 拼接命令。
 - 每个平台有独立的发布状态。
 - 媒体转换失败时保留文本草稿。
-- 发布成功后记录外部平台 ID。
+- 发布调用前保存 operation intent/correlation key；发布成功后先记录外部平台 ID，再推进状态。
+- 超时或响应丢失先按平台查询/对账；无法证明未发布时阻塞人工处理，不盲目重发。
 - 同一内容重复发布时给出提醒。
 
 ### 退出标准
@@ -448,18 +465,19 @@ created → queued → running → completed
 
 ### 安全
 
-- 凭证加密。
-- Token 不进入日志。
-- 不在前端暴露第三方密钥。
-- 文件路径校验。
-- 上传文件大小和类型限制。
-- 用户数据隔离。
-- 删除数据的完整流程。
+- `CredentialRef` 只有 provider/profile；物理路径和 Secret 只在 Provider Infrastructure 内解析，Token/Cookie/邮箱/路径不进入日志或前端。
+- 检测并迁移 Legacy Profile；`~/.zlibrary/config.json` 可能含明文账号密码，只告警、不导入，验证新登录后再显式清理。
+- 数据库/WAL/SHM、文档、Job、备份和凭据执行私有权限/所有权、根目录 confinement、原子发布和 no-symlink 测试。
+- 本地 API 执行每安装实例 Token/Session、实际 Peer + Host、same-origin、Origin/CSRF、SSE/WS 认证、限制性 CORS、请求/连接上限，并禁用 trusted proxy。
+- URL/每跳 Redirect/浏览器子请求执行 Host/DNS 策略；下载、Archive 和 Parser 有大小、时间、路径、类型、网络和资源硬上限。
+- 上传文件大小、MIME/魔数、哈希和隔离 staging 校验。
+- 删除数据和远程清理均有显式 Intent、审计与可恢复流程，不把取消等同于远程回滚。
 
 ### 合规
 
-- 明确内容来源和版权责任。
-- 不提供未经授权的书籍下载入口。
+- 明确内容来源和版权责任；Z-Library 导入逐项强制不可预选的 `RightsProvenance`、政策版本、权利依据、脱敏来源与内容哈希。
+- 用户声明用于执行产品政策，不声称自动完成法律验证。
+- 不提供未经授权或通用的书籍下载入口，不绕过访问控制、验证码、付费限制或 DRM。
 - 用户协议和隐私说明。
 - AI 生成内容提示。
 - 社交平台发布风险提示。
@@ -470,9 +488,10 @@ created → queued → running → completed
 - 核心流程通过率 ≥ 95%。
 - 严重 Bug 为 0。
 - 高优先级 Bug 不超过 3 个。
-- 数据备份恢复演练通过。
+- 数据库/WAL、文档和不含凭据的原子备份恢复演练通过；回滚不会跟随链接、覆盖半成品或盲删远程资源。
+- Token/Session 轮换与 fail-closed 恢复演练通过；安全迁移失败时不降级为无认证。
 - 删除用户数据演练通过。
-- 第三方异常有降级提示。
+- 第三方异常有降级提示，remote outcome 歧义可人工对账。
 
 ---
 
@@ -674,7 +693,10 @@ created → queued → running → completed
 | AI 结果泛化 | 用户感受不到价值 | 强化个人笔记和来源引用 |
 | Obsidian 双向同步冲突 | 数据不一致 | 第一版只做单向导出 |
 | 媒体处理失败 | 不能发布 | 保留文本稿，提供下载和重试 |
-| 凭证泄露 | 账号和数据风险 | 加密存储、脱敏日志、最小权限 |
+| 凭证泄露 | 账号和数据风险 | Provider 隔离、opaque CredentialRef、私有权限/所有权、脱敏日志、最小权限 |
+| 本地 API 被网页/同机进程调用 | 文件与远程副作用 | 每安装实例认证、Peer+Host、Origin/CSRF、SSE/WS、限额、禁用 proxy trust |
+| 恶意下载/Archive/Parser | SSRF、路径穿越、资源耗尽 | 逐跳网络策略、流式硬上限、隔离解析与 Archive 限制 |
+| 远程提交后响应丢失 | 重复 Notebook/Source/发布 | 调用前 Intent、correlation key、Lease fencing、reconciliation，不 blind recreation |
 
 ---
 
