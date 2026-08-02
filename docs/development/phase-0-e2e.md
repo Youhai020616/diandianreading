@@ -1,6 +1,6 @@
 # Phase 0 本地端到端验证
 
-> 状态：Proposed
+> 状态：Active
 >
 > 不使用浏览器、真实 NotebookLM、Z-Library 或任何账号凭据。
 

@@ -17,7 +17,7 @@
 | [两项目集成计划](architecture/integration-plan.md) | 目标架构、抽象边界、重构路径和分阶段迁移 | Proposed |
 | [本地 API 安全 ADR](architecture/adr/0005-local-api-security.md) | 每安装实例认证、同源浏览器边界、SSE/WS 与资源限制 | Proposed |
 | [AI 对话功能设计](features/ai-chat.md) | 可视化对话、引用、会话与 API 设计 | Proposed |
-| [Phase 0 本地 E2E](development/phase-0-e2e.md) | Fake Adapter、SQLite 与 Job 全链路验证 | Proposed |
+| [Phase 0 本地 E2E](development/phase-0-e2e.md) | Fake Adapter、SQLite 与 Job 全链路验证 | Active |
 
 ## 推荐阅读顺序
 

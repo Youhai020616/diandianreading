@@ -13,7 +13,30 @@ Thumbs.db
 *.p12
 *.pfx
 
-# Local application state and logs
+# Python environments, caches, coverage, and builds
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Local application state, credentials, SQLite sidecars, and logs
 *.log
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+storage_state.json
+master_token.json
+.diandianreading/
 .tmp/
 tmp/
