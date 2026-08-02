@@ -58,6 +58,7 @@ markers = [
 source = ["src/diandianreading"]
 branch = true
 parallel = true
+patch = ["subprocess"]
 
 [tool.coverage.report]
 show_missing = true

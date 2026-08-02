@@ -49,6 +49,34 @@ def test_cli_runs_phase0_demo_and_returns_structured_collision_error(tmp_path, c
     assert sentinel.read_text(encoding="utf-8") == original
 
 
+def test_cli_runs_phase1_real_document_preparation_demo(tmp_path, capsys) -> None:
+    database = tmp_path / "state" / "app.sqlite3"
+    object_root = tmp_path / "objects"
+    workspace = tmp_path / "workspace"
+
+    exit_code = main(
+        [
+            "phase1-e2e",
+            "--database",
+            str(database),
+            "--object-root",
+            str(object_root),
+            "--workspace",
+            str(workspace),
+        ]
+    )
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["status"] == "ok"
+    assert payload["format_count"] == 3
+    assert payload["manifest_count"] == 3
+    assert payload["source_count"] == payload["part_count"]
+    assert payload["remote_operation_count"] == payload["source_count"] + 3
+
+
 def test_cli_expands_tilde_before_existing_database_check(tmp_path, monkeypatch, capsys) -> None:
     home = tmp_path / "home"
     state = home / ".state"

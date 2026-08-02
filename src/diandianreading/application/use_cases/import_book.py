@@ -31,6 +31,7 @@ from diandianreading.domain import (
     JobStep,
     KnowledgeSourceRef,
     KnowledgeStatus,
+    PreparationManifest,
     ProgressEvent,
     RemoteOperation,
     RemoteOperationKind,
@@ -48,17 +49,36 @@ class ImportBookCommand:
     asset: DocumentAsset
     parts: tuple[DocumentPart, ...]
     credential: CredentialRef
+    derived_assets: tuple[DocumentAsset, ...] = ()
+    manifest: PreparationManifest | None = None
 
     def __post_init__(self) -> None:
         if not self.title.strip():
             raise ValueError("Import title cannot be empty")
         if not self.parts:
             raise ValueError("At least one DocumentPart is required")
-        if any(part.asset_id != self.asset.id for part in self.parts):
-            raise ValueError("Every DocumentPart must belong to the command asset")
+        if self.asset.derived_from_asset_id is not None:
+            raise ValueError("Import root DocumentAsset cannot be derived from another asset")
+
+        asset_ids = {self.asset.id}
+        for derived in self.derived_assets:
+            if derived.id in asset_ids:
+                raise ValueError("DocumentAsset identities must be unique")
+            if derived.derived_from_asset_id not in asset_ids:
+                raise ValueError("Derived DocumentAssets must follow an existing parent asset")
+            asset_ids.add(derived.id)
+        if any(part.asset_id not in asset_ids for part in self.parts):
+            raise ValueError("Every DocumentPart must belong to an imported DocumentAsset")
+        if len({part.id for part in self.parts}) != len(self.parts):
+            raise ValueError("DocumentPart identities must be unique")
+        content_identities = {(part.asset_id, part.sha256) for part in self.parts}
+        if len(content_identities) != len(self.parts):
+            raise ValueError("DocumentPart content must be unique within each DocumentAsset")
         sequences = [part.sequence for part in self.parts]
         if sequences != list(range(len(self.parts))):
             raise ValueError("DocumentPart sequences must be contiguous and start at zero")
+        if self.manifest is not None and self.manifest.root_asset_id != self.asset.id:
+            raise ValueError("PreparationManifest must describe the command root asset")
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,11 +150,20 @@ class ImportBookUseCase:
                 lambda unit_of_work: unit_of_work.catalog.add_asset(book.id, command.asset),
             )
 
-            def save_parts(unit_of_work: UnitOfWork) -> None:
+            def save_prepared_document(unit_of_work: UnitOfWork) -> None:
+                for derived in command.derived_assets:
+                    unit_of_work.catalog.add_asset(book.id, derived)
                 for part in command.parts:
                     unit_of_work.catalog.add_part(part)
+                if command.manifest is not None:
+                    unit_of_work.catalog.add_manifest(book.id, command.manifest)
 
-            job = await self._advance(job, JobStep.PREPARING, sink, save_parts)
+            job = await self._advance(
+                job,
+                JobStep.PREPARING,
+                sink,
+                save_prepared_document,
+            )
 
             workspace_operation = self._persist_operation_intent(
                 job,

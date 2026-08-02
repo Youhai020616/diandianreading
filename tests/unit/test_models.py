@@ -9,6 +9,7 @@ from diandianreading.domain import (
     DocumentAsset,
     DocumentPart,
     InvalidStateTransition,
+    PreparationManifest,
     RemoteOperation,
     RemoteOperationKind,
     RemoteOperationStatus,
@@ -53,6 +54,8 @@ def test_domain_models_validate_invariants() -> None:
         make_asset(display_filename="")
     with pytest.raises(ValueError, match="rights_provenance_id"):
         make_asset(rights_provenance_id="")
+    with pytest.raises(ValueError, match="derive from itself"):
+        make_asset(derived_from_asset_id="asset")
 
     with pytest.raises(ValueError, match="sequence"):
         DocumentPart("part", "asset", -1, StorageKey("parts/one"), "text/markdown", 1, "hash", ())
@@ -60,6 +63,22 @@ def test_domain_models_validate_invariants() -> None:
         DocumentPart("part", "asset", 0, StorageKey("parts/one"), "text/markdown", -1, "hash", ())
     with pytest.raises(ValueError, match="sha256"):
         DocumentPart("part", "asset", 0, StorageKey("parts/one"), "text/markdown", 1, "", ())
+    with pytest.raises(ValueError, match="size_bytes"):
+        DocumentPart(
+            "part",
+            "asset",
+            0,
+            StorageKey("parts/one"),
+            "text/markdown",
+            1,
+            "hash",
+            (),
+            -1,
+        )
+    with pytest.raises(ValueError, match="root_asset_id"):
+        PreparationManifest("", StorageKey("manifests/one"), "hash")
+    with pytest.raises(ValueError, match="sha256"):
+        PreparationManifest("asset", StorageKey("manifests/one"), "")
     with pytest.raises(ValueError, match="required"):
         CredentialRef("", "default")
     with pytest.raises(ValueError, match="opaque"):
