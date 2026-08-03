@@ -160,4 +160,4 @@ ADR-0001 选择单用户、local-first 架构，并把 Web/API 绑定到 `localh
 - [桌面应用实施计划](../desktop-application-plan.md)
 - [集成计划](../integration-plan.md)
 - [API 参考中的现有 REST 安全事实](../../api.md#81-状态与安全模型)
-- [`notebooklm-py` REST Server 实现](../../../source/notebooklm-py/src/notebooklm/server/)
+- [`notebooklm-py` REST Server 实现](https://github.com/teng-lin/notebooklm-py/tree/main/src/notebooklm/server)

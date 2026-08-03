@@ -13,8 +13,8 @@
 | 项目 | 定位 | 主要接口 |
 | --- | --- | --- |
 | `src/diandianreading` | local-first 主产品；组合导入、Job、Provider、Web/API 与 whole-book Chat | `diandian` CLI、FastAPI local API、Worker、SQLite |
-| `source/notebooklm-py` | 非官方 NotebookLM Python SDK 与自动化工具；主产品固定依赖其发布包 | Python async API、CLI、MCP Server、实验性 REST Server |
-| `source/zlibrary-to-notebooklm` | Legacy Z-Library 下载并转交 NotebookLM 的脚本；仅作迁移依据 | `login.py`、`upload.py`、`convert_epub.py` |
+| [`notebooklm-py`](https://github.com/teng-lin/notebooklm-py) | 非官方 NotebookLM Python SDK 与自动化工具；主产品固定依赖其 PyPI 发布包，vendored 副本已移除（见 [移除记录](development/removed-vendored-sources.md)） | Python async API、CLI、MCP Server、实验性 REST Server |
+| [`zlibrary-to-notebooklm`](https://github.com/zstmfhy/zlibrary-to-notebooklm) | Legacy Z-Library 下载并转交 NotebookLM 的脚本；仅作迁移依据，vendored 副本已移除 | `login.py`、`upload.py`、`convert_epub.py` |
 
 最重要的集成结论：
 
@@ -59,7 +59,8 @@ flowchart TD
 notebooklm login
 notebooklm auth check --test --json
 
-cd source/zlibrary-to-notebooklm
+git clone https://github.com/zstmfhy/zlibrary-to-notebooklm
+cd zlibrary-to-notebooklm
 python scripts/login.py --url "https://zlibrary.invalid/"
 ```
 
@@ -77,7 +78,7 @@ NotebookLM 网络认证验证成功时，`notebooklm auth check --test --json` �
 ### 2.2 执行完整流程
 
 ```bash
-cd source/zlibrary-to-notebooklm
+cd zlibrary-to-notebooklm
 python scripts/upload.py "https://zlibrary.invalid/book/<synthetic-book-id>"
 ```
 
@@ -216,7 +217,7 @@ CLI 中 Notebook 选择顺序：
 | `NOTEBOOKLM_SERVER_ALLOW_EXTERNAL_BIND` | 允许非回环地址绑定，值必须为 `1` | `0` |
 | `NOTEBOOKLM_SERVER_*_CONCURRENCY` | 各类 REST 操作的并发上限 | 按操作为 `2` 或 `4` |
 
-完整变量清单见 [`configuration.md`](../source/notebooklm-py/docs/configuration.md)。
+完整变量清单见 [`configuration.md`](https://github.com/teng-lin/notebooklm-py/blob/main/docs/configuration.md)。
 
 ## 5. `notebooklm` CLI API
 
@@ -243,7 +244,7 @@ notebooklm [-p PROFILE] [--storage PATH] [--version] [-v|--quiet] <command> [OPT
 | `2` | CLI 用法、系统或意外错误 |
 | `130` | SIGINT / Ctrl-C |
 
-`source stale --exit-on-stale` 与 `source wait` 有专门的判定型退出语义，自动化时应查阅上游 [`cli-exit-codes.md`](../source/notebooklm-py/docs/cli-exit-codes.md)。
+`source stale --exit-on-stale` 与 `source wait` 有专门的判定型退出语义，自动化时应查阅上游 [`cli-exit-codes.md`](https://github.com/teng-lin/notebooklm-py/blob/main/docs/cli-exit-codes.md)。
 
 ### 5.2 命令清单
 
@@ -265,7 +266,7 @@ notebooklm [-p PROFILE] [--storage PATH] [--version] [-v|--quiet] <command> [OPT
 | 语言 | `language list`、`get`、`set` |
 | Agent/Skill/MCP | `agent show`、`skill install/status/uninstall/show/package`、`mcp install` |
 
-详细参数见 [`cli-reference.md`](../source/notebooklm-py/docs/cli-reference.md)。
+详细参数见 [`cli-reference.md`](https://github.com/teng-lin/notebooklm-py/blob/main/docs/cli-reference.md)。
 
 ### 5.3 常用 CLI 契约
 
@@ -946,7 +947,7 @@ from notebooklm import (
 
 当前 SDK 用内部 `IDEMPOTENCY_REGISTRY` 对每个活跃 `RPCMethod` 分类；`PROBE_THEN_CREATE` 和 `NON_IDEMPOTENT_NO_RETRY` 会强制关闭传输层对 5xx/429/网络错误的 blind retry，`IDEMPOTENT_SET_OP` 保留有界内部重试，`AT_LEAST_ONCE_ACCEPTED` 允许重试但明确接受重复副作用。调用方显式 `disable_internal_retries=True` 时始终优先关闭内部重试。
 
-下表记录主项目会用到的公开操作和关键相邻操作；完整逐 RPC 分类以当前源码 [`_idempotency_policy.py`](../source/notebooklm-py/src/notebooklm/_idempotency_policy.py) 与上游 [ADR-0005](../source/notebooklm-py/docs/adr/0005-idempotency-taxonomy.md) 为准。
+下表记录主项目会用到的公开操作和关键相邻操作；完整逐 RPC 分类以当前源码 [`_idempotency_policy.py`](https://github.com/teng-lin/notebooklm-py/blob/main/src/notebooklm/_idempotency_policy.py) 与上游 [ADR-0005](https://github.com/teng-lin/notebooklm-py/blob/main/docs/adr/0005-idempotency-taxonomy.md) 为准。
 
 | 公开操作/类别 | 当前 SDK 策略 | 失败后的正确调用方行为 |
 | --- | --- | --- |
@@ -1014,7 +1015,7 @@ notebooklm-mcp
 - 远程文件传输使用短期 HMAC 签名 URL；小文件可通过 `bytes_base64` 直接传递。
 - HTTP 非回环绑定必须同时显式允许外部绑定并配置 Token。
 
-完整参数说明见 [`mcp-guide.md`](../source/notebooklm-py/docs/mcp-guide.md)。
+完整参数说明见 [`mcp-guide.md`](https://github.com/teng-lin/notebooklm-py/blob/main/docs/mcp-guide.md)。
 
 ## 8. REST Server API
 
@@ -1467,7 +1468,7 @@ notebooklm source add '<file_path>' --json
 
 ### 14.4 `diandianreading` Phase 4 生产契约
 
-上面的 14.1–14.3 描述 Legacy `source/zlibrary-to-notebooklm` 脚本事实。主项目不会调用其 `upload_to_notebooklm()`、外部 `notebooklm` CLI、`~/Downloads` 扫描或明文账号逻辑。Phase 4 已提供以下 Python 边界：
+上面的 14.1–14.3 描述 Legacy `zlibrary-to-notebooklm` 上游脚本事实（本仓库曾对其登录脚本做过修复，见 [移除记录](development/removed-vendored-sources.md)）。主项目不会调用其 `upload_to_notebooklm()`、外部 `notebooklm` CLI、`~/Downloads` 扫描或明文账号逻辑。Phase 4 已提供以下 Python 边界：
 
 ```python
 from diandianreading.application.use_cases import (
@@ -1840,26 +1841,26 @@ Source status: ready
 
 ### `notebooklm-py`
 
-- [`pyproject.toml`](../source/notebooklm-py/pyproject.toml)
-- [`src/notebooklm/client.py`](../source/notebooklm-py/src/notebooklm/client.py)
-- [`src/notebooklm/__init__.py`](../source/notebooklm-py/src/notebooklm/__init__.py)
-- [`src/notebooklm/_idempotency.py`](../source/notebooklm-py/src/notebooklm/_idempotency.py)
-- [`src/notebooklm/_idempotency_policy.py`](../source/notebooklm-py/src/notebooklm/_idempotency_policy.py)
-- [`src/notebooklm/_sources.py`](../source/notebooklm-py/src/notebooklm/_sources.py)
-- [`docs/adr/0005-idempotency-taxonomy.md`](../source/notebooklm-py/docs/adr/0005-idempotency-taxonomy.md)
-- [`docs/python-api.md`](../source/notebooklm-py/docs/python-api.md)
-- [`docs/cli-reference.md`](../source/notebooklm-py/docs/cli-reference.md)
-- [`docs/mcp-guide.md`](../source/notebooklm-py/docs/mcp-guide.md)
-- [`docs/configuration.md`](../source/notebooklm-py/docs/configuration.md)
-- [`docs/stability.md`](../source/notebooklm-py/docs/stability.md)
-- [`src/notebooklm/server/`](../source/notebooklm-py/src/notebooklm/server/)
+- [`pyproject.toml`](https://github.com/teng-lin/notebooklm-py/blob/main/pyproject.toml)
+- [`src/notebooklm/client.py`](https://github.com/teng-lin/notebooklm-py/blob/main/src/notebooklm/client.py)
+- [`src/notebooklm/__init__.py`](https://github.com/teng-lin/notebooklm-py/blob/main/src/notebooklm/__init__.py)
+- [`src/notebooklm/_idempotency.py`](https://github.com/teng-lin/notebooklm-py/blob/main/src/notebooklm/_idempotency.py)
+- [`src/notebooklm/_idempotency_policy.py`](https://github.com/teng-lin/notebooklm-py/blob/main/src/notebooklm/_idempotency_policy.py)
+- [`src/notebooklm/_sources.py`](https://github.com/teng-lin/notebooklm-py/blob/main/src/notebooklm/_sources.py)
+- [`docs/adr/0005-idempotency-taxonomy.md`](https://github.com/teng-lin/notebooklm-py/blob/main/docs/adr/0005-idempotency-taxonomy.md)
+- [`docs/python-api.md`](https://github.com/teng-lin/notebooklm-py/blob/main/docs/python-api.md)
+- [`docs/cli-reference.md`](https://github.com/teng-lin/notebooklm-py/blob/main/docs/cli-reference.md)
+- [`docs/mcp-guide.md`](https://github.com/teng-lin/notebooklm-py/blob/main/docs/mcp-guide.md)
+- [`docs/configuration.md`](https://github.com/teng-lin/notebooklm-py/blob/main/docs/configuration.md)
+- [`docs/stability.md`](https://github.com/teng-lin/notebooklm-py/blob/main/docs/stability.md)
+- [`src/notebooklm/server/`](https://github.com/teng-lin/notebooklm-py/blob/main/src/notebooklm/server/)
 
 ### `zlibrary-to-notebooklm`
 
-- [`scripts/login.py`](../source/zlibrary-to-notebooklm/scripts/login.py)
-- [`scripts/upload.py`](../source/zlibrary-to-notebooklm/scripts/upload.py)
-- [`scripts/convert_epub.py`](../source/zlibrary-to-notebooklm/scripts/convert_epub.py)
-- [`README.zh-CN.md`](../source/zlibrary-to-notebooklm/README.zh-CN.md)
-- [`SKILL.md`](../source/zlibrary-to-notebooklm/SKILL.md)
-- [`requirements.txt`](../source/zlibrary-to-notebooklm/requirements.txt)
-- [`package.json`](../source/zlibrary-to-notebooklm/package.json)
+- [`scripts/login.py`](https://github.com/zstmfhy/zlibrary-to-notebooklm/blob/main/scripts/login.py)
+- [`scripts/upload.py`](https://github.com/zstmfhy/zlibrary-to-notebooklm/blob/main/scripts/upload.py)
+- [`scripts/convert_epub.py`](https://github.com/zstmfhy/zlibrary-to-notebooklm/blob/main/scripts/convert_epub.py)
+- [`README.zh-CN.md`](https://github.com/zstmfhy/zlibrary-to-notebooklm/blob/main/README.zh-CN.md)
+- [`SKILL.md`](https://github.com/zstmfhy/zlibrary-to-notebooklm/blob/main/SKILL.md)
+- [`requirements.txt`](https://github.com/zstmfhy/zlibrary-to-notebooklm/blob/main/requirements.txt)
+- [`package.json`](https://github.com/zstmfhy/zlibrary-to-notebooklm/blob/main/package.json)

@@ -46,7 +46,6 @@ include = [
 
 [tool.uv.workspace]
 members = ["packages/*"]
-exclude = ["source/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

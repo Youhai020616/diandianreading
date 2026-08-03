@@ -37,11 +37,11 @@
 
 源码依据：
 
-- [`notebooklm-py` 架构](../../source/notebooklm-py/docs/architecture.md)
-- [`NotebookLMClient`](../../source/notebooklm-py/src/notebooklm/client.py)
-- [Z-Library 上传脚本](../../source/zlibrary-to-notebooklm/scripts/upload.py)
-- [Z-Library 登录脚本](../../source/zlibrary-to-notebooklm/scripts/login.py)
-- [EPUB 转换脚本](../../source/zlibrary-to-notebooklm/scripts/convert_epub.py)
+- [`notebooklm-py` 架构](https://github.com/teng-lin/notebooklm-py/blob/main/docs/architecture.md)
+- [`NotebookLMClient`](https://github.com/teng-lin/notebooklm-py/blob/main/src/notebooklm/client.py)
+- [Z-Library 上传脚本](https://github.com/zstmfhy/zlibrary-to-notebooklm/blob/main/scripts/upload.py)
+- [Z-Library 登录脚本](https://github.com/zstmfhy/zlibrary-to-notebooklm/blob/main/scripts/login.py)
+- [EPUB 转换脚本](https://github.com/zstmfhy/zlibrary-to-notebooklm/blob/main/scripts/convert_epub.py)
 
 ## 3. 决策摘要
 

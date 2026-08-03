@@ -1,2 +1,0 @@
-# Minimal dependency set for non-browser login argument tests.
-playwright==1.62.0
