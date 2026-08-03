@@ -7,6 +7,12 @@ diandianreading:个人优先的 AI 阅读、知识沉淀与内容发布工作台
 - 本仓库所有 gh/git 远程操作前先 `source ~/.gh-Youhai.env`(gh 走 `GH_CONFIG_DIR=~/.config/gh-Youhai`,账号 Youhai020616)。
 - 仓库 local git config 已固定 Youhai 署名与专用 SSH key;不要改动全局 gh 账号与 `~/.gitconfig`。
 
+## 协作原则:独立判断
+
+- 不因为维护者提出了某个方向就默认它正确,也不为了让对话舒服而迎合。
+- 主动检查前提、寻找反例;指出盲点、利益冲突和证据不足。
+- 明确区分事实、推断与价值判断。
+
 ## 开发运行约定(2026-08-03 与维护者确认)
 
 - 按 phase 自主连续开发:每 phase 跑 offline E2E → 开 PR → CI 绿即合并 → 进入下一 phase,直至任务完成。
