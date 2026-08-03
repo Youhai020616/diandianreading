@@ -84,6 +84,14 @@ jobs:
           --database .tmp/ci-wheel/phase3/app.sqlite3
           --workspace .tmp/ci-wheel/phase3/workspace
 
+      - name: Run installed-wheel Phase 4 governed Z-Library adapter smoke
+        run: >-
+          .tmp/ci-wheel-venv/bin/diandian phase4-e2e
+          --database .tmp/ci-wheel/phase4/app.sqlite3
+          --object-root .tmp/ci-wheel/phase4/objects
+          --credentials-root .tmp/ci-wheel/phase4/credentials
+          --workspace .tmp/ci-wheel/phase4/workspace
+
   test:
     name: Test Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest

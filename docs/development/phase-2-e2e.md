@@ -25,7 +25,7 @@ CLI
 → SQLite/Object Store reopen and invariant checks
 ```
 
-真实边界包括当前 SQLite schema v4、Acquisition、Markdown Preparation、私有对象存储、公开 SDK Adapter 的调用形状、凭据路径解析、Client 生命周期、引用映射和生成资产发布。只有最外层 Provider RPC 被确定性 SDK double 替代；schema v4 的恢复语义由 Phase 3 E2E 单独验证。
+真实边界包括当前 SQLite schema v5、Acquisition、Markdown Preparation、私有对象存储、公开 SDK Adapter 的调用形状、凭据路径解析、Client 生命周期、引用映射和生成资产发布。只有最外层 Provider RPC 被确定性 SDK double 替代；schema v4 的恢复语义由 Phase 3 E2E 单独验证，schema v5 的 Rights audit 由 Phase 4 E2E 验证。
 
 ## 2. 依赖与公开 API 边界 / Dependency Boundary
 
@@ -94,7 +94,7 @@ uv run diandian phase2-e2e \
 | 字段 | 不变量 |
 | --- | --- |
 | `status` | `ok` |
-| `schema_version` | `4` |
+| `schema_version` | `5` |
 | `book_count` | `1` |
 | `part_count` | 至少 `1` |
 | `source_count` | 等于 `part_count`，且全部 ready |
@@ -148,7 +148,7 @@ Adapter 当前支持以下 provider-neutral 类型；连字符输入会在指纹
 
 ## 7. Intent、幂等与当前恢复边界 / Intent and Recovery Boundary
 
-Phase 2 的 schema v3 首次将 `remote_operations.kind` 扩展为以下类型；当前 schema v4 保留这些 kind，并新增 `prepared/dispatched/ambiguous/succeeded/reconciled` lifecycle、probe strategy、dispatch attempt 与解析时间：
+Phase 2 的 schema v3 首次将 `remote_operations.kind` 扩展为以下类型；Phase 3 schema v4 保留这些 kind，并新增 `prepared/dispatched/ambiguous/succeeded/reconciled` lifecycle、probe strategy、dispatch attempt 与解析时间；当前 schema v5 继续保留该协议并增加独立 Rights audit：
 
 ```text
 ensure_workspace

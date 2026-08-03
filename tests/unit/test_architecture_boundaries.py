@@ -83,6 +83,25 @@ def test_application_does_not_import_infrastructure_interfaces_or_databases() ->
     assert violations == []
 
 
+def test_zlibrary_adapter_is_isolated_from_notebooklm_and_legacy_shell_entrypoints() -> None:
+    forbidden = {
+        "notebooklm",
+        "subprocess",
+        "diandianreading.infrastructure.notebooklm",
+    }
+    violations: list[str] = []
+    zlibrary_root = PACKAGE / "infrastructure" / "acquisition" / "zlibrary"
+    for path in zlibrary_root.rglob("*.py"):
+        for module in imported_modules(path):
+            if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden):
+                violations.append(f"{path.relative_to(ROOT)} -> {module}")
+        source = path.read_text(encoding="utf-8")
+        for forbidden_text in ("shell=True", "~/Downloads", "load_credentials("):
+            if forbidden_text in source:
+                violations.append(f"{path.relative_to(ROOT)} -> {forbidden_text}")
+    assert violations == []
+
+
 def test_main_application_never_imports_notebooklm_internal_modules() -> None:
     violations: list[str] = []
     for path in PACKAGE.rglob("*.py"):

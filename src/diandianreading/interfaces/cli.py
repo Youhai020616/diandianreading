@@ -15,6 +15,7 @@ from diandianreading.interfaces.phase0_demo import run_phase0_demo
 from diandianreading.interfaces.phase1_demo import run_phase1_demo
 from diandianreading.interfaces.phase2_demo import run_phase2_demo
 from diandianreading.interfaces.phase3_demo import run_phase3_demo
+from diandianreading.interfaces.phase4_demo import run_phase4_demo
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -51,6 +52,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     phase3.add_argument("--database", type=Path, required=True)
     phase3.add_argument("--workspace", type=Path, required=True)
+
+    phase4 = subparsers.add_parser(
+        "phase4-e2e",
+        help="run governed Z-Library acquisition through browser and network doubles",
+    )
+    phase4.add_argument("--database", type=Path, required=True)
+    phase4.add_argument("--object-root", type=Path, required=True)
+    phase4.add_argument("--credentials-root", type=Path, required=True)
+    phase4.add_argument("--workspace", type=Path, required=True)
     return parser
 
 
@@ -78,6 +88,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.command == "phase3-e2e":
             result = asyncio.run(run_phase3_demo(args.database, args.workspace))
+            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+        if args.command == "phase4-e2e":
+            result = asyncio.run(
+                run_phase4_demo(
+                    args.database,
+                    args.object_root,
+                    args.credentials_root,
+                    args.workspace,
+                )
+            )
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
         return _emit_error(

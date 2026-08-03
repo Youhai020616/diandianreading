@@ -4,6 +4,7 @@ from diandianreading.application.ports.acquisition import (
     AcquiredAsset,
     AcquisitionRequest,
     DocumentAcquirer,
+    ZLibraryAcquisitionPort,
 )
 from diandianreading.application.ports.documents import (
     DocumentPreparationPort,
@@ -42,6 +43,7 @@ from diandianreading.application.ports.repositories import (
     JobStepRepository,
     KnowledgeMappingRepository,
     RemoteOperationRepository,
+    RightsProvenanceRepository,
     UnitOfWork,
     UnitOfWorkFactory,
 )
@@ -74,10 +76,12 @@ __all__ = [
     "ReconciliationResult",
     "ReconciliationStatus",
     "RemoteOperationRepository",
+    "RightsProvenanceRepository",
     "ScopedProgressSink",
     "StoredFile",
     "UnitOfWork",
     "UnitOfWorkFactory",
+    "ZLibraryAcquisitionPort",
     "download_input_hash",
     "generation_input_hash",
     "normalize_content_type",

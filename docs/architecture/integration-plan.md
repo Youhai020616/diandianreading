@@ -561,7 +561,7 @@ diandianreading/
 - 支持 `audio`、`video`、`report`、`study_guide`、`quiz`、`flashcards`、`infographic`、`slide_deck` 与 `data_table`。
 - Infrastructure `CredentialPathResolver` 把不透明 Profile 哈希为私有目录键，校验根目录 confinement、当前用户所有权、`0700/0600` 权限、普通文件、无符号链接和 storage-state JSON；物理凭据路径不进入 Domain、Application、SQLite 或 CLI 输出。
 - `NotebookLMAdapter` 绑定单一 event loop，每个 Adapter/Profile 缓存一个 SDK Client，并提供显式异步关闭生命周期。
-- Phase 2 schema v3 引入 `generate_content` 与 `download_content` intent；当前 schema v4 保留这些 kind，并增加完整恢复 lifecycle。所有 Adapter 远程写都要求匹配输入指纹的 `RemoteOperationRef`，已解析操作可按持久化 external ID 协调，而不是无条件重建。
+- Phase 2 schema v3 引入 `generate_content` 与 `download_content` intent；Phase 3 schema v4 保留这些 kind，并增加完整恢复 lifecycle；当前 schema v5 继续保留该协议并增加 Rights audit。所有 Adapter 远程写都要求匹配输入指纹的 `RemoteOperationRef`，已解析操作可按持久化 external ID 协调，而不是无条件重建。
 - 下载先进入私有 staging，再通过 `FileStore.put()` 原子发布并清理 staging。
 - Fake Knowledge Adapter 与真实 NotebookLM Adapter 共用 Contract tests；SDK 层使用确定性进程内 double，不读取真实凭据、不启动浏览器、不访问 Provider。
 
@@ -588,16 +588,23 @@ Phase 2 的本地退出标准已由浏览器无关 E2E 覆盖：不存在生产�
 
 ### Phase 4 / PR 5：Z-Library 可选 Adapter
 
-交付：
+> 实现状态：Active。浏览器无关边界、验证命令与明确未验证项见 [Phase 4 Z-Library 可选 Adapter E2E](../development/phase-4-e2e.md)。
 
-- Session Manager、真实登录校验。
-- `expect_download()`。
-- 版本化 Selector。
-- 逐跳 URL/Redirect/子请求网络策略、受限下载、Archive/Parser 防护、原子保存和临时清理。
-- 强制 `RightsProvenance`、逐项用户确认和默认关闭配置。
-- Legacy Profile 显式迁移；`~/.zlibrary/config.json` 只检测/告警，不导入明文账号密码。
+已交付：
 
-退出标准：Adapter 不引用 NotebookLM；没有有效权利来源记录时 Application 拒绝创建 Z-Library Acquisition；恶意 URL/Redirect/下载/Archive 失败只影响当前 Step。
+- Schema v5 `rights_provenance` + append-only events，版本化 content/job binding 和 immutable attested facts。
+- `ZLibraryAcquisitionUseCase`：Adapter 调用前持久化逐项、不可默认、当前政策版本的 Rights attestation；返回 Asset 后核对 origin/locator/rights ID 并绑定最终 SHA-256。
+- Provider 专用 Session Manager 与哈希 Profile Resolver；`browser_profile` 是 source of truth，登录/health 必须命中真实 authenticated DOM marker，storage-state 文件存在不代表已登录。
+- lazy optional `PlaywrightZLibraryBrowser`、`page.expect_download()`、立即 cancel、`zlibrary-dom-v1` 版本化 selectors、service worker block 和全量 route interception。
+- HTTPS/exact Host/443、初始 URL/Redirect/浏览器子请求重复校验、全部 DNS 地址公网检查、Chromium Host pinning、Downloader IP pinning、无代理/PAC和 Cookie domain/path 隔离。
+- 私有随机 staging、手动有限 Redirect、Header/Content-Length/实际流式 byte 与 connect/first-byte/idle/total timeout、PDF/EPUB MIME/suffix/magic 一致性、SHA-256、`FileStore.put()` 原子发布与失败清理。
+- EPUB central-directory preflight：Traversal、Unicode/大小写碰撞、Entry/解压预算、压缩比、深度、加密和非普通 Entry 拒绝；正文 Parser 继续使用 Phase 1 隔离 Worker。
+- Legacy Profile dry-run/显式迁移/验证后 atomic publish；`~/.zlibrary/config.json` 仅 metadata 检测和告警，绝不打开、复制、打印或写入数据库，清理需要独立确认。
+- 浏览器无关 `phase4-e2e`：`.invalid` fixture、Fake Browser/DNS/pinned transport，覆盖默认关闭、PDF/EPUB、rights binding、Legacy no-read、Provider 隔离和 staging cleanup。
+
+退出标准已由离线测试满足：Adapter 不引用 NotebookLM；没有有效权利来源记录时 Application 在 Adapter 前拒绝；恶意 URL/Redirect/下载/Archive 失败不发布成功 Asset；Cookie、Query 和凭据物理路径不进入 SQLite 或 E2E 输出。
+
+当前不声称真实 `z-library.sk` 页面、Cookie、Selector 或下载已验证。统一登录/import/jobs CLI、HTTP API 和 Web 进度界面仍属于 Phase 5。
 
 ### Phase 5 / PR 6：统一入口与清理
 

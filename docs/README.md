@@ -4,7 +4,7 @@
 >
 > 最后更新：2026-08-03
 
-本目录保存 `diandianreading` 的产品、架构、集成和功能设计文档。Phase 0–3 已有可执行实现；文档中的 `Proposed` 仍只表示目标设计或尚未完成全部验收，不代表已经实现。
+本目录保存 `diandianreading` 的产品、架构、集成和功能设计文档。Phase 0–4 已有可执行实现；文档中的 `Proposed` 仍只表示目标设计或尚未完成全部验收，不代表已经实现。
 
 ## 文档地图
 
@@ -21,6 +21,7 @@
 | [Phase 1 文档处理 E2E](development/phase-1-e2e.md) | 本地 Acquisition、Markdown/EPUB/PDF Preparation 与真实对象存储验证 | Active |
 | [Phase 2 NotebookLM Adapter E2E](development/phase-2-e2e.md) | 公开 Python SDK 边界、凭据隔离、引用映射、生成与下载验证 | Active |
 | [Phase 3 可恢复 Workflow E2E](development/phase-3-e2e.md) | Lease fencing、Step checkpoint、Intent reconciliation、认证恢复、解歧与取消验证 | Active |
+| [Phase 4 Z-Library 可选 Adapter E2E](development/phase-4-e2e.md) | Rights gate、真实 session marker、逐跳网络、bounded download、Archive 与 Legacy migration 验证 | Active |
 
 ## 推荐阅读顺序
 
@@ -34,6 +35,7 @@
 8. [Phase 1 文档处理 E2E](development/phase-1-e2e.md)：验证真实本地文档处理、对象存储和持久化链路。
 9. [Phase 2 NotebookLM Adapter E2E](development/phase-2-e2e.md)：验证公开 SDK Adapter、凭据路径隔离、引用恢复和内容资产发布。
 10. [Phase 3 可恢复 Workflow E2E](development/phase-3-e2e.md)：验证进程崩溃边界、Lease 接管、远程结果协调、恢复控制与安全取消。
+11. [Phase 4 Z-Library 可选 Adapter E2E](development/phase-4-e2e.md)：验证强制权利来源、Provider 会话隔离、浏览器网络策略、受限下载和 Legacy migration。
 
 ## 状态词
 

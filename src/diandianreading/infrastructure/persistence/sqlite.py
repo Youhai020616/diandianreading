@@ -23,6 +23,7 @@ from diandianreading.application.ports import (
     JobStepRepository,
     KnowledgeMappingRepository,
     RemoteOperationRepository,
+    RightsProvenanceRepository,
     UnitOfWork,
 )
 from diandianreading.domain import (
@@ -50,6 +51,9 @@ from diandianreading.domain import (
     RemoteOperationStatus,
     RemoteProbeStrategy,
     RepositoryConflict,
+    RightsBasis,
+    RightsProvenance,
+    RightsProvenanceEvent,
     SourceOrigin,
     StorageKey,
     UnsafePathError,
@@ -769,6 +773,98 @@ class SQLiteKnowledgeMappingRepository(_SQLiteRepository, KnowledgeMappingReposi
         return tuple(_source_from_row(row) for row in rows)
 
 
+class SQLiteRightsProvenanceRepository(_SQLiteRepository, RightsProvenanceRepository):
+    def add(self, provenance: RightsProvenance) -> None:
+        with self._connect(write=True) as connection:
+            row = connection.execute(
+                "SELECT * FROM rights_provenance WHERE id = ?",
+                (provenance.id,),
+            ).fetchone()
+            if row is not None:
+                if _rights_from_row(row) != provenance:
+                    raise RepositoryConflict(
+                        f"Rights provenance identity collision: {provenance.id}"
+                    )
+                return
+            connection.execute(
+                """
+                INSERT INTO rights_provenance(
+                    id, provider, source_locator_redacted, rights_basis,
+                    license_identifier, evidence_storage_key, attestation_version,
+                    attested_at, acquisition_job_id, content_sha256, supersedes_id,
+                    updated_at, version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                _rights_values(provenance),
+            )
+            _insert_rights_event(connection, provenance)
+
+    def save(self, previous: RightsProvenance, current: RightsProvenance) -> None:
+        if previous.id != current.id or current.version != previous.version + 1:
+            raise RepositoryConflict(
+                "Rights provenance transition must increment one matching version"
+            )
+        if previous.content_sha256 is not None and (
+            current.content_sha256 != previous.content_sha256
+        ):
+            raise RepositoryConflict(
+                "Rights provenance content binding cannot be changed or removed"
+            )
+        if previous.acquisition_job_id is not None and (
+            current.acquisition_job_id != previous.acquisition_job_id
+        ):
+            raise RepositoryConflict("Rights provenance Job binding cannot be changed or removed")
+        immutable_previous = replace(
+            previous,
+            acquisition_job_id=current.acquisition_job_id,
+            content_sha256=current.content_sha256,
+            updated_at=current.updated_at,
+            version=current.version,
+        )
+        if immutable_previous != current:
+            raise RepositoryConflict("Attested rights facts cannot be changed in place")
+        with self._connect(write=True) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE rights_provenance
+                SET acquisition_job_id = ?, content_sha256 = ?, updated_at = ?, version = ?
+                WHERE id = ? AND version = ?
+                """,
+                (
+                    current.acquisition_job_id,
+                    current.content_sha256,
+                    current.updated_at.isoformat(),
+                    current.version,
+                    current.id,
+                    previous.version,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise RepositoryConflict(
+                    f"Rights provenance {current.id} changed at version {previous.version}"
+                )
+            _insert_rights_event(connection, current)
+
+    def get(self, provenance_id: str) -> RightsProvenance | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM rights_provenance WHERE id = ?",
+                (provenance_id,),
+            ).fetchone()
+        return _rights_from_row(row) if row is not None else None
+
+    def list_events(self, provenance_id: str) -> Sequence[RightsProvenanceEvent]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM rights_provenance_events
+                WHERE provenance_id = ? ORDER BY version
+                """,
+                (provenance_id,),
+            ).fetchall()
+        return tuple(_rights_event_from_row(row) for row in rows)
+
+
 class SQLiteRemoteOperationRepository(_SQLiteRepository, RemoteOperationRepository):
     def add(self, operation: RemoteOperation, token: LeaseToken | None = None) -> None:
         with self._connect(write=True) as connection:
@@ -873,6 +969,7 @@ class SQLiteUnitOfWork(UnitOfWork):
         self.job_steps = SQLiteJobStepRepository(self._connection)
         self.job_payloads = SQLiteJobPayloadRepository(self._connection)
         self.mappings = SQLiteKnowledgeMappingRepository(self._connection)
+        self.rights = SQLiteRightsProvenanceRepository(self._connection)
         self.operations = SQLiteRemoteOperationRepository(self._connection)
 
     def __enter__(self) -> Self:
@@ -1371,6 +1468,107 @@ def _operation_from_row(row: sqlite3.Row) -> RemoteOperation:
         dispatched_at=_parse_optional_datetime(row["dispatched_at"]),
         resolved_at=_parse_optional_datetime(row["resolved_at"]),
         version=int(row["version"]),
+    )
+
+
+def _rights_values(provenance: RightsProvenance) -> tuple[object, ...]:
+    return (
+        provenance.id,
+        provenance.provider,
+        provenance.source_locator_redacted,
+        provenance.rights_basis.value,
+        provenance.license_identifier,
+        provenance.evidence_storage_key.value if provenance.evidence_storage_key else None,
+        provenance.attestation_version,
+        provenance.attested_at.isoformat(),
+        provenance.acquisition_job_id,
+        provenance.content_sha256,
+        provenance.supersedes_id,
+        provenance.updated_at.isoformat(),
+        provenance.version,
+    )
+
+
+def _rights_from_row(row: sqlite3.Row) -> RightsProvenance:
+    return RightsProvenance(
+        id=str(row["id"]),
+        provider=str(row["provider"]),
+        source_locator_redacted=str(row["source_locator_redacted"]),
+        rights_basis=RightsBasis(str(row["rights_basis"])),
+        license_identifier=(
+            str(row["license_identifier"]) if row["license_identifier"] is not None else None
+        ),
+        evidence_storage_key=(
+            StorageKey(str(row["evidence_storage_key"]))
+            if row["evidence_storage_key"] is not None
+            else None
+        ),
+        attestation_version=str(row["attestation_version"]),
+        attested_at=datetime.fromisoformat(str(row["attested_at"])),
+        acquisition_job_id=(
+            str(row["acquisition_job_id"]) if row["acquisition_job_id"] is not None else None
+        ),
+        content_sha256=(str(row["content_sha256"]) if row["content_sha256"] is not None else None),
+        supersedes_id=str(row["supersedes_id"]) if row["supersedes_id"] is not None else None,
+        updated_at=datetime.fromisoformat(str(row["updated_at"])),
+        version=int(row["version"]),
+    )
+
+
+def _insert_rights_event(
+    connection: sqlite3.Connection,
+    provenance: RightsProvenance,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO rights_provenance_events(
+            provenance_id, provider, source_locator_redacted, rights_basis,
+            license_identifier, evidence_storage_key, attestation_version,
+            attested_at, acquisition_job_id, content_sha256, supersedes_id,
+            version, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            provenance.id,
+            provenance.provider,
+            provenance.source_locator_redacted,
+            provenance.rights_basis.value,
+            provenance.license_identifier,
+            provenance.evidence_storage_key.value if provenance.evidence_storage_key else None,
+            provenance.attestation_version,
+            provenance.attested_at.isoformat(),
+            provenance.acquisition_job_id,
+            provenance.content_sha256,
+            provenance.supersedes_id,
+            provenance.version,
+            provenance.updated_at.isoformat(),
+        ),
+    )
+
+
+def _rights_event_from_row(row: sqlite3.Row) -> RightsProvenanceEvent:
+    return RightsProvenanceEvent(
+        provenance_id=str(row["provenance_id"]),
+        provider=str(row["provider"]),
+        source_locator_redacted=str(row["source_locator_redacted"]),
+        rights_basis=RightsBasis(str(row["rights_basis"])),
+        license_identifier=(
+            str(row["license_identifier"]) if row["license_identifier"] is not None else None
+        ),
+        evidence_storage_key=(
+            StorageKey(str(row["evidence_storage_key"]))
+            if row["evidence_storage_key"] is not None
+            else None
+        ),
+        attestation_version=str(row["attestation_version"]),
+        attested_at=datetime.fromisoformat(str(row["attested_at"])),
+        acquisition_job_id=(
+            str(row["acquisition_job_id"]) if row["acquisition_job_id"] is not None else None
+        ),
+        content_sha256=(str(row["content_sha256"]) if row["content_sha256"] is not None else None),
+        supersedes_id=str(row["supersedes_id"]) if row["supersedes_id"] is not None else None,
+        version=int(row["version"]),
+        created_at=datetime.fromisoformat(str(row["created_at"])),
     )
 
 

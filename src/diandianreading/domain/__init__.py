@@ -43,6 +43,11 @@ from diandianreading.domain.models import (
     WorkspaceRef,
     utc_now,
 )
+from diandianreading.domain.rights import (
+    RightsBasis,
+    RightsProvenance,
+    RightsProvenanceEvent,
+)
 
 __all__ = [
     "BlockedReason",
@@ -74,6 +79,9 @@ __all__ = [
     "RemoteOperationStatus",
     "RemoteProbeStrategy",
     "RepositoryConflict",
+    "RightsBasis",
+    "RightsProvenance",
+    "RightsProvenanceEvent",
     "SourceOrigin",
     "StorageKey",
     "TargetCapabilities",

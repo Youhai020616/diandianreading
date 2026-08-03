@@ -94,7 +94,7 @@ uv run diandian phase3-e2e \
 | 字段 | 不变量 |
 | --- | --- |
 | `status` | `ok` |
-| `schema_version` | `4` |
+| `schema_version` | `5`（Phase 3 workflow 表结构来自 v4；Phase 4 v5 仅增加正交 Rights audit） |
 | `crash_boundary_count` | `11` |
 | `completed_job_count` | `13` |
 | `cancelled_job_count` | `1` |
@@ -202,7 +202,7 @@ E2E 同时覆盖“prepared 后取消，Provider 零写入”和“dispatched �
 
 - `tests/unit/test_jobs.py`：Job/Step 穷尽转换、Lease token、到期接管、进度、阻塞、重试与取消；
 - `tests/unit/test_models.py`：RemoteOperation lifecycle、dispatch attempt、ambiguous、reconciled、terminal 与 safe cancellation；
-- `tests/integration/test_sqlite_persistence.py`：Schema v4、CAS、Job/Step/Payload repository，以及旧 Worker 的 Job/Step/operation fencing；
+- `tests/integration/test_sqlite_persistence.py`：Schema v4 recoverable workflow、v5 Rights audit、CAS、Job/Step/Payload repository，以及旧 Worker 的 Job/Step/operation fencing；
 - `tests/integration/test_import_workflow.py`：成功、事务回滚、429 有界重试、认证恢复、协议漂移、人工解歧与安全取消；
 - `tests/integration/test_recoverable_workflow.py`：完整 crash matrix、自动/人工 reconciliation、confirmed absence 和 ambiguous cancellation；
 - `tests/e2e/test_phase3_recoverable_workflow.py`：子进程 CLI、最终计数、无重复 Provider 写入和拒绝覆盖；
@@ -221,7 +221,7 @@ uv lock --check
 uv build --no-build-isolation
 ```
 
-此外必须分别从 source tree 与安装后的 wheel 执行 Phase 0–3 CLI E2E。
+此外必须分别从 source tree 与安装后的 wheel 执行当前 Phase 0–4 CLI E2E。
 
 ## 9. 安全与范围边界 / Security and Scope
 

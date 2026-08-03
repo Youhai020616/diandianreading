@@ -4,7 +4,7 @@
 
 `Proposed`
 
-> NotebookLM 的 Phase 2 Resolver 已实现；Z-Library Profile、迁移、登录/登出和跨 Provider 验证仍属于 Phase 4，因此本 ADR 尚未满足全部 Accepted 条件。
+> NotebookLM 的 Phase 2 Resolver 与 Z-Library 的 Phase 4 Profile/Session/Migration/跨 Provider 隔离已实现。ADR 仍保持 `Proposed`：Phase 5 尚需用统一 CLI/API 证明 NotebookLM 与 Z-Library 都可分别 login/status/logout，且 API/浏览器响应不暴露 Secret 或物理路径，之后才能满足全部 Accepted 条件。
 
 ## Date
 
@@ -101,10 +101,10 @@ Resolver 创建/校验私有 `0700` 目录和 `0600` 普通文件，拒绝符号
 ### Follow-up
 
 - Phase 2 已定义仅含 `provider/profile` 的 `CredentialRef`，并实现 NotebookLM `CredentialPathResolver`、健康检查、根目录/无链接/所有权/权限守卫和错误脱敏测试。
-- Phase 4 实现 Z-Library 专用 Resolver、Session Manager、登录/登出与跨 Provider 隔离验证。
+- Phase 4 已实现 Z-Library 专用 Resolver、Session Manager、登录/登出、Legacy no-read migration 与跨 Provider 隔离验证；离线测试不声称 live Provider 页面已验证。
 - 将凭据目录加入产品安装器的默认备份排除清单，并持续执行日志/CLI/API redaction 测试。
 - 为迁移现有 Profile 提供 dry-run、staging 验证与显式清理命令，并专门检测 `~/.zlibrary/config.json`。
-- Phase 5 在 UI 中只提供 Provider 连接状态，不展示 Secret 内容或路径。
+- Phase 5 在统一 CLI/API/UI 中接入两个 Provider 的 login/status/logout，并只提供连接状态，不展示 Secret 内容或路径；完成 API/浏览器 redaction 验证后重新评估本 ADR 为 `Accepted`。
 
 ## Alternatives considered
 

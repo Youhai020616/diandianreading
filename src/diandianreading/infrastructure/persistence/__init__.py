@@ -8,6 +8,7 @@ from diandianreading.infrastructure.persistence.sqlite import (
     SQLiteJobStepRepository,
     SQLiteKnowledgeMappingRepository,
     SQLiteRemoteOperationRepository,
+    SQLiteRightsProvenanceRepository,
     SQLiteUnitOfWork,
     SQLiteUnitOfWorkFactory,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "SQLiteJobStepRepository",
     "SQLiteKnowledgeMappingRepository",
     "SQLiteRemoteOperationRepository",
+    "SQLiteRightsProvenanceRepository",
     "SQLiteUnitOfWork",
     "SQLiteUnitOfWorkFactory",
 ]
