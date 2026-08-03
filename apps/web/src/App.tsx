@@ -1,11 +1,15 @@
-import { useEffect, useRef, useSyncExternalStore, type ReactElement } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import { ChatPanel } from "./components/ChatPanel";
 import { ConnectionsView } from "./components/ConnectionsView";
 import { ImportView } from "./components/ImportView";
 import { JobsView } from "./components/JobsView";
+import { LibraryView } from "./components/reader/LibraryView";
+import { ReaderView } from "./components/reader/ReaderView";
 import type { BootstrapResult } from "./lib/bootstrap";
+import type { PdfEngine } from "./lib/pdf";
 import type { SessionStatus, ViewName } from "./lib/types";
 import type { AppController } from "./state/controller";
+import { ReaderController } from "./state/readerController";
 
 const SESSION_PILL_COPY: Record<SessionStatus, string> = {
   loading: "Checking session / 检查会话",
@@ -20,19 +24,31 @@ const NAV_ITEMS: Array<{ view: ViewName; ordinal: string; label: string }> = [
   { view: "connections", ordinal: "01", label: "Connections / 连接" },
   { view: "import", ordinal: "02", label: "Import / 导入" },
   { view: "jobs", ordinal: "03", label: "Jobs / 任务" },
+  { view: "library", ordinal: "04", label: "Library / 书库" },
 ];
 
 export interface AppProps {
   controller: AppController;
   bootstrapTask: Promise<BootstrapResult>;
+  /** Test seam: replaces the pdfjs-backed engine (jsdom cannot run pdf.js). */
+  pdfEngine?: PdfEngine;
 }
 
-export function App({ controller, bootstrapTask }: AppProps): ReactElement {
+export function App({ controller, bootstrapTask, pdfEngine }: AppProps): ReactElement {
   const state = useSyncExternalStore(controller.store.subscribe, controller.store.getState);
+  const [reader] = useState(
+    () =>
+      new ReaderController({
+        announce: (message) => controller.announce(message),
+        ...(pdfEngine !== undefined ? { pdfEngine } : {}),
+      }),
+  );
 
   useEffect(() => {
     void controller.initialize(bootstrapTask);
   }, [controller, bootstrapTask]);
+
+  useEffect(() => () => reader.dispose(), [reader]);
 
   const focusedTokenRef = useRef(0);
   useEffect(() => {
@@ -114,7 +130,7 @@ export function App({ controller, bootstrapTask }: AppProps): ReactElement {
               aria-expanded={state.chatOpen}
               onClick={(event) => controller.openChat(event.currentTarget)}
             >
-              <span aria-hidden="true">04</span>AI Chat / 对话
+              <span aria-hidden="true">05</span>AI Chat / 对话
             </button>
           </nav>
 
@@ -135,6 +151,8 @@ export function App({ controller, bootstrapTask }: AppProps): ReactElement {
             <ConnectionsView state={state} controller={controller} />
             <ImportView state={state} controller={controller} />
             <JobsView state={state} controller={controller} />
+            <LibraryView state={state} controller={controller} reader={reader} />
+            <ReaderView appState={state} controller={controller} reader={reader} />
           </main>
 
           <footer className="workspace-footer">

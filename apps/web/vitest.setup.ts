@@ -20,6 +20,14 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
   };
 }
 
+// jsdom does not implement scrollIntoView or canvas contexts; the reader
+// guards on their presence, and quiet stubs keep virtual-console noise out
+// of test output.
+if (typeof window !== "undefined") {
+  window.HTMLElement.prototype.scrollIntoView = (): void => undefined;
+  window.HTMLCanvasElement.prototype.getContext = ((): null => null) as never;
+}
+
 installFakeEventSource();
 
 beforeEach(() => {

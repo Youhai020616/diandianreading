@@ -1,4 +1,4 @@
-export type ViewName = "connections" | "import" | "jobs";
+export type ViewName = "connections" | "import" | "jobs" | "library" | "reader";
 export type ImportTabName = "local" | "zlibrary";
 export type PanelMode = "desktop" | "drawer" | "mobile";
 
