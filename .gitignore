@@ -40,3 +40,6 @@ master_token.json
 .diandianreading/
 .tmp/
 tmp/
+
+# Claude Code agent worktrees and session state
+.claude/

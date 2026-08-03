@@ -41,6 +41,7 @@ from diandianreading.application.use_cases.jobs import (
     JobService,
     JobServiceError,
 )
+from diandianreading.application.use_cases.reading import ReadingService
 from diandianreading.domain import (
     CredentialRef,
     DiandianError,
@@ -50,10 +51,12 @@ from diandianreading.domain import (
     RightsBasis,
     TargetCapabilities,
 )
+from diandianreading.domain.annotations import ContentAnchor
 from diandianreading.domain.chat import (
     ChatErrorCode,
     ChatMessageRole,
     ChatReference,
+    ChatReferenceLocationType,
     ChatRunStatus,
     QueryScope,
     QueryScopeType,
@@ -126,6 +129,7 @@ class WebRuntime(Protocol):
     imports: ImportBookUseCase
     jobs: JobService
     catalog: CatalogService
+    reading: ReadingService
     chat: ChatUseCase
     security: LocalApiSecurityService
     worker: WorkerRunner
@@ -191,6 +195,7 @@ def create_web_app(
     boundary = LocalHttpSecurityBoundary(runtime.security, http_config)
     bootstrap_limiter = FixedWindowRateLimiter(limit=8, window_seconds=60.0)
     mutation_limiter = FixedWindowRateLimiter(limit=60, window_seconds=60.0)
+    progress_limiter = FixedWindowRateLimiter(limit=240, window_seconds=60.0)
     sse_limiter = SseConnectionLimiter(http_config.max_sse_connections_per_session)
     static_root = Path(__file__).with_name("static")
 
@@ -345,6 +350,7 @@ def create_web_app(
         *,
         mutate: bool = False,
         session_only: bool = False,
+        limiter: FixedWindowRateLimiter | None = None,
     ) -> RequestPrincipal:
         principal = boundary.authenticate(
             request,
@@ -352,12 +358,13 @@ def create_web_app(
             session_only=session_only,
         )
         if mutate:
+            effective_limiter = limiter if limiter is not None else mutation_limiter
             key = (
                 f"session:{principal.session.id}"
                 if principal.session is not None
                 else f"bearer:{request.client.host if request.client else 'unknown'}"
             )
-            if not mutation_limiter.allow(key):
+            if not effective_limiter.allow(key):
                 raise ApiProblem(
                     429,
                     "REMOTE_RATE_LIMITED",
@@ -540,6 +547,39 @@ def create_web_app(
         _ = authorize(request)
         page = runtime.catalog.list(_book_query(request))
         return serializers.envelope(serializers.book_page(page))
+
+    @app.get("/api/books/{book_id}")
+    async def get_book_detail(book_id: str, request: Request) -> dict[str, object]:
+        _ = authorize(request)
+        detail = runtime.reading.get_detail(book_id)
+        return serializers.envelope(serializers.book_detail(detail))
+
+    @app.get("/api/books/{book_id}/content")
+    async def get_book_content(book_id: str, request: Request) -> Response:
+        _ = authorize(request)
+        content = runtime.reading.get_content(book_id)
+        etag = f'"{content.document.anchor_sha256}"'
+        headers = {"ETag": etag}
+        if _if_none_match(request, etag):
+            return Response(status_code=304, headers=headers)
+        media_type = (
+            "text/markdown; charset=utf-8"
+            if content.document.mime_type == "text/markdown"
+            else content.document.mime_type
+        )
+        return Response(content=content.payload, media_type=media_type, headers=headers)
+
+    @app.put("/api/books/{book_id}/progress")
+    async def put_reading_progress(book_id: str, request: Request) -> dict[str, object]:
+        _ = authorize(request, mutate=True, limiter=progress_limiter)
+        payload = await _read_json_object(request, http_config.max_json_bytes)
+        _require_exact_fields(payload, required={"anchor", "percent"})
+        anchor = _content_anchor(payload["anchor"])
+        percent = payload["percent"]
+        if isinstance(percent, bool) or not isinstance(percent, int | float):
+            raise ApiProblem(422, "VALIDATION", "percent must be a number")
+        progress = runtime.reading.save_progress(book_id, anchor, float(percent))
+        return serializers.envelope({"progress": serializers.reading_progress(progress)})
 
     @app.get("/api/books/{book_id}/conversation")
     async def get_book_conversation(book_id: str, request: Request) -> dict[str, object]:
@@ -895,6 +935,55 @@ def _job_query(request: Request) -> JobQuery:
     status = JobStatus(status_value) if status_value is not None else None
     cursor = _cursor(values, JobCursor)
     return JobQuery(status=status, limit=limit, before=cursor)
+
+
+def _if_none_match(request: Request, etag: str) -> bool:
+    header = request.headers.get("if-none-match")
+    if header is None:
+        return False
+    candidates = {candidate.strip() for candidate in header.split(",")}
+    return "*" in candidates or etag in candidates
+
+
+def _optional_int(payload: Mapping[str, object], key: str) -> int | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ApiProblem(422, "VALIDATION", f"{key} must be an integer")
+    return value
+
+
+def _content_anchor(value: object) -> ContentAnchor:
+    if not isinstance(value, Mapping):
+        raise ApiProblem(422, "VALIDATION", "anchor must be an object")
+    payload = cast(Mapping[str, object], value)
+    _require_exact_fields(
+        payload,
+        required={"type", "anchor_sha256"},
+        optional={"start", "end", "chapter_ref"},
+    )
+    raw_type = payload.get("type")
+    if not isinstance(raw_type, str):
+        raise ApiProblem(422, "VALIDATION", "anchor type must be text")
+    try:
+        location_type = ChatReferenceLocationType(raw_type)
+    except ValueError:
+        raise ApiProblem(422, "VALIDATION", "anchor type is not supported") from None
+    sha256 = payload.get("anchor_sha256")
+    if not isinstance(sha256, str):
+        raise ApiProblem(422, "VALIDATION", "anchor_sha256 must be text")
+    chapter_ref = payload.get("chapter_ref")
+    if chapter_ref is not None and not isinstance(chapter_ref, str):
+        raise ApiProblem(422, "VALIDATION", "chapter_ref must be text")
+    return ContentAnchor(
+        type=location_type,
+        anchor_sha256=sha256,
+        start=_optional_int(payload, "start"),
+        end=_optional_int(payload, "end"),
+        chapter_ref=chapter_ref,
+        quote=None,
+    )
 
 
 def _book_query(request: Request) -> BookQuery:

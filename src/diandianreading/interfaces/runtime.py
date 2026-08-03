@@ -14,6 +14,7 @@ from diandianreading.application.use_cases.import_source import (
     ImportSubmissionUseCase,
 )
 from diandianreading.application.use_cases.jobs import JobService
+from diandianreading.application.use_cases.reading import ReadingService
 from diandianreading.domain import CredentialRef, TargetCapabilities
 from diandianreading.infrastructure.acquisition.local import LocalFileAcquirer
 from diandianreading.infrastructure.acquisition.zlibrary import (
@@ -25,7 +26,10 @@ from diandianreading.infrastructure.acquisition.zlibrary import (
     ZLibraryNetworkPolicy,
     ZLibrarySessionManager,
 )
-from diandianreading.infrastructure.documents import LocalDocumentPreparationAdapter
+from diandianreading.infrastructure.documents import (
+    LocalDocumentPreparationAdapter,
+    PolicyReadingDocumentProcessor,
+)
 from diandianreading.infrastructure.local_api import (
     InstallTokenStore,
     LocalApiSecurityService,
@@ -41,6 +45,9 @@ from diandianreading.infrastructure.persistence import (
     SQLiteUnitOfWorkFactory,
 )
 from diandianreading.infrastructure.persistence.chat import SQLiteChatRepository
+from diandianreading.infrastructure.persistence.reading import (
+    SQLiteReadingProgressRepository,
+)
 from diandianreading.infrastructure.storage import LocalFileStore
 from diandianreading.worker.runner import WorkerRunner
 
@@ -120,6 +127,7 @@ class ApplicationRuntime:
     imports: ImportBookUseCase
     jobs: JobService
     catalog: CatalogService
+    reading: ReadingService
     chat: ChatUseCase
     security: LocalApiSecurityService
     install_tokens: InstallTokenStore
@@ -220,6 +228,12 @@ def create_runtime(
     )
     jobs = JobService(unit_of_work=unit_of_work)
     catalog = CatalogService(unit_of_work=unit_of_work)
+    reading = ReadingService(
+        unit_of_work=unit_of_work,
+        file_store=file_store,
+        processor=PolicyReadingDocumentProcessor(),
+        progress=SQLiteReadingProgressRepository(database),
+    )
     chat = ChatUseCase(
         repository=SQLiteChatRepository(database),
         knowledge_query=notebooklm_adapter,
@@ -245,6 +259,7 @@ def create_runtime(
         imports=imports,
         jobs=jobs,
         catalog=catalog,
+        reading=reading,
         chat=chat,
         security=security,
         install_tokens=install_tokens,

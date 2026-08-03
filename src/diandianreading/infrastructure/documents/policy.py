@@ -112,6 +112,43 @@ def markdown_chapters(value: str) -> tuple[TextChapter, ...]:
     return tuple(chapters)
 
 
+@dataclass(frozen=True, slots=True)
+class ChapterSpan:
+    reference: str
+    title: str
+    start: int
+    end: int
+
+
+def markdown_chapter_spans(value: str) -> tuple[ChapterSpan, ...]:
+    """Chapter tiling of the normalized markdown with codepoint offsets.
+
+    Spans reuse the exact heading policy and reference numbering of
+    ``markdown_chapters`` and tile the normalized text completely, so
+    ``normalized[span.start : span.end]`` equals the matching chapter markdown.
+    """
+
+    normalized = normalize_markdown(value)
+    headings = list(_HEADING.finditer(normalized))
+    if not headings:
+        return (ChapterSpan("markdown-section-0001", "", 0, len(normalized)),)
+
+    spans: list[ChapterSpan] = []
+    if normalized[: headings[0].start()].strip():
+        spans.append(ChapterSpan("markdown-preamble", "", 0, headings[0].start()))
+    for index, heading in enumerate(headings):
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(normalized)
+        spans.append(
+            ChapterSpan(
+                reference=f"markdown-heading-{index + 1:04d}",
+                title=heading.group(2),
+                start=heading.start(),
+                end=end,
+            )
+        )
+    return tuple(spans)
+
+
 def chunk_chapters(
     chapters: tuple[TextChapter, ...],
     capabilities: TargetCapabilities,
