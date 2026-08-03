@@ -15,6 +15,7 @@ from diandianreading.domain import (
     Job,
     JobEvent,
     JobPayload,
+    JobStatus,
     JobStep,
     JobStepRecord,
     LeaseToken,
@@ -31,6 +32,15 @@ class CatalogRepository(Protocol):
     def update_book(self, book: Book) -> None: ...
 
     def get_book(self, book_id: str) -> Book | None: ...
+
+    def get_book_by_source_hash(self, source_hash: str) -> Book | None: ...
+
+    def list_books(
+        self,
+        limit: int,
+        before_created_at: datetime | None = None,
+        before_id: str | None = None,
+    ) -> Sequence[Book]: ...
 
     def add_asset(self, book_id: str, asset: DocumentAsset) -> None: ...
 
@@ -59,6 +69,14 @@ class JobRepository(Protocol):
         now: datetime,
     ) -> Job: ...
 
+    def claim_next(
+        self,
+        owner: str,
+        *,
+        lease_expires_at: datetime,
+        now: datetime,
+    ) -> Job | None: ...
+
     def heartbeat(
         self,
         job_id: str,
@@ -73,6 +91,14 @@ class JobRepository(Protocol):
     def assert_lease(self, job_id: str, token: LeaseToken) -> None: ...
 
     def get(self, job_id: str) -> Job | None: ...
+
+    def list_recent(
+        self,
+        status: JobStatus | None,
+        limit: int,
+        before_created_at: datetime | None = None,
+        before_id: str | None = None,
+    ) -> Sequence[Job]: ...
 
     def list_events(self, job_id: str) -> Sequence[JobEvent]: ...
 

@@ -8,12 +8,13 @@
 
 ## 1. 文档范围与结论
 
-本仓库包含两个相互独立的项目：
+本仓库包含一个主产品和两个来源/依赖项目：
 
 | 项目 | 定位 | 主要接口 |
 | --- | --- | --- |
-| `source/notebooklm-py` | 非官方 NotebookLM Python SDK 与自动化工具 | Python async API、CLI、MCP Server、实验性 REST Server |
-| `source/zlibrary-to-notebooklm` | Z-Library 下载并转交 NotebookLM 的脚本 | `login.py`、`upload.py`、`convert_epub.py` |
+| `src/diandianreading` | local-first 主产品；组合导入、Job、Provider、Web/API 与 whole-book Chat | `diandian` CLI、FastAPI local API、Worker、SQLite |
+| `source/notebooklm-py` | 非官方 NotebookLM Python SDK 与自动化工具；主产品固定依赖其发布包 | Python async API、CLI、MCP Server、实验性 REST Server |
+| `source/zlibrary-to-notebooklm` | Legacy Z-Library 下载并转交 NotebookLM 的脚本；仅作迁移依据 | `login.py`、`upload.py`、`convert_epub.py` |
 
 最重要的集成结论：
 
@@ -24,6 +25,7 @@
    - Google NotebookLM 会话：`~/.notebooklm/`
 4. 创建 NotebookLM 笔记本和上传来源前，必须先完成 NotebookLM 登录；仅登录 Z-Library 不够。
 5. `notebooklm-py` 使用 Google 未公开 RPC，不是 Google 官方 SDK；Google 可随时修改后端协议。
+6. Phase 5 主产品已移除 Legacy 脚本到外部 `notebooklm` CLI 的生产耦合，改为公开 Python SDK Adapter、独立 Session Manager、持久 Job/Chat 和安全本地 Web/API；真实 Provider 浏览器兼容性仍未由自动化验证。
 
 ```mermaid
 flowchart TD
@@ -1534,9 +1536,171 @@ uv run diandian phase4-e2e \
   --workspace <new-workspace>
 ```
 
-该命令只用 `.invalid` fixture 和 Fake 边界，不访问 Provider。正式 `diandian auth ...`、`diandian import --provider zlibrary ...` 和 HTTP API 属于 Phase 5，当前不能把 `phase4-e2e` 当作用户下载命令。
+该命令只用 `.invalid` fixture 和 Fake 边界，不访问 Provider。`phase4-e2e` 仍是 Adapter 诊断命令，不是用户下载命令；正式 `diandian auth ...`、`diandian import ...`、HTTP API 和 Web UI 已由 Phase 5 提供。
 
 完整安全与验证说明见 [Phase 4 Z-Library 可选 Adapter E2E](development/phase-4-e2e.md)。
+
+### 14.5 `diandianreading` Phase 5 统一产品 API
+
+Phase 5 将两个 Provider 能力组合到主应用，但不合并其凭据或让 Z-Library Adapter 调用 NotebookLM。默认应用目录为：
+
+```text
+~/.diandianreading/
+├── state/app.sqlite3
+├── objects/
+├── credentials/
+├── staging/
+└── uploads/
+```
+
+可通过全局 `--home` 或 `DIANDIAN_HOME` 覆盖。`--home` 必须位于子命令之前：
+
+```bash
+diandian --home /private/app-home auth status
+```
+
+#### CLI
+
+真实交互登录需要显式安装可选浏览器依赖；基础 wheel 和默认 CI 不安装浏览器：
+
+```bash
+uv sync --extra notebooklm-login --extra zlibrary
+uv run playwright install chromium
+```
+
+```text
+diandian auth login notebooklm [--profile default]
+diandian auth login zlibrary [--profile default]
+diandian auth status [--notebooklm-profile default] [--zlibrary-profile default]
+diandian auth logout notebooklm [--profile default]
+diandian auth logout zlibrary [--profile default]
+
+diandian import <local-path> \
+  --rights-basis owned_copy \
+  --rights-confirmed
+
+diandian import <zlibrary-url> \
+  --provider zlibrary \
+  --enable-zlibrary \
+  --title <display-title> \
+  --rights-basis owned_copy \
+  --rights-confirmed
+
+diandian jobs list [--status <status>] [--limit 50]
+diandian jobs retry <job-id>
+diandian worker [--once] [--poll-interval 1.0] [--enable-zlibrary]
+diandian serve [--no-open] [--enable-zlibrary]
+```
+
+规则：
+
+- NotebookLM 与 Z-Library 登录、状态和登出使用独立 Provider Session Manager 与物理凭据命名空间。
+- Z-Library 默认关闭；只可通过当前命令的 `--enable-zlibrary` 或 `DIANDIAN_ZLIBRARY_ENABLED=true` 显式开启。
+- CLI/UI 当前只开放 `owned_copy`、`public_domain`、`open_license`。后两者必须提供 `--license-identifier`；`licensed`/`explicit_permission` 需要单独 Evidence `StorageKey`，当前入口不会伪造或跳过该证据。
+- 每个导入必须显式 `--rights-confirmed`；Z-Library 还必须显式 `--title`。
+- `diandian worker --once` 每类最多领取一个工作项（最多一个 Import Job 加一个 ChatRun）；两类都无任务时安全返回 `handled=false`。
+- `diandian serve` 只绑定 `127.0.0.1:3000`，浏览器打开 `http://localhost:3000`；若端口已占用会拒绝启动第二实例。
+
+#### HTTP 与静态入口
+
+```text
+GET    /healthz
+GET    /
+GET    /static/app.css
+GET    /static/app.js
+
+POST   /api/session/bootstrap
+GET    /api/session
+POST   /api/session/logout
+GET    /api/auth/status
+
+POST   /api/imports
+GET    /api/jobs
+GET    /api/jobs/{job_id}
+POST   /api/jobs/{job_id}/retry
+GET    /api/jobs/{job_id}/events
+
+GET    /api/books
+GET    /api/books/{book_id}/conversation
+PUT    /api/books/{book_id}/conversation
+
+GET    /api/conversations/{conversation_id}/messages
+POST   /api/conversations/{conversation_id}/messages
+
+GET    /api/chat-runs/{run_id}
+POST   /api/chat-runs/{run_id}/cancel
+POST   /api/chat-runs/{run_id}/retry
+GET    /api/chat-runs/{run_id}/events
+```
+
+`/healthz` 是唯一无需认证的最小 liveness。其余 API 支持以下边界：
+
+- CLI/自动化：`Authorization: Bearer <install-token>`，且请求不能同时携带浏览器 Cookie。
+- Web UI：HttpOnly Session Cookie；读请求需精确同源证据，状态变更还需与 Session 绑定的 `X-CSRF-Token`。
+- Job/Chat SSE：只接受浏览器 Session，不接受 URL Token 或 Bearer；连接/重连重新检查 Session，并支持 `Last-Event-ID` durable replay。
+- Browser Launcher 只把短时、单次 Bootstrap Nonce 放在 URL Fragment；长期 Install Token 不进入 URL、HTML、Bundle、`localStorage` 或 `sessionStorage`。
+- 固定 canonical Origin 为 `http://localhost:3000`；请求必须来自允许的回环 TCP Peer 和 Host。Forwarded Headers、跨 Origin、CORS Preflight、重复安全 Header 与 Cookie/Bearer 混搭 fail closed。
+- API docs/OpenAPI、CORS 和 WebSocket 均关闭；Uvicorn 使用 `proxy_headers=False`、`access_log=False`、`server_header=False`、`ws="none"`。
+
+本地上传使用 raw body，不接受客户端物理路径：
+
+```http
+POST /api/imports
+Content-Type: application/octet-stream
+X-Diandian-Provider: local
+X-Diandian-Filename: book.md
+X-Diandian-Rights-Basis: owned_copy
+X-Diandian-Rights-Confirmed: true
+X-Diandian-NotebookLM-Profile: default
+X-CSRF-Token: <session-csrf>
+```
+
+API 先按 `Content-Length` 预检，再按流式硬上限读取；用户文件名必须是安全 basename 且与识别类型一致。随机 upload 临时名、应用 Home 和物理路径不会进入 durable payload；请求结束后临时文件清理。
+
+Z-Library 提交使用受限 JSON 命令：
+
+```json
+{
+  "provider": "zlibrary",
+  "location": "https://z-library.sk/book/<reviewed-id>",
+  "zlibrary_profile": "default",
+  "notebooklm_profile": "default",
+  "rights_basis": "owned_copy",
+  "license_identifier": null,
+  "rights_confirmed": true,
+  "attestation_version": "zlibrary-rights-v1",
+  "title": "Display title",
+  "author": null
+}
+```
+
+`POST /api/imports` 只 canonicalize 并持久化 command/rights，不在请求生命周期内访问 Z-Library。Worker 后续执行受网络、下载、Archive、Session 与 Rights gate 约束的 acquisition，再交给独立 NotebookLM Adapter。
+
+#### Phase 5 Chat 范围
+
+当前 Chat 只实现 whole-book：
+
+```json
+{
+  "client_message_id": "client-generated-id",
+  "question": "What is the central argument?",
+  "query_scope": {"type": "book"}
+}
+```
+
+`Idempotency-Key` 必须与 `client_message_id` 一致。提交先持久化成对 Message 和 queued ChatRun，再返回 `202`；同一规范请求重放返回原资源，不同内容返回冲突，同一 Conversation 的第二个非终态请求返回 busy。Worker 保存 `effective_scope`、完整回答和本地引用；响应不暴露 Provider Conversation/Source ID。
+
+`chapters`、`notes`、`selection`、保存为 Note、生成内容、Conversation archive/delete/reset 仍为 Proposed，当前不得描述为可用 API。SSE 只推送持久状态与资源可用通知，不提供逐 Token Streaming。
+
+离线全链路命令：
+
+```bash
+diandian phase5-e2e \
+  --app-home <new-private-home> \
+  --workspace <new-disjoint-workspace>
+```
+
+该命令验证 wheel 内 schema v6 与静态资源、Session/CSRF、raw local import、durable Job、Worker、ready Book、whole-book Chat、local citation、Job/Chat SSE 和跨 Origin 拒绝；不启动真实浏览器，也不访问真实 Provider。详见 [Phase 5 统一产品 E2E](development/phase-5-e2e.md)。
 
 ## 15. E2E 证据记录规范（脱敏）
 

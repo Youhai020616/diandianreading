@@ -92,6 +92,12 @@ jobs:
           --credentials-root .tmp/ci-wheel/phase4/credentials
           --workspace .tmp/ci-wheel/phase4/workspace
 
+      - name: Run installed-wheel Phase 5 unified-product smoke
+        run: >-
+          .tmp/ci-wheel-venv/bin/diandian phase5-e2e
+          --app-home .tmp/ci-wheel/phase5/app-home
+          --workspace .tmp/ci-wheel/phase5/workspace
+
   test:
     name: Test Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest

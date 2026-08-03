@@ -61,6 +61,7 @@ from diandianreading.domain import (
 )
 
 _MIGRATION_NAME = re.compile(r"^(?P<version>\d{4})_[a-z0-9_]+\.sql$")
+_MAX_LIST_PAGE = 100
 _ALLOWED_KNOWLEDGE_TRANSITIONS: dict[KnowledgeStatus, frozenset[KnowledgeStatus]] = {
     KnowledgeStatus.CREATING: frozenset(
         {
@@ -263,21 +264,34 @@ class _SQLiteRepository:
 class SQLiteCatalogRepository(_SQLiteRepository, CatalogRepository):
     def add_book(self, book: Book) -> None:
         with self._connect(write=True) as connection:
-            connection.execute(
-                """
-                INSERT INTO books(id, title, author, source_hash, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    book.id,
-                    book.title,
-                    book.author,
-                    book.source_hash,
-                    book.status.value,
-                    book.created_at.isoformat(),
-                    book.updated_at.isoformat(),
-                ),
-            )
+            duplicate = connection.execute(
+                "SELECT id FROM books WHERE source_hash = ?",
+                (book.source_hash,),
+            ).fetchone()
+            if duplicate is not None:
+                raise RepositoryConflict("A Book with this source content already exists")
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO books(
+                        id, title, author, source_hash, status, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        book.id,
+                        book.title,
+                        book.author,
+                        book.source_hash,
+                        book.status.value,
+                        book.created_at.isoformat(),
+                        book.updated_at.isoformat(),
+                    ),
+                )
+            except sqlite3.IntegrityError as error:
+                raise RepositoryConflict(
+                    "Book identity or source content already exists"
+                ) from error
 
     def update_book(self, book: Book) -> None:
         with self._connect(write=True) as connection:
@@ -303,6 +317,42 @@ class SQLiteCatalogRepository(_SQLiteRepository, CatalogRepository):
         with self._connect() as connection:
             row = connection.execute("SELECT * FROM books WHERE id = ?", (book_id,)).fetchone()
         return _book_from_row(row) if row is not None else None
+
+    def get_book_by_source_hash(self, source_hash: str) -> Book | None:
+        if not source_hash.strip():
+            raise ValueError("Book source hash cannot be empty")
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM books WHERE source_hash = ?",
+                (source_hash,),
+            ).fetchone()
+        return _book_from_row(row) if row is not None else None
+
+    def list_books(
+        self,
+        limit: int,
+        before_created_at: datetime | None = None,
+        before_id: str | None = None,
+    ) -> Sequence[Book]:
+        _validate_keyset_page(limit, before_created_at, before_id, resource="Book")
+        where = ""
+        parameters: list[object] = []
+        if before_created_at is not None and before_id is not None:
+            where = "WHERE created_at < ? OR (created_at = ? AND id < ?)"
+            cursor = before_created_at.isoformat()
+            parameters.extend((cursor, cursor, before_id))
+        parameters.append(limit)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT * FROM books
+                {where}
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                tuple(parameters),
+            ).fetchall()
+        return tuple(_book_from_row(row) for row in rows)
 
     def add_asset(self, book_id: str, asset: DocumentAsset) -> None:
         with self._connect(write=True) as connection:
@@ -470,6 +520,55 @@ class SQLiteJobRepository(_SQLiteRepository, JobRepository):
             )
             return current
 
+    def claim_next(
+        self,
+        owner: str,
+        *,
+        lease_expires_at: datetime,
+        now: datetime,
+    ) -> Job | None:
+        if not owner.strip():
+            raise ValueError("Lease owner cannot be empty")
+        if lease_expires_at <= now:
+            raise ValueError("Lease expiry must be in the future")
+        with self._connect(write=True) as connection:
+            timestamp = now.isoformat()
+            row = connection.execute(
+                """
+                SELECT * FROM jobs
+                WHERE (
+                    status = 'queued'
+                    AND cancel_requested_at IS NULL
+                    AND (not_before IS NULL OR julianday(not_before) <= julianday(?))
+                ) OR (
+                    status = 'running'
+                    AND lease_expires_at IS NOT NULL
+                    AND julianday(lease_expires_at) <= julianday(?)
+                )
+                ORDER BY created_at ASC, id ASC
+                LIMIT 1
+                """,
+                (timestamp, timestamp),
+            ).fetchone()
+            if row is None:
+                return None
+            previous = _job_from_row(row)
+            if previous.status is JobStatus.QUEUED:
+                current = previous.claim(owner, lease_expires_at=lease_expires_at, now=now)
+            else:
+                current = previous.take_over_expired_lease(
+                    owner,
+                    lease_expires_at=lease_expires_at,
+                    now=now,
+                )
+            _save_job_transition(
+                connection,
+                previous,
+                current,
+                require_running_fence=False,
+            )
+            return current
+
     def heartbeat(
         self,
         job_id: str,
@@ -521,6 +620,37 @@ class SQLiteJobRepository(_SQLiteRepository, JobRepository):
         with self._connect() as connection:
             row = connection.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
         return _job_from_row(row) if row is not None else None
+
+    def list_recent(
+        self,
+        status: JobStatus | None,
+        limit: int,
+        before_created_at: datetime | None = None,
+        before_id: str | None = None,
+    ) -> Sequence[Job]:
+        _validate_keyset_page(limit, before_created_at, before_id, resource="Job")
+        clauses: list[str] = []
+        parameters: list[object] = []
+        if status is not None:
+            clauses.append("status = ?")
+            parameters.append(status.value)
+        if before_created_at is not None and before_id is not None:
+            clauses.append("(created_at < ? OR (created_at = ? AND id < ?))")
+            cursor = before_created_at.isoformat()
+            parameters.extend((cursor, cursor, before_id))
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        parameters.append(limit)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT * FROM jobs
+                {where}
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                tuple(parameters),
+            ).fetchall()
+        return tuple(_job_from_row(row) for row in rows)
 
     def list_events(self, job_id: str) -> Sequence[JobEvent]:
         with self._connect() as connection:
@@ -1042,6 +1172,21 @@ def _execute_sql_script(connection: sqlite3.Connection, script: str) -> None:
         raise ValueError("Migration contains an incomplete SQL statement")
 
 
+def _validate_keyset_page(
+    limit: int,
+    before_created_at: datetime | None,
+    before_id: str | None,
+    *,
+    resource: str,
+) -> None:
+    if limit < 1 or limit > _MAX_LIST_PAGE:
+        raise ValueError(f"{resource} page limit must be between 1 and {_MAX_LIST_PAGE}")
+    if (before_created_at is None) != (before_id is None):
+        raise ValueError(f"{resource} cursor requires both created_at and id")
+    if before_id is not None and not before_id.strip():
+        raise ValueError(f"{resource} cursor ID cannot be empty")
+
+
 def _validate_knowledge_transition(previous: KnowledgeStatus, current: KnowledgeStatus) -> None:
     if current not in _ALLOWED_KNOWLEDGE_TRANSITIONS[previous]:
         raise InvalidStateTransition(
@@ -1086,6 +1231,18 @@ def _save_job_transition(
 ) -> None:
     if previous.id != current.id or current.version != previous.version + 1:
         raise RepositoryConflict("Job transition must increment one matching aggregate version")
+    if previous.book_id is not None and current.book_id != previous.book_id:
+        raise RepositoryConflict("Job Book binding cannot be changed or removed")
+    persisted = connection.execute(
+        "SELECT book_id FROM jobs WHERE id = ? AND version = ?",
+        (previous.id, previous.version),
+    ).fetchone()
+    if (
+        persisted is not None
+        and persisted["book_id"] is not None
+        and current.book_id != str(persisted["book_id"])
+    ):
+        raise RepositoryConflict("Job Book binding cannot be changed or removed")
     where = "id = ? AND version = ?"
     parameters: list[object] = [
         current.status.value,
