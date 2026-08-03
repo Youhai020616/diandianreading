@@ -136,6 +136,14 @@ def book_detail(value: BookDetailView) -> dict[str, object]:
         "book": book_view(value.book),
         "document": reading_document(value.document),
         "chapters": [chapter_span(item) for item in value.chapters],
+        "parts": [
+            {
+                "id": part.id,
+                "sequence": part.sequence,
+                "chapter_refs": list(part.chapter_refs),
+            }
+            for part in value.parts
+        ],
         "progress": (reading_progress(value.progress) if value.progress is not None else None),
     }
 
@@ -238,6 +246,8 @@ def effective_scope(value: EffectiveBookScope | None) -> dict[str, object] | Non
         "document_part_ids": list(value.document_part_ids),
         "chapter_refs": list(value.chapter_refs),
         "source_labels": list(value.source_labels),
+        "note_ids": list(value.note_ids),
+        "supplemental": [item.value for item in value.supplemental],
     }
 
 

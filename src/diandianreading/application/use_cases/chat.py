@@ -23,6 +23,7 @@ from diandianreading.application.ports.chat import (
     ChatSubmissionResult,
     ConversationBusyError,
     ConversationEnsureResult,
+    DocumentTextReader,
     SelectionVerifier,
 )
 from diandianreading.application.ports.knowledge import (
@@ -31,6 +32,7 @@ from diandianreading.application.ports.knowledge import (
     KnowledgeReference,
 )
 from diandianreading.application.ports.reconciliation import KnowledgeHealthPort
+from diandianreading.application.services.citation_locator import locate_excerpt
 from diandianreading.domain.annotations import Annotation, AnnotationStatus
 from diandianreading.domain.chat import (
     MAX_NOTES_CONTEXT_CHARS,
@@ -45,6 +47,8 @@ from diandianreading.domain.chat import (
     ChatMessagePair,
     ChatProviderAttempt,
     ChatReference,
+    ChatReferenceLocation,
+    ChatReferenceLocationType,
     ChatRun,
     ChatRunEvent,
     ChatRunPhase,
@@ -143,6 +147,7 @@ class ChatUseCase:
         knowledge_health: KnowledgeHealthPort,
         selection_verifier: SelectionVerifier | None = None,
         annotations: AnnotationRepository | None = None,
+        document_text: DocumentTextReader | None = None,
         id_factory: Callable[[], str] | None = None,
         clock: Callable[[], datetime] = utc_now,
         lease_duration: timedelta | None = None,
@@ -155,6 +160,7 @@ class ChatUseCase:
         self._knowledge_health = knowledge_health
         self._selection_verifier = selection_verifier
         self._annotations = annotations
+        self._document_text = document_text
         self._id_factory = id_factory or (lambda: str(uuid4()))
         self._clock = clock
         self._lease_duration = duration
@@ -1090,6 +1096,12 @@ class ChatUseCase:
         if len(sources_by_external_id) != len(context.sources):
             raise ValueError("Provider source mappings are not unique")
         parts_by_id = {part.id: part for part in context.parts}
+        document_text: tuple[str, str] | None = None
+        if self._document_text is not None:
+            try:
+                document_text = self._document_text.read_markdown_text(context.book.id)
+            except DiandianError:
+                document_text = None
         mapped: list[ChatReference] = []
         for index, reference in enumerate(answer.references, start=1):
             source = sources_by_external_id.get(reference.external_source_id)
@@ -1107,6 +1119,15 @@ class ChatUseCase:
             passage = reference.excerpt
             if passage is not None and not passage.strip():
                 passage = None
+            location: ChatReferenceLocation | None = None
+            if passage is not None and document_text is not None:
+                anchor_sha256, reading_text = document_text
+                excerpt_location = locate_excerpt(reading_text, passage)
+                if excerpt_location is not None:
+                    location = ChatReferenceLocation(
+                        type=ChatReferenceLocationType.MARKDOWN_OFFSET,
+                        value=(f"{anchor_sha256}:{excerpt_location.start}:{excerpt_location.end}"),
+                    )
             mapped.append(
                 ChatReference(
                     id=self._id_factory(),
@@ -1117,7 +1138,7 @@ class ChatUseCase:
                     chapter_refs=part.chapter_refs,
                     label=f"Part {part.sequence + 1}",
                     passage=passage,
-                    location=None,
+                    location=location,
                     created_at=now,
                 )
             )

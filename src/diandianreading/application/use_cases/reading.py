@@ -75,10 +75,18 @@ class ReadingContent:
 
 
 @dataclass(frozen=True, slots=True)
+class PartRef:
+    id: str
+    sequence: int
+    chapter_refs: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class BookDetailView:
     book: BookView
     document: ReadingDocumentView
     chapters: tuple[ChapterSpanView, ...]
+    parts: tuple[PartRef, ...]
     progress: ReadingProgress | None
 
 
@@ -102,10 +110,17 @@ class ReadingService:
         chapters: tuple[ChapterSpanView, ...] = ()
         if asset.mime_type == _MARKDOWN_MIME:
             chapters = self._processor.chapter_spans(payload.decode("utf-8"))
+        with self._unit_of_work() as unit_of_work:
+            parts = tuple(
+                PartRef(id=part.id, sequence=part.sequence, chapter_refs=part.chapter_refs)
+                for part in unit_of_work.catalog.list_parts(book.id)
+            )
+            unit_of_work.commit()
         return BookDetailView(
             book=BookView.from_book(book),
             document=_document_view(book.id, asset),
             chapters=chapters,
+            parts=parts,
             progress=self._progress.get(book.id),
         )
 

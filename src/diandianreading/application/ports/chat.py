@@ -74,6 +74,18 @@ class SelectionVerifier(Protocol):
     ) -> bool: ...
 
 
+class DocumentTextReader(Protocol):
+    """Read the canonical markdown reading text for citation location mapping.
+
+    Returns ``(anchor_sha256, text)`` for markdown reading documents and ``None``
+    for PDF books or any unreadable state; implementations must never raise for
+    ordinary unavailability so reference mapping degrades to location-less
+    citations instead of failing the run (ADR-0007).
+    """
+
+    def read_markdown_text(self, book_id: str) -> tuple[str, str] | None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class ChatSubmission:
     """All local records that must be inserted by one idempotent transaction."""

@@ -39,6 +39,7 @@ from diandianreading.infrastructure.documents import (
     LocalDocumentPreparationAdapter,
     PolicyReadingDocumentProcessor,
 )
+from diandianreading.infrastructure.documents.reading_bridge import ReadingChatBridge
 from diandianreading.infrastructure.fakes import FakeKnowledgeAdapter
 from diandianreading.infrastructure.local_api import InstallTokenStore, LocalApiSecurityService
 from diandianreading.infrastructure.persistence import SQLiteDatabase, SQLiteUnitOfWorkFactory
@@ -158,10 +159,24 @@ def create_phase5_demo_runtime(home: Path) -> tuple[Phase5DemoRuntime, SQLiteDat
         local_acquirer=local_acquirer,
         zlibrary_acquirer=zlibrary,
     )
+    reading = ReadingService(
+        unit_of_work=unit_of_work,
+        file_store=store,
+        processor=PolicyReadingDocumentProcessor(),
+        progress=SQLiteReadingProgressRepository(database),
+    )
+    reading_bridge = ReadingChatBridge(
+        reading=reading,
+        unit_of_work=unit_of_work,
+        file_store=store,
+    )
     chat = ChatUseCase(
         repository=SQLiteChatRepository(database),
         knowledge_query=knowledge,
         knowledge_health=knowledge,
+        selection_verifier=reading_bridge,
+        annotations=SQLiteAnnotationRepository(database),
+        document_text=reading_bridge,
     )
     tokens = InstallTokenStore(paths.credentials_root / "local-api")
     _ = tokens.ensure_initial()
@@ -176,14 +191,7 @@ def create_phase5_demo_runtime(home: Path) -> tuple[Phase5DemoRuntime, SQLiteDat
         imports=imports,
         jobs=JobService(unit_of_work=unit_of_work),
         catalog=CatalogService(unit_of_work=unit_of_work),
-        reading=(
-            reading := ReadingService(
-                unit_of_work=unit_of_work,
-                file_store=store,
-                processor=PolicyReadingDocumentProcessor(),
-                progress=SQLiteReadingProgressRepository(database),
-            )
-        ),
+        reading=reading,
         annotations=AnnotationService(
             repository=SQLiteAnnotationRepository(database),
             reading=reading,

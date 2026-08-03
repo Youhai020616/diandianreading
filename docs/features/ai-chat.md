@@ -1,6 +1,6 @@
 # AI 对话功能设计
 
-> 状态：Active（Phase 5 整本书切片）/ Proposed（章节、笔记、选区及后续操作）
+> 状态：Active（整本书、选区、笔记范围与引用定位）/ Proposed（章节范围及后续操作）
 >
 > 产品阶段：Roadmap P4 AI Alpha
 >
@@ -225,7 +225,7 @@ source_ids=list(source_ids) if source_ids else None
 }
 ```
 
-`effective_scope` 只包含前端可安全使用的本地 ID、标签和范围类型，不包含 Provider Source ID、Provider Conversation ID、凭据路径或原始 Provider 响应。它必须出现在完成、失败和恢复后的 `chat_run` 快照中；如果解析尚未完成，可以为 `null`。
+`effective_scope` 只包含前端可安全使用的本地 ID、标签和范围类型，不包含 Provider Source ID、Provider Conversation ID、凭据路径或原始 Provider 响应。`supplemental` 的取值为 `selection`（选区已在声称的 Part 原文中肯定命中）、`selection_unverified`（服务端无法确认命中，作为用户提供的补充上下文，不声称已定位）与 `notes`。它必须出现在完成、失败和恢复后的 `chat_run` 快照中；如果解析尚未完成，可以为 `null`。
 
 ### 4.5 边界校验
 

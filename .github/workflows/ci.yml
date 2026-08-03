@@ -126,6 +126,12 @@ jobs:
           --app-home .tmp/ci-wheel/r2/app-home
           --workspace .tmp/ci-wheel/r2/workspace
 
+      - name: Run installed-wheel R4 chat-scope smoke
+        run: >-
+          .tmp/ci-wheel-venv/bin/diandian r4-e2e
+          --app-home .tmp/ci-wheel/r4/app-home
+          --workspace .tmp/ci-wheel/r4/workspace
+
   test:
     name: Test Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
