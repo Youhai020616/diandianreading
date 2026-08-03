@@ -39,7 +39,7 @@ def test_phase2_cli_runs_full_adapter_flow_reopens_state_and_refuses_overwrite(t
     assert completed.stderr == ""
     payload = json.loads(completed.stdout)
     assert payload["status"] == "ok"
-    assert payload["schema_version"] == 7
+    assert payload["schema_version"] == 8
     assert payload["book_count"] == 1
     assert payload["part_count"] >= 1
     assert payload["source_count"] == payload["part_count"]

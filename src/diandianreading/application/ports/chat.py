@@ -13,6 +13,8 @@ from enum import StrEnum
 from typing import Protocol
 
 from diandianreading.domain.chat import (
+    ChatContextItem,
+    ChatContextItemKind,
     ChatError,
     ChatLeaseToken,
     ChatMessage,
@@ -26,6 +28,10 @@ from diandianreading.domain.chat import (
     EffectiveBookScope,
     ProviderAttemptStatus,
     ProviderConversationBinding,
+    QueryScopeType,
+    SelectionLocator,
+    chat_context_hash,
+    supplemental_text_hash,
 )
 from diandianreading.domain.models import (
     Book,
@@ -49,12 +55,32 @@ class ConversationEnsureResult:
     created: bool
 
 
+class SelectionVerifier(Protocol):
+    """Server-side check that a selection really addresses the local source text.
+
+    Implementations read the local reading document (ReadingService-style) without the
+    chat use case importing the reading use case. Return ``True`` only for a positive
+    match; return ``False`` when the text cannot be read or does not match, in which
+    case the selection is kept as user-provided supplemental context (ai-chat.md §4.1).
+    """
+
+    def verify_selection(
+        self,
+        *,
+        book_id: str,
+        document_part_id: str,
+        locator: SelectionLocator,
+        selected_text: str,
+    ) -> bool: ...
+
+
 @dataclass(frozen=True, slots=True)
 class ChatSubmission:
     """All local records that must be inserted by one idempotent transaction."""
 
     messages: ChatMessagePair
     run: ChatRun
+    context: tuple[ChatContextItem, ...] = ()
 
     def __post_init__(self) -> None:
         if self.messages.user.chat_run_id != self.run.id:
@@ -69,6 +95,20 @@ class ChatSubmission:
             )
         if self.messages.user.client_message_id != self.run.client_message_id:
             raise ValueError("Submitted client_message_id values do not match")
+        if self.run.query_scope.type is QueryScopeType.SELECTION:
+            if (
+                len(self.context) != 1
+                or self.context[0].kind is not ChatContextItemKind.SELECTION
+                or self.context[0].reference_id != self.run.query_scope.document_part_id
+                or chat_context_hash(self.context) != self.run.context_hash
+                or supplemental_text_hash(self.context[0].text)
+                != self.run.query_scope.selected_text_sha256
+            ):
+                raise ValueError(
+                    "Selection submission requires one matching selection context snapshot"
+                )
+        elif self.context:
+            raise ValueError("Only a selection submission carries client context")
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +182,7 @@ class ChatExecutionContext:
     parts: tuple[DocumentPart, ...]
     credential: CredentialRef
     provider_attempt: ChatProviderAttempt | None
+    context_items: tuple[ChatContextItem, ...] = ()
 
 
 class ChatRepositoryError(Exception):
@@ -248,6 +289,17 @@ class ChatRepository(Protocol):
         now: datetime,
     ) -> ChatRun:
         """Fence and persist the local effective scope before any Provider call."""
+        ...
+
+    def persist_context_snapshot(
+        self,
+        run_id: str,
+        token: ChatLeaseToken,
+        items: tuple[ChatContextItem, ...],
+        *,
+        now: datetime,
+    ) -> ChatRun:
+        """Fence and persist the notes supplemental snapshot before any Provider call."""
         ...
 
     def persist_phase(

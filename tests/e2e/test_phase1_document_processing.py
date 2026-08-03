@@ -36,7 +36,7 @@ def test_phase1_cli_prepares_three_formats_reopens_state_and_refuses_overwrite(t
     assert completed.stderr == ""
     payload = json.loads(completed.stdout)
     assert payload["status"] == "ok"
-    assert payload["schema_version"] == 7
+    assert payload["schema_version"] == 8
     assert payload["format_count"] == 3
     assert payload["book_count"] == 3
     assert payload["manifest_count"] == 3
