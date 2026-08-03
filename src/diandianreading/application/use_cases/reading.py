@@ -113,6 +113,10 @@ class ReadingService:
         book, asset, payload = self._resolve(book_id)
         return ReadingContent(document=_document_view(book.id, asset), payload=payload)
 
+    def get_document(self, book_id: str) -> ReadingDocumentView:
+        book, asset, _ = self._resolve(book_id)
+        return _document_view(book.id, asset)
+
     def save_progress(
         self,
         book_id: str,
