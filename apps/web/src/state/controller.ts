@@ -50,7 +50,13 @@ export interface ControllerRefs {
   zlibraryImportTab: HTMLButtonElement | null;
 }
 
-const VIEW_NAMES: ReadonlySet<string> = new Set(["connections", "import", "jobs"]);
+const VIEW_NAMES: ReadonlySet<string> = new Set([
+  "connections",
+  "import",
+  "jobs",
+  "library",
+  "reader",
+]);
 
 function validRightsBasis(value: string): string | null {
   return RIGHTS_BASES.has(value) ? value : null;
@@ -203,6 +209,9 @@ export class AppController {
     this.setView(viewName, true);
     if (viewName === "jobs") {
       void this.refreshJobs();
+    }
+    if (viewName === "library") {
+      void this.refreshBooks();
     }
   }
 
