@@ -25,6 +25,8 @@ from diandianreading.application.ports.chat import (
     ConversationEnsureResult,
 )
 from diandianreading.domain.chat import (
+    ChatContextItem,
+    ChatContextItemKind,
     ChatError,
     ChatErrorCode,
     ChatErrorDetail,
@@ -49,6 +51,10 @@ from diandianreading.domain.chat import (
     ProviderConversationBinding,
     QueryScope,
     QueryScopeType,
+    SelectionLocator,
+    SupplementalContextKind,
+    chat_context_hash,
+    query_scope_payload,
 )
 from diandianreading.domain.models import CredentialRef, KnowledgeStatus, WorkspaceRef
 from diandianreading.infrastructure.persistence.sqlite import (
@@ -198,6 +204,7 @@ class SQLiteChatRepository(ChatRepository):
             sources = tuple(mappings.list_sources(workspace.id))
             parts = tuple(catalog.list_parts(book.id))
             attempt = _get_provider_attempt(connection, run.id, run.attempt)
+            context_items = _load_context_items(connection, run)
 
             return ChatExecutionContext(
                 conversation=conversation,
@@ -218,6 +225,7 @@ class SQLiteChatRepository(ChatRepository):
                     profile=workspace.credential_profile,
                 ),
                 provider_attempt=attempt,
+                context_items=context_items,
             )
 
     def submit(self, submission: ChatSubmission) -> ChatSubmissionResult:
@@ -258,17 +266,20 @@ class SQLiteChatRepository(ChatRepository):
                     INSERT INTO chat_runs(
                         id, conversation_id, client_message_id,
                         user_message_id, assistant_message_id, query_scope_type,
+                        query_scope_json, context_hash,
                         question_hash, request_fingerprint, status, phase,
                         effective_scope_json, attempt, error_json, cancel_requested_at,
                         lease_owner, lease_expires_at, lease_generation,
                         provider_request_started_at, created_at, updated_at,
                         started_at, completed_at, version
                     ) VALUES (
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                     )
                     """,
                     _run_values(run),
                 )
+                if submission.context:
+                    _insert_context_snapshot(connection, run, submission.context)
                 for message in (submission.messages.user, submission.messages.assistant):
                     connection.execute(
                         """
@@ -471,6 +482,29 @@ class SQLiteChatRepository(ChatRepository):
         with self._connect(write=True) as connection:
             previous = _require_fenced_run(connection, run_id, token)
             current = previous.record_effective_scope(scope, token, now=now)
+            _save_run_transition(
+                connection,
+                previous,
+                current,
+                ChatRunEventType.UPDATED,
+                token=token,
+            )
+            return current
+
+    def persist_context_snapshot(
+        self,
+        run_id: str,
+        token: ChatLeaseToken,
+        items: tuple[ChatContextItem, ...],
+        *,
+        now: datetime,
+    ) -> ChatRun:
+        with self._connect(write=True) as connection:
+            previous = _require_fenced_run(connection, run_id, token)
+            current = previous.record_context_snapshot(chat_context_hash(items), token, now=now)
+            if current is previous:
+                return previous
+            _insert_context_snapshot(connection, current, items)
             _save_run_transition(
                 connection,
                 previous,
@@ -1083,6 +1117,7 @@ def _save_run_transition(
     parameters: list[object] = [
         current.status.value,
         current.phase.value if current.phase is not None else None,
+        current.context_hash,
         _serialize_effective_scope(current.effective_scope),
         current.attempt,
         _serialize_error(current.error),
@@ -1105,7 +1140,7 @@ def _save_run_transition(
         cursor = connection.execute(
             f"""
             UPDATE chat_runs
-            SET status = ?, phase = ?, effective_scope_json = ?, attempt = ?,
+            SET status = ?, phase = ?, context_hash = ?, effective_scope_json = ?, attempt = ?,
                 error_json = ?, cancel_requested_at = ?, lease_owner = ?,
                 lease_expires_at = ?, lease_generation = ?,
                 provider_request_started_at = ?, updated_at = ?, started_at = ?,
@@ -1325,6 +1360,8 @@ def _run_values(run: ChatRun) -> tuple[object, ...]:
         run.user_message_id,
         run.assistant_message_id,
         run.query_scope.type.value,
+        _serialize_query_scope(run.query_scope),
+        run.context_hash,
         run.question_hash,
         run.request_fingerprint,
         run.status.value,
@@ -1429,9 +1466,10 @@ def _run_from_row(row: sqlite3.Row) -> ChatRun:
         client_message_id=str(row["client_message_id"]),
         user_message_id=str(row["user_message_id"]),
         assistant_message_id=str(row["assistant_message_id"]),
-        query_scope=QueryScope(QueryScopeType(str(row["query_scope_type"]))),
+        query_scope=_parse_query_scope(row["query_scope_json"], str(row["query_scope_type"])),
         question_hash=str(row["question_hash"]),
         request_fingerprint=str(row["request_fingerprint"]),
+        context_hash=str(row["context_hash"]) if row["context_hash"] is not None else None,
         status=ChatRunStatus(str(row["status"])),
         phase=ChatRunPhase(str(row["phase"])) if row["phase"] is not None else None,
         effective_scope=_parse_effective_scope(row["effective_scope_json"]),
@@ -1520,6 +1558,131 @@ def _event_from_row(row: sqlite3.Row) -> ChatRunEvent:
     )
 
 
+def _serialize_query_scope(scope: QueryScope) -> str:
+    return _canonical_json(query_scope_payload(scope))
+
+
+def _parse_query_scope(value: object, scope_type_column: str) -> QueryScope:
+    payload = _load_canonical_json(str(value), "query_scope_json")
+    if not isinstance(payload, dict):
+        raise ValueError("query_scope_json must be an object")
+    data = cast(dict[str, object], payload)
+    scope_type = QueryScopeType(_require_string(data.get("type"), "query scope type"))
+    if scope_type.value != scope_type_column:
+        raise ValueError("query_scope_json type does not match its denormalized column")
+    if scope_type is QueryScopeType.SELECTION:
+        if set(data) != {"document_part_id", "locator", "selected_text_sha256", "type"}:
+            raise ValueError("query_scope_json has an unexpected selection schema")
+        locator_payload = data["locator"]
+        if not isinstance(locator_payload, dict):
+            raise ValueError("query_scope_json locator must be an object")
+        locator_data = cast(dict[str, object], locator_payload)
+        if set(locator_data) != {"type", "value"}:
+            raise ValueError("query_scope_json locator has an unexpected schema")
+        return QueryScope(
+            type=scope_type,
+            document_part_id=_require_string(
+                data["document_part_id"], "query scope document_part_id"
+            ),
+            locator=SelectionLocator(
+                type=ChatReferenceLocationType(
+                    _require_string(locator_data["type"], "query scope locator type")
+                ),
+                value=_require_string(locator_data["value"], "query scope locator value"),
+            ),
+            selected_text_sha256=_require_string(
+                data["selected_text_sha256"], "query scope selected_text_sha256"
+            ),
+        )
+    if scope_type is QueryScopeType.NOTES:
+        if set(data) != {"note_ids", "type"}:
+            raise ValueError("query_scope_json has an unexpected notes schema")
+        return QueryScope(
+            type=scope_type,
+            note_ids=_string_array(data["note_ids"], "query scope note_ids"),
+        )
+    if set(data) != {"type"}:
+        raise ValueError("query_scope_json has an unexpected schema")
+    return QueryScope(type=scope_type)
+
+
+def _insert_context_snapshot(
+    connection: sqlite3.Connection,
+    run: ChatRun,
+    items: tuple[ChatContextItem, ...],
+) -> None:
+    if run.context_hash is None or chat_context_hash(items) != run.context_hash:
+        raise ChatRepositoryConflictError(
+            "Context snapshot does not match the Chat Run context hash"
+        )
+    payload = _canonical_json(
+        [
+            {"kind": item.kind.value, "reference_id": item.reference_id, "text": item.text}
+            for item in items
+        ]
+    )
+    try:
+        connection.execute(
+            """
+            INSERT INTO chat_run_contexts(
+                chat_run_id, context_hash, payload_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(chat_run_id) DO UPDATE SET
+                context_hash = excluded.context_hash,
+                payload_json = excluded.payload_json,
+                updated_at = excluded.updated_at
+            """,
+            (
+                run.id,
+                run.context_hash,
+                payload,
+                run.updated_at.isoformat(),
+                run.updated_at.isoformat(),
+            ),
+        )
+    except sqlite3.IntegrityError as error:
+        raise ChatRepositoryConflictError(
+            "Context snapshot collided with existing durable Chat state"
+        ) from error
+
+
+def _load_context_items(
+    connection: sqlite3.Connection,
+    run: ChatRun,
+) -> tuple[ChatContextItem, ...]:
+    row = connection.execute(
+        "SELECT * FROM chat_run_contexts WHERE chat_run_id = ?",
+        (run.id,),
+    ).fetchone()
+    if row is None:
+        return ()
+    payload = _load_canonical_json(str(row["payload_json"]), "chat_run_contexts payload_json")
+    if not isinstance(payload, list):
+        raise ValueError("chat_run_contexts payload_json must be an array")
+    items: list[ChatContextItem] = []
+    for entry in payload:
+        if not isinstance(entry, dict):
+            raise ValueError("chat_run_contexts payload item must be an object")
+        data = cast(dict[str, object], entry)
+        if set(data) != {"kind", "reference_id", "text"}:
+            raise ValueError("chat_run_contexts payload item has an unexpected schema")
+        items.append(
+            ChatContextItem(
+                kind=ChatContextItemKind(_require_string(data["kind"], "context item kind")),
+                reference_id=_require_string(data["reference_id"], "context item reference"),
+                text=_require_string(data["text"], "context item text"),
+            )
+        )
+    snapshot = tuple(items)
+    if chat_context_hash(snapshot) != str(row["context_hash"]):
+        raise ValueError("chat_run_contexts payload does not match its recorded hash")
+    if run.context_hash is not None and run.context_hash != str(row["context_hash"]):
+        # A notes retry cleared the run hash; a stale snapshot row is replaced on the
+        # next resolution, so only a conflicting non-null pairing is corruption.
+        raise ValueError("chat_run_contexts snapshot does not match its Chat Run")
+    return snapshot
+
+
 def _serialize_effective_scope(scope: EffectiveBookScope | None) -> str | None:
     if scope is None:
         return None
@@ -1528,10 +1691,18 @@ def _serialize_effective_scope(scope: EffectiveBookScope | None) -> str | None:
             "book_id": scope.book_id,
             "chapter_refs": list(scope.chapter_refs),
             "document_part_ids": list(scope.document_part_ids),
+            "note_ids": list(scope.note_ids),
             "source_labels": list(scope.source_labels),
+            "supplemental": [marker.value for marker in scope.supplemental],
             "type": scope.type.value,
         }
     )
+
+
+_EFFECTIVE_SCOPE_KEYS_V1 = frozenset(
+    {"book_id", "chapter_refs", "document_part_ids", "source_labels", "type"}
+)
+_EFFECTIVE_SCOPE_KEYS_V2 = _EFFECTIVE_SCOPE_KEYS_V1 | {"note_ids", "supplemental"}
 
 
 def _parse_effective_scope(value: object) -> EffectiveBookScope | None:
@@ -1541,15 +1712,26 @@ def _parse_effective_scope(value: object) -> EffectiveBookScope | None:
     if not isinstance(payload, dict):
         raise ValueError("effective_scope_json must be an object")
     data = cast(dict[str, object], payload)
-    expected = {"book_id", "chapter_refs", "document_part_ids", "source_labels", "type"}
-    if set(data) != expected:
+    keys = set(data)
+    if keys != _EFFECTIVE_SCOPE_KEYS_V2 and keys != _EFFECTIVE_SCOPE_KEYS_V1:
         raise ValueError("effective_scope_json has an unexpected schema")
+    note_ids = _string_array(data["note_ids"], "note_ids") if "note_ids" in data else ()
+    supplemental = (
+        tuple(
+            SupplementalContextKind(marker)
+            for marker in _string_array(data["supplemental"], "supplemental")
+        )
+        if "supplemental" in data
+        else ()
+    )
     return EffectiveBookScope(
         type=QueryScopeType(_require_string(data["type"], "effective scope type")),
         book_id=_require_string(data["book_id"], "effective scope Book ID"),
         document_part_ids=_string_array(data["document_part_ids"], "document_part_ids"),
         chapter_refs=_string_array(data["chapter_refs"], "chapter_refs"),
         source_labels=_string_array(data["source_labels"], "source_labels"),
+        note_ids=note_ids,
+        supplemental=supplemental,
     )
 
 

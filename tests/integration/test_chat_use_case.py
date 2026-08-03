@@ -29,6 +29,7 @@ from diandianreading.application.use_cases.chat import (
     SubmitChatCommand,
 )
 from diandianreading.domain.chat import (
+    ChatContextItem,
     ChatError,
     ChatErrorCode,
     ChatLeaseToken,
@@ -46,6 +47,7 @@ from diandianreading.domain.chat import (
     ProviderConversationBinding,
     QueryScope,
     QueryScopeType,
+    chat_context_hash,
 )
 from diandianreading.domain.errors import DiandianError, ErrorCode, InvalidStateTransition
 from diandianreading.domain.models import (
@@ -230,6 +232,7 @@ class FakeChatRepository:
         self.run_by_client_key: dict[tuple[str, str], str] = {}
         self.attempts: dict[tuple[str, int], ChatProviderAttempt] = {}
         self.references: dict[str, tuple[ChatReference, ...]] = {}
+        self.contexts: dict[str, tuple[ChatContextItem, ...]] = {}
         self.events: list[ChatRunEvent] = []
         self.retry_keys: dict[tuple[str, str], int] = {}
         self.prepare_callback: Callable[[], None] | None = None
@@ -301,6 +304,7 @@ class FakeChatRepository:
             parts=self.parts,
             credential=self.credential,
             provider_attempt=self.attempts.get((run.id, run.attempt)),
+            context_items=self.contexts.get(run.id, ()),
         )
 
     def submit(self, submission: ChatSubmission) -> ChatSubmissionResult:
@@ -330,6 +334,8 @@ class FakeChatRepository:
         self.messages_by_run[run.id] = submission.messages
         self.run_by_client_key[key] = run.id
         self.references[run.id] = ()
+        if submission.context:
+            self.contexts[run.id] = submission.context
         self._append_event(run, ChatRunEventType.UPDATED)
         return ChatSubmissionResult(
             messages=submission.messages,
@@ -453,6 +459,21 @@ class FakeChatRepository:
         current = self._require_run(run_id)
         updated = current.record_effective_scope(scope, token, now=now)
         self._save_run(updated)
+        return updated
+
+    def persist_context_snapshot(
+        self,
+        run_id: str,
+        token: ChatLeaseToken,
+        items: tuple[ChatContextItem, ...],
+        *,
+        now: datetime,
+    ) -> ChatRun:
+        current = self._require_run(run_id)
+        updated = current.record_context_snapshot(chat_context_hash(items), token, now=now)
+        if updated is not current:
+            self.contexts[run_id] = items
+            self._save_run(updated)
         return updated
 
     def persist_phase(
@@ -806,21 +827,20 @@ def test_submit_is_canonically_idempotent_and_rejects_conflict_busy_and_non_book
     assert busy.value.error.code is ChatErrorCode.CONVERSATION_BUSY
     assert busy.value.active_run_id == first.run.id
 
-    for scope_type in (
-        QueryScopeType.CHAPTERS,
-        QueryScopeType.NOTES,
-        QueryScopeType.SELECTION,
-    ):
-        with pytest.raises(ChatUseCaseError) as unsupported:
-            _ = runtime.use_case.submit(
-                SubmitChatCommand(
-                    conversation_id=runtime.conversation.id,
-                    client_message_id=f"scope-{scope_type.value}",
-                    question="Unsupported scope",
-                    query_scope=QueryScope(scope_type),
-                )
+    with pytest.raises(ChatUseCaseError) as unsupported:
+        _ = runtime.use_case.submit(
+            SubmitChatCommand(
+                conversation_id=runtime.conversation.id,
+                client_message_id="scope-chapters",
+                question="Unsupported scope",
+                query_scope=QueryScope(QueryScopeType.CHAPTERS),
             )
-        assert unsupported.value.error.code is ChatErrorCode.VALIDATION
+        )
+    assert unsupported.value.error.code is ChatErrorCode.VALIDATION
+    assert "chapter-to-Part" in unsupported.value.error.message
+    for scope_type in (QueryScopeType.NOTES, QueryScopeType.SELECTION):
+        with pytest.raises(ValueError):
+            _ = QueryScope(scope_type)
     assert len(runtime.repository.runs) == 1
 
 

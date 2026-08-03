@@ -19,8 +19,11 @@ from diandianreading.application.ports.chat import (
     ConversationBusyError,
 )
 from diandianreading.domain.chat import (
+    ChatContextItem,
+    ChatContextItemKind,
     ChatError,
     ChatErrorCode,
+    ChatLeaseToken,
     ChatMessage,
     ChatMessagePair,
     ChatProviderAttempt,
@@ -35,6 +38,8 @@ from diandianreading.domain.chat import (
     ProviderAttemptStatus,
     QueryScope,
     QueryScopeType,
+    SelectionLocator,
+    chat_context_hash,
     chat_request_fingerprint,
 )
 from diandianreading.domain.errors import InvalidStateTransition
@@ -72,7 +77,7 @@ class Runtime:
 
 def make_runtime(tmp_path: Path) -> Runtime:
     database = SQLiteDatabase(tmp_path / "state" / "app.sqlite3")
-    assert database.migrate() == 7
+    assert database.migrate() == 8
     catalog = SQLiteCatalogRepository(database)
     mappings = SQLiteKnowledgeMappingRepository(database)
     command = make_import_command(tmp_path, part_count=2)
@@ -252,7 +257,18 @@ def fail_retriable_submission(runtime: Runtime, *, suffix: str) -> ChatRun:
     )
 
 
-def apply_schema_through_v5(database: SQLiteDatabase) -> None:
+_MIGRATION_FILENAMES = {
+    1: "initial.sql",
+    2: "document_preparation.sql",
+    3: "notebooklm_operations.sql",
+    4: "recoverable_workflow.sql",
+    5: "zlibrary_acquisition.sql",
+    6: "unified_product.sql",
+    7: "reader_annotations.sql",
+}
+
+
+def apply_schema_through(database: SQLiteDatabase, last_version: int) -> None:
     migration_root = files("diandianreading.infrastructure.persistence.migrations")
     with database.connect() as connection:
         connection.execute(
@@ -265,17 +281,8 @@ def apply_schema_through_v5(database: SQLiteDatabase) -> None:
             )
             """
         )
-        for version in range(1, 6):
-            name = (
-                f"{version:04d}_"
-                + {
-                    1: "initial.sql",
-                    2: "document_preparation.sql",
-                    3: "notebooklm_operations.sql",
-                    4: "recoverable_workflow.sql",
-                    5: "zlibrary_acquisition.sql",
-                }[version]
-            )
+        for version in range(1, last_version + 1):
+            name = f"{version:04d}_" + _MIGRATION_FILENAMES[version]
             sql = migration_root.joinpath(name).read_text(encoding="utf-8")
             connection.executescript(sql)
             connection.execute(
@@ -292,13 +299,17 @@ def apply_schema_through_v5(database: SQLiteDatabase) -> None:
             )
 
 
+def apply_schema_through_v5(database: SQLiteDatabase) -> None:
+    apply_schema_through(database, 5)
+
+
 def test_schema_v5_migrates_to_v6_with_security_and_local_chat_invariants(
     tmp_path: Path,
 ) -> None:
     database = SQLiteDatabase(tmp_path / "migration" / "app.sqlite3")
     apply_schema_through_v5(database)
     assert database.schema_version() == 5
-    assert database.migrate() == 7
+    assert database.migrate() == 8
     assert database.integrity_check()
 
     with database.connect() as connection:
@@ -1779,3 +1790,443 @@ def test_error_details_round_trip_and_inconsistent_reference_location_fails_clos
         )
     with pytest.raises(ValueError, match="location columns are inconsistent"):
         _ = reference_runtime.repository.get_result(finalizing.id)
+
+
+def make_selection_submission(
+    runtime: Runtime,
+    *,
+    client_message_id: str,
+    suffix: str,
+    text: str = "A precisely selected passage.",
+    part_id: str = "part-0",
+    question: str = "What does this selection mean?",
+) -> ChatSubmission:
+    scope = QueryScope.selection(
+        document_part_id=part_id,
+        locator=SelectionLocator(
+            ChatReferenceLocationType.MARKDOWN_OFFSET,
+            "0-12@" + "a" * 64,
+        ),
+        selected_text=text,
+    )
+    items = (
+        ChatContextItem(
+            kind=ChatContextItemKind.SELECTION,
+            reference_id=part_id,
+            text=text,
+        ),
+    )
+    fingerprint = chat_request_fingerprint(
+        runtime.conversation_id,
+        client_message_id,
+        question,
+        scope,
+    )
+    run = ChatRun.create(
+        run_id=f"run-{suffix}",
+        conversation_id=runtime.conversation_id,
+        client_message_id=client_message_id,
+        user_message_id=f"message-user-{suffix}",
+        assistant_message_id=f"message-assistant-{suffix}",
+        query_scope=scope,
+        question=question,
+        request_fingerprint=fingerprint,
+        context_hash=chat_context_hash(items),
+        now=runtime.now,
+    )
+    messages = ChatMessagePair(
+        user=ChatMessage.user(
+            message_id=run.user_message_id,
+            conversation_id=run.conversation_id,
+            chat_run_id=run.id,
+            client_message_id=client_message_id,
+            content=question,
+            now=runtime.now,
+        ),
+        assistant=ChatMessage.assistant_placeholder(
+            message_id=run.assistant_message_id,
+            conversation_id=run.conversation_id,
+            chat_run_id=run.id,
+            now=runtime.now,
+        ),
+    )
+    return ChatSubmission(messages=messages, run=run, context=items)
+
+
+def test_schema_v7_chat_data_survives_the_v8_chat_runs_rebuild(tmp_path: Path) -> None:
+    database = SQLiteDatabase(tmp_path / "upgrade" / "app.sqlite3")
+    apply_schema_through(database, 7)
+    assert database.schema_version() == 7
+
+    catalog = SQLiteCatalogRepository(database)
+    mappings = SQLiteKnowledgeMappingRepository(database)
+    command = make_import_command(tmp_path, part_count=1)
+    book = Book(
+        id="book-legacy",
+        title="Legacy Book",
+        author="Test Author",
+        source_hash=command.asset.sha256,
+        status=BookStatus.READY,
+        created_at=FIXED_NOW,
+        updated_at=FIXED_NOW,
+    )
+    catalog.add_book(book)
+    catalog.add_asset(book.id, command.asset)
+    for part in command.parts:
+        catalog.add_part(part)
+    mappings.save_workspace(
+        ExternalWorkspace(
+            id="workspace-legacy",
+            book_id=book.id,
+            provider="fake-provider",
+            credential_profile="local-profile",
+            external_id="provider-workspace-legacy",
+            status=KnowledgeStatus.READY,
+            created_at=FIXED_NOW,
+            updated_at=FIXED_NOW,
+        )
+    )
+    with database.connect(immediate=True) as connection:
+        connection.execute(
+            """
+            INSERT INTO conversations(
+                id, book_id, workspace_id, title, status, created_at, updated_at, version
+            ) VALUES ('conversation-legacy', ?, 'workspace-legacy', NULL, 'active', ?, ?, 0)
+            """,
+            (book.id, FIXED_NOW.isoformat(), FIXED_NOW.isoformat()),
+        )
+        connection.execute(
+            """
+            INSERT INTO provider_conversation_bindings(
+                conversation_id, provider, provider_conversation_id, context_generation,
+                health, last_verified_at, created_at, updated_at, version
+            ) VALUES (
+                'conversation-legacy', 'fake-provider', NULL, 0, 'unknown', NULL, ?, ?, 0
+            )
+            """,
+            (FIXED_NOW.isoformat(), FIXED_NOW.isoformat()),
+        )
+        connection.execute(
+            """
+            INSERT INTO chat_runs(
+                id, conversation_id, client_message_id, user_message_id,
+                assistant_message_id, query_scope_type, question_hash,
+                request_fingerprint, status, phase, effective_scope_json, attempt,
+                error_json, cancel_requested_at, lease_owner, lease_expires_at,
+                lease_generation, provider_request_started_at, created_at, updated_at,
+                started_at, completed_at, version
+            ) VALUES (
+                'run-legacy', 'conversation-legacy', 'client-legacy',
+                'message-user-legacy', 'message-assistant-legacy', 'book', ?, ?,
+                'queued', NULL, NULL, 1, NULL, NULL, NULL, NULL, 0, NULL, ?, ?, NULL,
+                NULL, 0
+            )
+            """,
+            ("1" * 64, "2" * 64, FIXED_NOW.isoformat(), FIXED_NOW.isoformat()),
+        )
+        for role, message_id, content, client_id in (
+            ("user", "message-user-legacy", "A legacy question?", "client-legacy"),
+            ("assistant", "message-assistant-legacy", None, None),
+        ):
+            connection.execute(
+                """
+                INSERT INTO chat_messages(
+                    id, conversation_id, chat_run_id, role, content,
+                    client_message_id, created_at, updated_at, version
+                ) VALUES (?, 'conversation-legacy', 'run-legacy', ?, ?, ?, ?, ?, 0)
+                """,
+                (
+                    message_id,
+                    role,
+                    content,
+                    client_id,
+                    FIXED_NOW.isoformat(),
+                    FIXED_NOW.isoformat(),
+                ),
+            )
+        connection.execute(
+            """
+            INSERT INTO chat_run_events(
+                chat_run_id, run_version, event_type, status, phase, error_json, created_at
+            ) VALUES ('run-legacy', 0, 'chat_run.updated', 'queued', NULL, NULL, ?)
+            """,
+            (FIXED_NOW.isoformat(),),
+        )
+        connection.execute(
+            """
+            INSERT INTO chat_provider_attempts(
+                id, chat_run_id, run_attempt, provider, request_fingerprint, status,
+                created_at, updated_at, dispatched_at, resolved_at, version
+            ) VALUES (
+                'attempt-legacy', 'run-legacy', 1, 'fake-provider', ?, 'prepared',
+                ?, ?, NULL, NULL, 0
+            )
+            """,
+            ("2" * 64, FIXED_NOW.isoformat(), FIXED_NOW.isoformat()),
+        )
+        connection.execute(
+            """
+            INSERT INTO chat_references(
+                id, message_id, citation_number, book_id, document_part_id,
+                chapter_refs_json, label, passage, location_type, location_value,
+                created_at
+            ) VALUES (
+                'reference-legacy', 'message-assistant-legacy', 1, ?, 'part-0',
+                '["chapter-1"]', 'Part 1', 'A legacy passage.', NULL, NULL, ?
+            )
+            """,
+            (book.id, FIXED_NOW.isoformat()),
+        )
+
+    assert database.migrate() == 8
+    assert database.integrity_check()
+
+    repository = SQLiteChatRepository(database)
+    migrated = repository.get_run("run-legacy")
+    assert migrated is not None
+    assert migrated.query_scope == QueryScope.book()
+    assert migrated.context_hash is None
+    result = repository.get_result("run-legacy")
+    assert result is not None
+    assert result.assistant_message.content is None
+    assert [reference.id for reference in result.references] == ["reference-legacy"]
+
+    with database.connect() as connection:
+        row = connection.execute(
+            "SELECT query_scope_json, context_hash FROM chat_runs WHERE id = 'run-legacy'"
+        ).fetchone()
+        counts = connection.execute(
+            """
+            SELECT
+                (SELECT count(*) FROM chat_messages) AS messages,
+                (SELECT count(*) FROM chat_run_events) AS events,
+                (SELECT count(*) FROM chat_provider_attempts) AS attempts,
+                (SELECT count(*) FROM chat_references) AS citation_rows,
+                (SELECT count(*) FROM chat_run_contexts) AS contexts
+            """
+        ).fetchone()
+        indexes = {
+            str(index_row["name"])
+            for index_row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            ).fetchall()
+        }
+        leftovers = connection.execute(
+            "SELECT name FROM sqlite_master WHERE name LIKE '%migration_copy%'"
+        ).fetchall()
+    assert row is not None
+    assert str(row["query_scope_json"]) == '{"type":"book"}'
+    assert row["context_hash"] is None
+    assert counts is not None
+    assert (
+        counts["messages"],
+        counts["events"],
+        counts["attempts"],
+        counts["citation_rows"],
+        counts["contexts"],
+    ) == (2, 1, 1, 1, 0)
+    assert {
+        "idx_chat_runs_one_active_per_conversation",
+        "idx_chat_runs_claimable",
+        "idx_chat_runs_expired_lease",
+        "idx_chat_messages_conversation_created_at_id",
+        "idx_chat_references_message_citation",
+        "idx_chat_run_events_run_id_id",
+        "idx_chat_provider_attempts_run_attempt",
+    } <= indexes
+    assert leftovers == []
+
+    with (
+        pytest.raises(sqlite3.IntegrityError),
+        database.connect(immediate=True) as connection,
+    ):
+        connection.execute(
+            "UPDATE chat_runs SET query_scope_type = 'chapters' WHERE id = 'run-legacy'"
+        )
+
+
+def test_selection_submission_persists_body_free_scope_and_context_snapshot(
+    tmp_path: Path,
+) -> None:
+    runtime = make_runtime(tmp_path)
+    submission = make_selection_submission(
+        runtime,
+        client_message_id="client-selection",
+        suffix="selection",
+    )
+    submitted = runtime.repository.submit(submission)
+    assert submitted.disposition is ChatSubmissionDisposition.CREATED
+    assert submitted.run.query_scope.type is QueryScopeType.SELECTION
+
+    context = runtime.repository.get_execution_context(submitted.run.id)
+    assert context is not None
+    assert context.context_items == submission.context
+    reread = runtime.repository.get_run(submitted.run.id)
+    assert reread is not None
+    assert reread.query_scope == submission.run.query_scope
+    assert reread.context_hash == submission.run.context_hash
+
+    with runtime.database.connect() as connection:
+        row = connection.execute(
+            "SELECT query_scope_json FROM chat_runs WHERE id = ?",
+            (submitted.run.id,),
+        ).fetchone()
+        snapshot = connection.execute(
+            "SELECT payload_json, context_hash FROM chat_run_contexts WHERE chat_run_id = ?",
+            (submitted.run.id,),
+        ).fetchone()
+    assert row is not None
+    scope_json = str(row["query_scope_json"])
+    assert (
+        json.dumps(
+            json.loads(scope_json),
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        == scope_json
+    )
+    assert "A precisely selected passage." not in scope_json
+    assert snapshot is not None
+    assert "A precisely selected passage." in str(snapshot["payload_json"])
+
+    with runtime.database.connect(immediate=True) as connection:
+        connection.execute(
+            "UPDATE chat_run_contexts SET payload_json = ? WHERE chat_run_id = ?",
+            ('[{"kind":"selection"}]', submitted.run.id),
+        )
+    with pytest.raises(ValueError, match="unexpected schema"):
+        _ = runtime.repository.get_execution_context(submitted.run.id)
+
+    with runtime.database.connect(immediate=True) as connection:
+        connection.execute(
+            "UPDATE chat_run_contexts SET payload_json = ? WHERE chat_run_id = ?",
+            (
+                '[{"kind":"selection","reference_id":"part-0","text":"Tampered body."}]',
+                submitted.run.id,
+            ),
+        )
+    with pytest.raises(ValueError, match="does not match its recorded hash"):
+        _ = runtime.repository.get_execution_context(submitted.run.id)
+
+
+def test_notes_context_snapshot_is_fenced_replayable_and_scope_json_round_trips(
+    tmp_path: Path,
+) -> None:
+    runtime = make_runtime(tmp_path)
+    scope = QueryScope.notes(("note-1", "note-2"))
+    question = "Connect these notes."
+    fingerprint = chat_request_fingerprint(
+        runtime.conversation_id,
+        "client-notes",
+        question,
+        scope,
+    )
+    run = ChatRun.create(
+        run_id="run-notes",
+        conversation_id=runtime.conversation_id,
+        client_message_id="client-notes",
+        user_message_id="message-user-notes",
+        assistant_message_id="message-assistant-notes",
+        query_scope=scope,
+        question=question,
+        request_fingerprint=fingerprint,
+        now=runtime.now,
+    )
+    messages = ChatMessagePair(
+        user=ChatMessage.user(
+            message_id=run.user_message_id,
+            conversation_id=run.conversation_id,
+            chat_run_id=run.id,
+            client_message_id="client-notes",
+            content=question,
+            now=runtime.now,
+        ),
+        assistant=ChatMessage.assistant_placeholder(
+            message_id=run.assistant_message_id,
+            conversation_id=run.conversation_id,
+            chat_run_id=run.id,
+            now=runtime.now,
+        ),
+    )
+    _ = runtime.repository.submit(ChatSubmission(messages=messages, run=run))
+    persisted = runtime.repository.get_run(run.id)
+    assert persisted is not None
+    assert persisted.query_scope == scope
+    assert persisted.context_hash is None
+
+    claimed = runtime.repository.claim(
+        run.id,
+        "worker-notes",
+        lease_expires_at=runtime.now + timedelta(seconds=5),
+        now=runtime.now,
+    )
+    items = (
+        ChatContextItem(
+            kind=ChatContextItemKind.NOTE,
+            reference_id="note-1",
+            text="First note body.",
+        ),
+        ChatContextItem(
+            kind=ChatContextItemKind.NOTE,
+            reference_id="note-2",
+            text="Second note body.",
+        ),
+    )
+    snapshotted = runtime.repository.persist_context_snapshot(
+        claimed.id,
+        claimed.lease_token,
+        items,
+        now=runtime.now + timedelta(seconds=1),
+    )
+    assert snapshotted.context_hash == chat_context_hash(items)
+    replayed = runtime.repository.persist_context_snapshot(
+        claimed.id,
+        snapshotted.lease_token,
+        items,
+        now=runtime.now + timedelta(seconds=2),
+    )
+    assert replayed == snapshotted
+    with pytest.raises(ChatRepositoryConflictError, match="stale"):
+        _ = runtime.repository.persist_context_snapshot(
+            claimed.id,
+            ChatLeaseToken("worker-stale", 99),
+            items,
+            now=runtime.now + timedelta(seconds=3),
+        )
+    context = runtime.repository.get_execution_context(claimed.id)
+    assert context is not None
+    assert context.context_items == items
+
+
+def test_legacy_five_key_effective_scope_json_still_rehydrates(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    submission = make_submission(
+        runtime,
+        client_message_id="client-legacy-scope",
+        suffix="legacy-scope",
+    )
+    scoped = claim_and_scope(runtime, submission)
+    legacy_payload = json.dumps(
+        {
+            "book_id": runtime.book.id,
+            "chapter_refs": ["chapter-1", "chapter-2"],
+            "document_part_ids": ["part-0", "part-1"],
+            "source_labels": ["Part 1", "Part 2"],
+            "type": "book",
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    with runtime.database.connect(immediate=True) as connection:
+        connection.execute(
+            "UPDATE chat_runs SET effective_scope_json = ? WHERE id = ?",
+            (legacy_payload, scoped.id),
+        )
+    rehydrated = runtime.repository.get_run(scoped.id)
+    assert rehydrated is not None
+    assert rehydrated.effective_scope is not None
+    assert rehydrated.effective_scope.note_ids == ()
+    assert rehydrated.effective_scope.supplemental == ()
+    assert rehydrated.effective_scope.document_part_ids == ("part-0", "part-1")
