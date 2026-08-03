@@ -27,6 +27,11 @@ build/
 dist/
 *.egg-info/
 
+# Node / frontend workspaces (apps/web)
+node_modules/
+*.tsbuildinfo
+.vite/
+
 # Local application state, credentials, SQLite sidecars, and logs
 *.log
 *.db
