@@ -393,13 +393,22 @@ def create_web_app(
     async def index() -> FileResponse:
         return FileResponse(static_root / "index.html", media_type="text/html")
 
-    @app.get("/static/app.css", include_in_schema=False)
-    async def stylesheet() -> FileResponse:
-        return FileResponse(static_root / "app.css", media_type="text/css")
-
-    @app.get("/static/app.js", include_in_schema=False)
-    async def javascript() -> FileResponse:
-        return FileResponse(static_root / "app.js", media_type="text/javascript")
+    @app.get("/assets/{asset_name}", include_in_schema=False)
+    async def built_asset(asset_name: str) -> FileResponse:
+        if (
+            "/" in asset_name
+            or "\\" in asset_name
+            or asset_name.startswith(".")
+            or not (static_root / "assets" / asset_name).is_file()
+        ):
+            raise ApiProblem(404, "NOT_FOUND", "Asset was not found")
+        if asset_name.endswith(".js"):
+            media_type = "text/javascript"
+        elif asset_name.endswith(".css"):
+            media_type = "text/css"
+        else:
+            media_type = "application/octet-stream"
+        return FileResponse(static_root / "assets" / asset_name, media_type=media_type)
 
     @app.post("/api/session/bootstrap")
     async def bootstrap_session(request: Request) -> JSONResponse:
