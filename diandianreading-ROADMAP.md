@@ -1,15 +1,15 @@
 # diandianreading 产品 Roadmap
 
-> 路线版本：v0.1  
-> 对应 PRD：[diandianreading-PRD.md](./diandianreading-PRD.md)  
-> 目标：从产品 PRD 走到可持续运营的正式版本  
-> 更新时间：2026-08-03
+> 路线版本：v0.2（桌面交付轨）
+> 对应 PRD：[diandianreading-PRD.md](./diandianreading-PRD.md)
+> 目标：从产品 PRD 走到可持续维护、可安装和可升级的桌面正式版本
+> 更新时间：2026-08-04
 
 ---
 
 ## 1. 路线总览
 
-diandianreading 采用“个人优先、验证先行、逐步开放”的路线，不直接从大型社交阅读平台开始，而是先验证最重要的闭环：
+diandianreading 采用“个人优先、桌面优先、验证先行、逐步开放”的路线，不直接从大型社交阅读平台或多租户云服务开始，而是先验证最重要的闭环：
 
 ```text
 读一本书
@@ -24,15 +24,31 @@ diandianreading 采用“个人优先、验证先行、逐步开放”的路线�
 | 阶段 | 名称 | 目标 | 主要结果 |
 |---|---|---|---|
 | P0 | PRD 冻结 | 明确产品边界 | 可执行的需求和验收标准 |
-| P1 | 原型验证 | 验证信息架构和核心交互 | 可点击高保真原型 |
-| P2 | 技术地基 | 搭建可持续开发基础 | 本地可运行的产品骨架 |
+| P1 | 原型验证 | 验证信息架构和核心交互 | 桌面窗口尺寸下可点击的高保真原型 |
+| P2 | 技术地基 | 搭建可持续开发基础 | local-first Python 核心与桌面 Sidecar 地基 |
 | P3 | 个人 Alpha | 跑通阅读和标注 | 可真实使用的个人阅读器 |
 | P4 | AI Alpha | 接入 NotebookLM | 书籍问答和内容生成 |
 | P5 | 知识与创作 Beta | 接入 Obsidian 与内容工作台 | 可保存、编辑和复用内容 |
 | P6 | 发布 Beta | 接入 SocialCLI | 预览、排程和多平台发布 |
-| P7 | 私人测试 | 验证真实使用价值 | 5～20 名测试用户 |
-| P8 | 公测准备 | 解决稳定性和安全问题 | 可控规模公测版本 |
-| P9 | v1.0 正式上线 | 对外开放和持续运营 | 正式产品和运营闭环 |
+| P7 | 私人测试 | 验证真实使用价值 | 签名 macOS Desktop Alpha，5～20 名测试用户 |
+| P8 | 公测准备 | 解决稳定性、安全、安装与升级问题 | 签名、公证、可恢复更新的桌面 RC |
+| P9 | v1.0 正式发布 | 发布受支持桌面版本并持续维护 | macOS Stable；满足门槛后增加 Windows |
+
+### 桌面交付轨 / Desktop Track
+
+桌面交付轨是跨越产品阶段的工程门，不替代 P0–P9 的用户价值验收：
+
+| 桌面阶段 | 对应产品阶段 | 交付 |
+| --- | --- | --- |
+| D0 | P0 | Tauri ADR、桌面实施计划、PRD/Roadmap 冻结 |
+| D1 | P2 | Python Sidecar 与 Playwright Provisioning 可行性 |
+| D2 | P2–P3 | Tauri 壳、单实例、Sidecar 生命周期和 packaged offline E2E |
+| D3 | P1–P4 | React/Vite 产品 UI，Browser/Desktop 共用 Build |
+| D4 | P3–P8 | 桌面安全、数据迁移、备份恢复和真实 Provider 验收 |
+| D5 | P7 | 签名、公证的 macOS Desktop Alpha |
+| D6 | P8–P9 | 签名 Updater、Windows 支持与 Stable Gate |
+
+每个 D 阶段独立 PR、direct review、本地构建和 CI；前一阶段退出标准未通过时不开始下一阶段。详细契约见 [桌面应用实施计划](docs/architecture/desktop-application-plan.md)。
 
 ---
 
@@ -53,7 +69,7 @@ diandianreading 采用“个人优先、验证先行、逐步开放”的路线�
 | 第 27～31 周 | P8 | 公测候选版 |
 | 第 31～34 周 | P9 | v1.0 正式上线 |
 
-时间是相对规划，不应替代每阶段的验收门槛。任何阶段没有达到退出标准，都应延长该阶段，而不是直接进入下一阶段。
+时间是相对规划，不应替代每阶段的验收门槛。任何阶段没有达到退出标准，都应延长该阶段，而不是直接进入下一阶段。原 v0.1 时间没有计入 Python Sidecar、Playwright 浏览器分发、Tauri、macOS 签名/公证、Updater 和 Windows 验证；D1 取得真实构建数据前，不为桌面正式发布承诺固定日期。
 
 ---
 
@@ -70,7 +86,7 @@ diandianreading 采用“个人优先、验证先行、逐步开放”的路线�
 - 冻结第一版核心流程：导入 → 阅读 → 标注 → AI → Obsidian → 发布。
 - 确认第一版支持的内容格式：PDF、EPUB、Markdown。
 - 确认第一批社交平台：建议 1 个中文平台 + 1 个国际平台。
-- 确定本地优先还是 Web 优先。
+- 已确定 desktop-first、local-first；CLI/浏览器模式只作为开发、自动化和恢复入口。
 - 明确版权和来源使用边界。
 - 确定数据归属：产品数据库 vs Obsidian Vault。
 
@@ -87,7 +103,8 @@ diandianreading 采用“个人优先、验证先行、逐步开放”的路线�
 
 - 所有 P0 范围内的功能都有明确的“不做什么”。
 - 任何一个核心页面都能描述对应的用户任务和验收标准。
-- 团队对“先做个人工具、后做公开平台”达成一致。
+- 团队对“先做个人桌面工具、后评估公开云平台”达成一致。
+- Tauri/React/Python Sidecar 方向已写入 ADR-0006，但只有通过实现、打包和恢复验证后才能标记 Accepted。
 
 ---
 
@@ -140,7 +157,9 @@ diandianreading 采用“个人优先、验证先行、逐步开放”的路线�
 
 ### 目标
 
-搭建一个足以支撑个人 Alpha 的最小系统，而不是过早建设复杂云架构。
+搭建一个足以支撑个人 Alpha 的最小系统，而不是过早建设复杂云架构。Python 模块化单体是业务核心；桌面化通过 Tauri 壳和受控 Sidecar 增量实现，不重写领域逻辑。
+
+> 工程状态：Phase 0–5 已完成 Python Local API、SQLite、Worker、Provider Adapter、CLI/Web 和离线 E2E；Tauri、React/Vite、standalone Sidecar、签名和桌面 Bundle 尚未实现，按 D0–D6 推进。
 
 ### 必须完成
 
@@ -154,6 +173,9 @@ diandianreading 采用“个人优先、验证先行、逐步开放”的路线�
 - `DocumentPreparationPort`、基础任务队列和外部服务 Adapter 接口；Phase 0 使用 Fake Preparation/Fake Knowledge Adapter。
 - 只有 provider/profile 的 `CredentialRef` 与 Infrastructure Resolver 契约。
 - 本地 API 每安装实例 Token/Session、Peer+Host、same-origin/CSRF、SSE/WS 与资源限制骨架。
+- Tauri 2/Rust 壳与 Python 核心边界：Rust 只负责窗口、单实例、Sidecar 生命周期、最小 Capability、Bundle 和更新。
+- React/TypeScript/Vite UI 与构建边界；Browser/Desktop 使用同一 Build，不引入 Next.js Server。
+- Python standalone Sidecar、版本化父子控制协议、target-triple Artifact 与 Playwright Provisioning Gate。
 - 不含凭据的本地原子备份和恢复脚本。
 
 ### 推荐模块
@@ -197,6 +219,8 @@ class Publisher:
 - Fake Document Preparation + Fake NotebookLM Adapter 可以跑通含调用前 Intent 的持久 Job。
 - Job 非法状态转换、过期 Lease 写入、取消竞态和 remote outcome 歧义被测试拒绝；外部服务失败不会导致主流程崩溃或丢失草稿。
 - 未认证、错误 Host/Origin/CSRF 的本地 API 请求被拒绝；不存在“仅因回环而授权”的业务路由。
+- 干净 macOS Runner 可以构建并启动不依赖系统 Python/Node 的 Sidecar Artifact；缺失资源、端口占用和损坏 Manifest fail closed。
+- Tauri 壳冷启动、重复启动、正常退出与 Sidecar/Tauri 崩溃测试不遗留孤儿 Worker，也不附着或终止未知 `3000` 端口进程。
 
 ---
 
@@ -466,6 +490,10 @@ current_step: creating_workspace → uploading → processing → verifying
 - 关键数据备份。
 - 导出和恢复测试。
 - 版本回滚策略。
+- Tauri 单实例、Sidecar readiness/bootstrap、优雅退出和崩溃恢复。
+- 全新机器安装，不依赖系统 Python、Node、Rust、`uv` 或开发机浏览器 Cache。
+- Sidecar、前端、Schema、Control Protocol 与 Shell 版本兼容 Manifest。
+- 签名更新中断、错误签名拒绝和上一个兼容版本恢复。
 
 ### 安全
 
@@ -476,6 +504,9 @@ current_step: creating_workspace → uploading → processing → verifying
 - URL/每跳 Redirect/浏览器子请求执行 Host/DNS 策略；下载、Archive 和 Parser 有大小、时间、路径、类型、网络和资源硬上限。
 - 上传文件大小、MIME/魔数、哈希和隔离 staging 校验。
 - 删除数据和远程清理均有显式 Intent、审计与可恢复流程，不把取消等同于远程回滚。
+- Tauri 主 WebView 默认无远程 Origin Capability、任意 Shell、任意参数和通配文件权限；Provider 页面不在主 WebView 打开。
+- Sidecar 只从签名 Bundle 的固定 `externalBin` 启动；Bootstrap Secret 不进入参数、环境变量、日志、文件或遥测。
+- macOS App、Sidecar 和 Updater Artifact 完成签名、公证、完整性和错误签名拒绝验证。
 
 ### 合规
 
@@ -496,10 +527,13 @@ current_step: creating_workspace → uploading → processing → verifying
 - Token/Session 轮换与 fail-closed 恢复演练通过；安全迁移失败时不降级为无认证。
 - 删除用户数据演练通过。
 - 第三方异常有降级提示，remote outcome 歧义可人工对账。
+- 签名、公证的 macOS RC 可在没有开发工具的全新用户账户完成核心流程。
+- 重复启动、未知进程占用 `3000`、Sidecar/Tauri 崩溃和正常退出不产生重复 Runtime、误附着或孤儿 Worker。
+- 安装、覆盖升级、更新中断、卸载、用户数据保留和 CLI fallback 均完成恢复演练。
 
 ---
 
-## 12. P9：v1.0 正式上线
+## 12. P9：v1.0 正式桌面发布
 
 ### 上线范围
 
@@ -521,12 +555,16 @@ current_step: creating_workspace → uploading → processing → verifying
 - 批量书籍处理。
 - 自动化无人值守发布。
 
-### 上线前清单
+### 发布前清单
 
-- [ ] 生产环境部署完成。
-- [ ] 域名和 HTTPS 配置完成。
-- [ ] 错误监控完成。
-- [ ] 备份策略完成。
+- [ ] macOS App 与 Python Sidecar 构建可复现。
+- [ ] Apple Developer ID 签名、公证、stapling 与 Gatekeeper 验证完成。
+- [ ] Tauri Updater Artifact 签名、公钥固定、错误签名拒绝和中断恢复完成。
+- [ ] Release Manifest、SBOM、License 清单、SHA-256 和版本兼容信息完成。
+- [ ] 全新机器安装、首次启动、单实例、正常退出和卸载完成。
+- [ ] SQLite/文件备份、Schema migration、兼容降级拒绝和 CLI fallback 完成。
+- [ ] Playwright Chromium Provisioning、离线提示、升级和清理完成。
+- [ ] 错误诊断与本地隐私安全的诊断包完成。
 - [ ] 隐私说明完成。
 - [ ] 使用条款完成。
 - [ ] 新手引导完成。
@@ -536,16 +574,16 @@ current_step: creating_workspace → uploading → processing → verifying
 - [ ] 版本号和变更日志完成。
 - [ ] 回滚方案完成。
 
-### 正式上线方式
+### 正式发布方式
 
-建议采用分批开放：
+建议采用分阶段桌面 Channel：
 
-1. 白名单用户。
-2. 公开邀请链接。
-3. 小规模注册。
-4. 全量开放。
+1. `internal`：维护者未签名/临时签名构建，不接入 Stable 数据与 Updater。
+2. `beta`：签名、公证的 macOS Apple Silicon 小规模测试。
+3. `stable`：满足 D0–D6 门槛的 macOS 稳定下载与签名更新。
+4. `windows-beta`：Windows 独立完成打包、签名、WebView2、路径权限和恢复验证后开放。
 
-不要在第一次上线时同时开放所有平台和所有自动化功能。
+不要在第一次桌面发布时同时开放所有平台、所有 Provider 和无人值守自动发布。公开云账号、跨设备同步和公共分享需要单独产品/架构阶段。
 
 ---
 
@@ -623,6 +661,8 @@ current_step: creating_workspace → uploading → processing → verifying
 
 ### v0.2：个人 Alpha
 
+- Python Sidecar 与 Tauri 内部构建。
+- React/Vite 基础 UI。
 - 本地书籍导入。
 - 阅读器。
 - 标注和笔记。
@@ -631,6 +671,8 @@ current_step: creating_workspace → uploading → processing → verifying
 
 - NotebookLM 接入。
 - 问答和内容生成。
+- 全新 macOS 用户账户完成 Provider 登录和核心流程。
+- Sidecar/Playwright Provisioning 不依赖开发机环境。
 
 ### v0.4：知识 Beta
 
@@ -642,16 +684,19 @@ current_step: creating_workspace → uploading → processing → verifying
 - SocialCLI 接入。
 - 多平台适配和排程。
 
-### v0.9：Release Candidate
+### v0.9：Desktop Release Candidate
 
 - 私测反馈修复。
 - 安全、备份、监控和降级完成。
+- macOS App 签名、公证、Gatekeeper 和签名 Updater 验证完成。
+- 安装、升级、迁移、回滚、卸载和数据保留演练完成。
 
-### v1.0：正式版
+### v1.0：桌面正式版
 
 - 稳定核心流程。
 - 明确的功能边界。
-- 可复现的部署和升级流程。
+- 可复现、可签名的构建、安装和升级流程。
+- macOS Stable；Windows 只有独立满足支持门槛后才进入正式范围。
 
 ---
 
@@ -699,6 +744,10 @@ current_step: creating_workspace → uploading → processing → verifying
 | 媒体处理失败 | 不能发布 | 保留文本稿，提供下载和重试 |
 | 凭证泄露 | 账号和数据风险 | Provider 隔离、opaque CredentialRef、私有权限/所有权、脱敏日志、最小权限 |
 | 本地 API 被网页/同机进程调用 | 文件与远程副作用 | 每安装实例认证、Peer+Host、Origin/CSRF、SSE/WS、限额、禁用 proxy trust |
+| Tauri Capability 或 WebView 导航过宽 | 任意本机能力被不可信内容调用 | 默认无远程 Capability、无任意 Shell/参数/路径，精确 Origin/Window/Command 与负向测试 |
+| Python Sidecar/Playwright 打包不完整 | 用户机器无法启动或登录 | 干净 Runner 构建、target-triple Artifact、资源 Manifest、全新机器 E2E、明确 Provisioning |
+| 壳/Sidecar 崩溃或端口被抢占 | 孤儿 Worker、重复 Runtime、误附着 | 单实例、父子控制协议、身份验证、固定端口 fail closed、优雅关闭与崩溃恢复 |
+| 安装包或更新被篡改 | 本机代码执行与数据破坏 | 应用签名/公证、Updater Artifact 签名、公钥固定、SBOM、错误签名拒绝和回滚演练 |
 | 恶意下载/Archive/Parser | SSRF、路径穿越、资源耗尽 | 逐跳网络策略、流式硬上限、隔离解析与 Archive 限制 |
 | 远程提交后响应丢失 | 重复 Notebook/Source/发布 | 调用前 Intent、correlation key、Lease fencing、reconciliation，不 blind recreation |
 
@@ -735,16 +784,18 @@ current_step: creating_workspace → uploading → processing → verifying
 
 ## 18. 当前最优先的下一步
 
-按照当前进度，建议接下来依次完成：
+按照当前 Phase 0–5 工程进度和桌面决策，建议接下来依次完成：
 
-1. 冻结 PRD v1 和 MVP 范围。
-2. 将高保真 HTML 原型作为交互基线。
-3. 选择技术栈并建立真实应用骨架。
-4. 先实现本地 PDF/EPUB 导入和阅读器。
-5. 实现划线、笔记和进度保存。
-6. 再接入 NotebookLM 问答。
-7. 增加 Obsidian 单向导出。
-8. 最后接入 SocialCLI 的两个平台。
+1. 完成 NotebookLM/Z-Library 真实浏览器手工验收，记录当前 Provider 基线，避免把桌面打包问题与上游兼容问题混在一起。
+2. 完成 D0 文档 PR，冻结 Tauri 2 + React/Vite + Python Sidecar 边界。
+3. 完成 D1 Sidecar/Playwright 可行性：干净 macOS Runner、target-triple Artifact、资源 Manifest 和全新环境 offline E2E。
+4. 完成 D2 Tauri 壳：单实例、控制协议、固定端口、窗口、退出与崩溃恢复；先复用当前静态 UI。
+5. 完成 D3 React/Vite UI 等价迁移，Browser/Desktop 使用同一 Build。
+6. 实现本地 PDF/EPUB 阅读器、划线、笔记和进度保存。
+7. 扩展章节/选区/个人笔记 Chat Scope 与内容生成。
+8. 完成 D4 桌面安全、备份恢复、真实 Provider 与 Playwright Provisioning。
+9. 增加 Obsidian 单向导出和 SocialCLI 目标平台。
+10. 完成 D5/D6 签名、公证、Updater、macOS Alpha/Stable，再进入 Windows。
 
 当前不建议优先做：
 
@@ -762,7 +813,8 @@ current_step: creating_workspace → uploading → processing → verifying
 当用户可以完成以下流程，并且中间没有需要开发者手动介入的步骤时，diandianreading 才算完成 v1.0：
 
 ```text
-注册/打开个人空间
+安装并打开签名桌面应用
+→ 在本机创建/打开个人空间
 → 导入一本合法资料
 → 打开阅读器
 → 阅读并留下划线和想法
