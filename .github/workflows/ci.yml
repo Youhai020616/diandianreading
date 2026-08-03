@@ -32,6 +32,22 @@ jobs:
           enable-cache: true
           version: "0.8.15"
 
+      - name: Build and test web UI
+        working-directory: apps/web
+        run: |
+          npm install -g pnpm@10.26.2
+          pnpm install --frozen-lockfile
+          pnpm test
+          pnpm build
+
+      - name: Verify committed web assets match the build
+        run: |
+          rm -rf src/diandianreading/interfaces/web/static
+          mkdir -p src/diandianreading/interfaces/web/static
+          cp -r apps/web/dist/. src/diandianreading/interfaces/web/static/
+          git diff --exit-code -- src/diandianreading/interfaces/web/static
+          test -z "$(git status --porcelain -- src/diandianreading/interfaces/web/static)"
+
       - name: Install locked dependencies
         run: uv sync --locked --all-groups
 

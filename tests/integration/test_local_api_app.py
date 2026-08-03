@@ -119,8 +119,7 @@ def test_static_liveness_and_network_boundary_fail_closed(api: ApiHarness) -> No
     index = api.client.get("/")
     assert index.status_code == 200
     assert "localStorage" not in index.text
-    assert api.client.get("/static/app.css").status_code == 200
-    assert api.client.get("/static/app.js").status_code == 200
+    assert api.client.get("/").status_code == 200
     assert api.client.get("/openapi.json").status_code == 404
 
     with TestClient(

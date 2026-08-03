@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import stat
 import warnings
 from dataclasses import dataclass
@@ -232,8 +233,10 @@ def run_phase5_demo(home: Path, workspace: Path) -> dict[str, object]:
         index = client.get("/")
         assert index.status_code == 200
         assert "diandianreading" in index.text
-        assert client.get("/static/app.css").status_code == 200
-        assert client.get("/static/app.js").status_code == 200
+        asset_paths = re.findall(r'"\./(assets/[^"]+)"', index.text)
+        assert asset_paths
+        for asset_path in asset_paths:
+            assert client.get(f"/{asset_path}").status_code == 200
 
         response = client.post(
             "/api/session/bootstrap",
