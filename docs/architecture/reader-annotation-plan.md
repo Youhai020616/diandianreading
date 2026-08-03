@@ -60,7 +60,7 @@ Reading surface
 
 ## 4. 交付阶段 / Delivery Phases
 
-R1/R2 是纯 Python 后端,**与桌面 D1/D2 并行**,用 API 级测试与 offline E2E 验收,不等待前端。R3 依赖 D3 的 React 工程就绪。每阶段独立分支、PR、review、CI,前一阶段退出标准通过后才开始下一阶段。
+R1/R2 是纯 Python 后端,**与桌面 D1/D2 并行**,用 API 级测试与 offline E2E 验收,不等待前端。R3 依赖 D3 的 React 工程就绪。每阶段独立分支、PR、review、CI,前一阶段退出标准通过后才开始下一阶段。多工作单元并行执行本计划时,遵循 [并行交付策略](../development/parallel-delivery-strategy.md) 的契约冻结、串行区与评审纪律。
 
 ### R1:正文与章节服务(Python,∥ D1)
 
