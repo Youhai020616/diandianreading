@@ -29,7 +29,7 @@
 - SQLite 作为第一阶段数据库，本地目录作为文件存储。
 - 持久 Worker 执行导入和 NotebookLM 长任务，但 Worker 不监听网络端口。
 - Web/API 对外只暴露一个本地 Origin：`http://localhost:3000`；回环绑定只限制网络暴露，不构成授权，认证、Peer/Host、Origin/CSRF、SSE/WS 与限额遵守 [ADR-0005](0005-local-api-security.md)。
-- 静态原型可逐步演进为 React/Next.js 或其他 Web UI，但前端选择不改变后端领域边界。
+- 静态原型按 [ADR-0006](0006-desktop-first-tauri-python-sidecar.md) 演进为 React/TypeScript/Vite UI，并由 Tauri 2 桌面壳封装；前端与桌面选择不改变后端领域边界。
 - NotebookLM、Z-Library、Obsidian 与发布平台全部通过 application Ports 接入。
 - 本地书籍、标注、笔记和草稿是产品核心数据；第三方服务不可用时这些能力仍须可用。
 
@@ -94,9 +94,9 @@ worker → application use cases
 
 暂不采用。当前没有独立扩缩容需求或团队边界；服务拆分会增加部署、观测、认证和一致性成本，却不能改善首个阅读闭环。
 
-### 纯桌面原生应用
+### 纯桌面原生业务重写
 
-暂不采用。当前已有 Web 原型，阅读器可利用 PDF.js/epub.js，Python 本地服务也更容易集成现有两个项目。未来可以用桌面壳包装同一 Web UI。
+不采用。阅读器继续利用 PDF.js/epub.js，Python 本地服务继续集成现有 Provider；不会把 Domain、Worker、NotebookLM 或文档处理重写为原生 Rust。长期产品使用 [ADR-0006](0006-desktop-first-tauri-python-sidecar.md) 的 Tauri 桌面壳包装同一 Web UI 与 Python Sidecar。
 
 ### TypeScript 单后端
 
@@ -122,3 +122,5 @@ worker → application use cases
 - [ADR-0003](0003-provider-credential-isolation.md)
 - [ADR-0004](0004-durable-import-saga.md)
 - [ADR-0005](0005-local-api-security.md)
+- [ADR-0006](0006-desktop-first-tauri-python-sidecar.md)
+- [桌面应用实施计划](../desktop-application-plan.md)

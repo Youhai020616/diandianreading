@@ -2,13 +2,14 @@
 
 > 状态：Active
 >
-> 最后更新：2026-08-03
+> 最后更新：2026-08-04
 
 本目录记录 `diandianreading` 的目标架构与架构决策。已通过实现、故障注入、构建与 CI 验证的决策应标记为 `Accepted`；其余仍保持 `Proposed`，不得用规划状态替代验证证据。
 
 ## 核心文档
 
 - [两项目集成计划](integration-plan.md)
+- [Tauri 2 桌面应用实施计划](desktop-application-plan.md)
 - [AI 对话功能设计](../features/ai-chat.md)
 - [完整 API 参考](../api.md)
 
@@ -21,6 +22,7 @@
 | [ADR-0003](adr/0003-provider-credential-isolation.md) | Proposed | Provider 凭据物理隔离，业务数据库只保存引用 |
 | [ADR-0004](adr/0004-durable-import-saga.md) | Accepted | 资料导入使用可恢复的持久化 Saga/Job 状态机 |
 | [ADR-0005](adr/0005-local-api-security.md) | Proposed | 回环 API 仍执行每安装实例认证与浏览器安全边界 |
+| [ADR-0006](adr/0006-desktop-first-tauri-python-sidecar.md) | Proposed | 桌面优先采用 Tauri 2 壳、React/Vite UI 与 Python Sidecar |
 
 新增 ADR 时从 [模板](adr/0000-template.md) 开始。
 
@@ -60,11 +62,13 @@ flowchart TD
 
 以下是假设，不是已经完成的功能：
 
-- 第一版为单用户、local-first 桌面/Web 工作台。
-- 对外只暴露 `localhost:3000`；Worker 不监听端口。回环不等于授权，本地 API 约束见 [ADR-0005](adr/0005-local-api-security.md)。
-- Python 负责后端、文档处理和第三方集成。
+- 第一版为单用户、local-first、desktop-first 工作台；目标桌面壳是 Tauri 2，完整计划见 [桌面应用实施计划](desktop-application-plan.md)。
+- CLI 与浏览器模式保留为开发、自动化和桌面故障恢复入口；桌面、浏览器不建立两套业务核心。
+- 对外只暴露 `localhost:3000`；Worker 不监听独立端口。回环不等于授权，本地 API 约束见 [ADR-0005](adr/0005-local-api-security.md)。
+- React/TypeScript/Vite 是目标 UI，Tauri/Rust 负责桌面生命周期；它们均不承载 Python Domain/Application 业务逻辑。
+- Python 负责后端、文档处理、持久 Worker 和第三方集成，并在桌面模式打包为受控 Sidecar。
 - SQLite 和本地文件存储作为第一阶段基础设施。
 - NotebookLM、Z-Library、Obsidian 和发布平台都通过 Adapter 接入。
 - 任何第三方失败都不能破坏本地书籍、标注、笔记或草稿。
 
-如果产品从单用户本地工具转为多租户云服务，必须重新评审 ADR-0001、ADR-0003、ADR-0004 和 ADR-0005。
+如果产品从单用户本地工具转为多租户云服务，必须重新评审 ADR-0001、ADR-0003、ADR-0004、ADR-0005 和 ADR-0006。

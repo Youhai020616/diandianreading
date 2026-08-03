@@ -4,7 +4,7 @@
 >
 > 目标阶段：Roadmap P2-P4
 >
-> 最后更新：2026-08-03
+> 最后更新：2026-08-04
 
 ## 1. 目的
 
@@ -23,7 +23,9 @@
 - [产品 Roadmap](../../diandianreading-ROADMAP.md)
 - [现有 API 参考](../api.md)
 - [AI 对话功能设计](../features/ai-chat.md)
+- [Tauri 2 桌面应用实施计划](desktop-application-plan.md)
 - [ADR-0005：本地 API 安全](adr/0005-local-api-security.md)
+- [ADR-0006：桌面优先 Tauri/Python Sidecar](adr/0006-desktop-first-tauri-python-sidecar.md)
 
 ## 2. 已确认的现状
 
@@ -786,17 +788,20 @@ attestation_version, attested_at, acquisition_job_id?, content_sha256?
 - URL/下载/Parser/权利策略升级采用 fail closed。若新规则误拒绝合法资料，可回滚解析代码或调整经评审的有限配置，但不能回退到任意 URL、无限下载、跟随符号链接或跳过权利确认。
 - 回滚前保留数据库和文档对象的私有原子备份；quarantined/staging 文件不当作成功 Asset。已产生的远程资源遵守 ADR-0004 Intent/reconciliation，不能为“恢复干净状态”盲目删除或重建。
 
-## 17. 尚待确认
+## 17. 桌面承接与尚待确认
 
-- 前端最终选择 React/Next.js，还是先演进静态原型。
+Phase 0–5 的集成结果继续作为唯一 Python 业务核心。长期产品已经确认使用 React/TypeScript/Vite UI、Tauri 2 桌面壳与 Python Sidecar；初始桌面版本复用 `localhost:3000` HTTP/SSE 和 ADR-0005，不在同一阶段重写 Tauri IPC。完整生命周期、打包、安全、发布和 D0–D6 Gate 见 [桌面应用实施计划](desktop-application-plan.md) 与 [ADR-0006](adr/0006-desktop-first-tauri-python-sidecar.md)。
+
+仍待证据确认：
+
 - 首个稳定 Python 版本是否固定为 3.12。
 - `notebooklm-py` 长期采用仓库内 Fork 还是固定外部版本。
 - PDF 超过 NotebookLM 限制时，采用 PDF 拆页还是提取文本分块。
 - Phase 5 已采用每本书一个活跃本地 Conversation/Provider Conversation；何时迁移到稳定的多 Conversation 能力仍待确认。
 - 派生 Markdown/Part 成功上传后保留多久。
-- Phase 5 已采用短时单次 Fragment Bootstrap Nonce；桌面安装器成熟后是否迁移到 OS IPC 仍待确认。
+- Phase 5 已采用短时单次 Fragment Bootstrap Nonce；桌面首版通过受限父子控制通道把单次 Nonce 交给同源 WebView。是否在后续以 Tauri IPC 替代业务 HTTP/SSE，必须另行 ADR，不是 D0–D3 的默认目标。
 - Phase 1 已提供有限默认阈值；仍需根据低配置设备实测决定是否收紧或分级配置。
 - `RightsProvenance` 各 `rights_basis` 所需证据、保留期与用户更正流程。
 - Live-provider CI 使用哪个 protected environment、专用账号和运行频率。
 
-这些问题不阻塞 Phase 0 的 Domain、Ports、Job 和 Fake Adapter 建设；但对应安全入口、真实 Parser、Z-Library Adapter 或 Live-provider CI 在决定并验证前不能启用。
+这些问题不否定已交付的 Phase 0–5 Domain、Ports、Job、Adapter、CLI/Web/API 和离线 E2E；但对应桌面打包、真实 Provider、平台发布或 Live-provider CI 在决定并验证前不能声明完成。
