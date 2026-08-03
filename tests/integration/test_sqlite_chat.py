@@ -72,7 +72,7 @@ class Runtime:
 
 def make_runtime(tmp_path: Path) -> Runtime:
     database = SQLiteDatabase(tmp_path / "state" / "app.sqlite3")
-    assert database.migrate() == 6
+    assert database.migrate() == 7
     catalog = SQLiteCatalogRepository(database)
     mappings = SQLiteKnowledgeMappingRepository(database)
     command = make_import_command(tmp_path, part_count=2)
@@ -298,7 +298,7 @@ def test_schema_v5_migrates_to_v6_with_security_and_local_chat_invariants(
     database = SQLiteDatabase(tmp_path / "migration" / "app.sqlite3")
     apply_schema_through_v5(database)
     assert database.schema_version() == 5
-    assert database.migrate() == 6
+    assert database.migrate() == 7
     assert database.integrity_check()
 
     with database.connect() as connection:

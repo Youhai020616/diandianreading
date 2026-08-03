@@ -40,7 +40,7 @@ def test_phase4_cli_runs_governed_adapter_offline_and_refuses_overwrite(tmp_path
     payload = json.loads(completed.stdout)
     assert payload == {
         "status": "ok",
-        "schema_version": 6,
+        "schema_version": 7,
         "default_disabled_gate_verified": True,
         "rights_record_count": 2,
         "rights_event_count": 4,
