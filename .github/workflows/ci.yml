@@ -104,6 +104,12 @@ jobs:
           --app-home .tmp/ci-wheel/r1/app-home
           --workspace .tmp/ci-wheel/r1/workspace
 
+      - name: Run installed-wheel R2 annotation smoke
+        run: >-
+          .tmp/ci-wheel-venv/bin/diandian r2-e2e
+          --app-home .tmp/ci-wheel/r2/app-home
+          --workspace .tmp/ci-wheel/r2/workspace
+
   test:
     name: Test Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest

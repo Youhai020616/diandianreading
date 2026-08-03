@@ -18,7 +18,11 @@ from diandianreading.application.use_cases.reading import (
     BookDetailView,
     ReadingDocumentView,
 )
-from diandianreading.domain.annotations import ContentAnchor, ReadingProgress
+from diandianreading.domain.annotations import (
+    Annotation,
+    ContentAnchor,
+    ReadingProgress,
+)
 from diandianreading.domain.chat import (
     ChatError,
     ChatMessage,
@@ -80,6 +84,31 @@ def content_anchor(value: ContentAnchor) -> dict[str, object]:
         "start": value.start,
         "end": value.end,
         "chapter_ref": value.chapter_ref,
+        "quote": (
+            {
+                "exact": value.quote.exact,
+                "prefix": value.quote.prefix,
+                "suffix": value.quote.suffix,
+            }
+            if value.quote is not None
+            else None
+        ),
+    }
+
+
+def annotation(value: Annotation) -> dict[str, object]:
+    return {
+        "id": value.id,
+        "book_id": value.book_id,
+        "kind": value.kind.value,
+        "status": value.status.value,
+        "anchor": content_anchor(value.anchor) if value.anchor is not None else None,
+        "selected_text": value.selected_text,
+        "body": value.body,
+        "color": value.color.value if value.color is not None else None,
+        "created_at": iso(value.created_at),
+        "updated_at": iso(value.updated_at),
+        "version": value.version,
     }
 
 

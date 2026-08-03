@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from diandianreading.application.use_cases.annotations import AnnotationService
 from diandianreading.application.use_cases.catalog import CatalogService
 from diandianreading.application.use_cases.chat import ChatUseCase
 from diandianreading.application.use_cases.import_book import ImportBookUseCase
@@ -43,6 +44,9 @@ from diandianreading.infrastructure.persistence import (
     SQLiteDatabase,
     SQLiteKnowledgeMappingRepository,
     SQLiteUnitOfWorkFactory,
+)
+from diandianreading.infrastructure.persistence.annotations import (
+    SQLiteAnnotationRepository,
 )
 from diandianreading.infrastructure.persistence.chat import SQLiteChatRepository
 from diandianreading.infrastructure.persistence.reading import (
@@ -128,6 +132,7 @@ class ApplicationRuntime:
     jobs: JobService
     catalog: CatalogService
     reading: ReadingService
+    annotations: AnnotationService
     chat: ChatUseCase
     security: LocalApiSecurityService
     install_tokens: InstallTokenStore
@@ -234,6 +239,10 @@ def create_runtime(
         processor=PolicyReadingDocumentProcessor(),
         progress=SQLiteReadingProgressRepository(database),
     )
+    annotations = AnnotationService(
+        repository=SQLiteAnnotationRepository(database),
+        reading=reading,
+    )
     chat = ChatUseCase(
         repository=SQLiteChatRepository(database),
         knowledge_query=notebooklm_adapter,
@@ -260,6 +269,7 @@ def create_runtime(
         jobs=jobs,
         catalog=catalog,
         reading=reading,
+        annotations=annotations,
         chat=chat,
         security=security,
         install_tokens=install_tokens,

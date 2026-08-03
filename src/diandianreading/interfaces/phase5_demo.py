@@ -16,6 +16,7 @@ from diandianreading.application.ports import (
     AcquisitionRequest,
     ProgressSink,
 )
+from diandianreading.application.use_cases.annotations import AnnotationService
 from diandianreading.application.use_cases.catalog import CatalogService
 from diandianreading.application.use_cases.chat import ChatUseCase
 from diandianreading.application.use_cases.import_book import ImportBookUseCase
@@ -40,6 +41,9 @@ from diandianreading.infrastructure.documents import (
 from diandianreading.infrastructure.fakes import FakeKnowledgeAdapter
 from diandianreading.infrastructure.local_api import InstallTokenStore, LocalApiSecurityService
 from diandianreading.infrastructure.persistence import SQLiteDatabase, SQLiteUnitOfWorkFactory
+from diandianreading.infrastructure.persistence.annotations import (
+    SQLiteAnnotationRepository,
+)
 from diandianreading.infrastructure.persistence.chat import SQLiteChatRepository
 from diandianreading.infrastructure.persistence.reading import (
     SQLiteReadingProgressRepository,
@@ -108,6 +112,7 @@ class Phase5DemoRuntime:
     jobs: JobService
     catalog: CatalogService
     reading: ReadingService
+    annotations: AnnotationService
     chat: ChatUseCase
     security: LocalApiSecurityService
     notebooklm_session: ProviderSessionPort
@@ -170,11 +175,17 @@ def create_phase5_demo_runtime(home: Path) -> tuple[Phase5DemoRuntime, SQLiteDat
         imports=imports,
         jobs=JobService(unit_of_work=unit_of_work),
         catalog=CatalogService(unit_of_work=unit_of_work),
-        reading=ReadingService(
-            unit_of_work=unit_of_work,
-            file_store=store,
-            processor=PolicyReadingDocumentProcessor(),
-            progress=SQLiteReadingProgressRepository(database),
+        reading=(
+            reading := ReadingService(
+                unit_of_work=unit_of_work,
+                file_store=store,
+                processor=PolicyReadingDocumentProcessor(),
+                progress=SQLiteReadingProgressRepository(database),
+            )
+        ),
+        annotations=AnnotationService(
+            repository=SQLiteAnnotationRepository(database),
+            reading=reading,
         ),
         chat=chat,
         security=security,

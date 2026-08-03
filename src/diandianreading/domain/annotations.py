@@ -152,8 +152,11 @@ class Annotation:
         if self.kind is AnnotationKind.HIGHLIGHT:
             if self.anchor is None or self.anchor.quote is None:
                 raise ValueError("Highlights require an anchor with a re-anchoring quote")
-            if not self.anchor.is_range:
-                raise ValueError("Highlights require a non-empty anchored range")
+            if (
+                self.anchor.type is ChatReferenceLocationType.MARKDOWN_OFFSET
+                and not self.anchor.is_range
+            ):
+                raise ValueError("Markdown highlights require a non-empty anchored range")
             if self.selected_text is None:
                 raise ValueError("Highlights require selected_text")
             if self.anchor.quote.exact != self.selected_text:

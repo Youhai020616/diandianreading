@@ -21,6 +21,11 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from starlette.middleware.base import RequestResponseEndpoint
 
 from diandianreading.application.ports.chat import ChatMessageCursor
+from diandianreading.application.use_cases.annotations import (
+    AnnotationCursor,
+    AnnotationNotFoundError,
+    AnnotationService,
+)
 from diandianreading.application.use_cases.catalog import (
     BookCursor,
     BookNotFoundError,
@@ -51,7 +56,12 @@ from diandianreading.domain import (
     RightsBasis,
     TargetCapabilities,
 )
-from diandianreading.domain.annotations import ContentAnchor
+from diandianreading.domain.annotations import (
+    AnnotationColor,
+    AnnotationStatus,
+    ContentAnchor,
+    TextQuote,
+)
 from diandianreading.domain.chat import (
     ChatErrorCode,
     ChatMessageRole,
@@ -130,6 +140,7 @@ class WebRuntime(Protocol):
     jobs: JobService
     catalog: CatalogService
     reading: ReadingService
+    annotations: AnnotationService
     chat: ChatUseCase
     security: LocalApiSecurityService
     worker: WorkerRunner
@@ -195,7 +206,7 @@ def create_web_app(
     boundary = LocalHttpSecurityBoundary(runtime.security, http_config)
     bootstrap_limiter = FixedWindowRateLimiter(limit=8, window_seconds=60.0)
     mutation_limiter = FixedWindowRateLimiter(limit=60, window_seconds=60.0)
-    progress_limiter = FixedWindowRateLimiter(limit=240, window_seconds=60.0)
+    reader_limiter = FixedWindowRateLimiter(limit=240, window_seconds=60.0)
     sse_limiter = SseConnectionLimiter(http_config.max_sse_connections_per_session)
     static_root = Path(__file__).with_name("static")
 
@@ -285,6 +296,7 @@ def create_web_app(
 
     @app.exception_handler(JobNotFoundError)
     @app.exception_handler(BookNotFoundError)
+    @app.exception_handler(AnnotationNotFoundError)
     async def handle_not_found(_: Request, error: Exception) -> JSONResponse:
         del error
         return _problem_response(
@@ -571,7 +583,7 @@ def create_web_app(
 
     @app.put("/api/books/{book_id}/progress")
     async def put_reading_progress(book_id: str, request: Request) -> dict[str, object]:
-        _ = authorize(request, mutate=True, limiter=progress_limiter)
+        _ = authorize(request, mutate=True, limiter=reader_limiter)
         payload = await _read_json_object(request, http_config.max_json_bytes)
         _require_exact_fields(payload, required={"anchor", "percent"})
         anchor = _content_anchor(payload["anchor"])
@@ -580,6 +592,92 @@ def create_web_app(
             raise ApiProblem(422, "VALIDATION", "percent must be a number")
         progress = runtime.reading.save_progress(book_id, anchor, float(percent))
         return serializers.envelope({"progress": serializers.reading_progress(progress)})
+
+    @app.post("/api/books/{book_id}/annotations", status_code=201)
+    async def create_annotation(book_id: str, request: Request) -> JSONResponse:
+        _ = authorize(request, mutate=True, limiter=reader_limiter)
+        payload = await _read_json_object(request, http_config.max_json_bytes)
+        kind = payload.get("kind")
+        if kind == "highlight":
+            _require_exact_fields(
+                payload,
+                required={"kind", "anchor", "selected_text", "color"},
+                optional={"body"},
+            )
+            annotation = runtime.annotations.create_highlight(
+                book_id,
+                anchor=_content_anchor(payload["anchor"], quote="required"),
+                selected_text=_annotation_text(payload, "selected_text"),
+                body=_optional_annotation_text(payload, "body"),
+                color=_annotation_color(payload["color"]),
+            )
+        elif kind == "note":
+            _require_exact_fields(payload, required={"kind", "body"}, optional={"anchor"})
+            raw_anchor = payload.get("anchor")
+            annotation = runtime.annotations.create_note(
+                book_id,
+                body=_annotation_text(payload, "body"),
+                anchor=(
+                    _content_anchor(raw_anchor, quote="optional")
+                    if raw_anchor is not None
+                    else None
+                ),
+            )
+        else:
+            raise ApiProblem(422, "VALIDATION", "kind must be highlight or note")
+        return JSONResponse(
+            serializers.envelope({"annotation": serializers.annotation(annotation)}),
+            status_code=201,
+        )
+
+    @app.get("/api/books/{book_id}/annotations")
+    async def list_annotations(book_id: str, request: Request) -> dict[str, object]:
+        _ = authorize(request)
+        page = runtime.annotations.list_for_book(
+            book_id,
+            statuses=_annotation_statuses(request),
+            limit=_annotation_limit(request),
+            before=_annotation_cursor(request),
+        )
+        return serializers.envelope(
+            {
+                "annotations": [serializers.annotation(item) for item in page.items],
+                "next_cursor": (
+                    {
+                        "created_at": serializers.iso(page.next_cursor.created_at),
+                        "id": page.next_cursor.id,
+                    }
+                    if page.next_cursor is not None
+                    else None
+                ),
+            }
+        )
+
+    @app.patch("/api/annotations/{annotation_id}")
+    async def edit_annotation(annotation_id: str, request: Request) -> dict[str, object]:
+        _ = authorize(request, mutate=True, limiter=reader_limiter)
+        payload = await _read_json_object(request, http_config.max_json_bytes)
+        _require_exact_fields(payload, required=set(), optional={"body", "color"})
+        if not payload:
+            raise ApiProblem(422, "VALIDATION", "At least one editable field is required")
+        body_change: tuple[str | None] | None = None
+        if "body" in payload:
+            body_change = (_optional_annotation_text(payload, "body"),)
+        color = _annotation_color(payload["color"]) if "color" in payload else None
+        annotation = runtime.annotations.edit(annotation_id, body_change=body_change, color=color)
+        return serializers.envelope({"annotation": serializers.annotation(annotation)})
+
+    @app.delete("/api/annotations/{annotation_id}")
+    async def delete_annotation(annotation_id: str, request: Request) -> dict[str, object]:
+        _ = authorize(request, mutate=True, limiter=reader_limiter)
+        annotation = runtime.annotations.soft_delete(annotation_id)
+        return serializers.envelope({"annotation": serializers.annotation(annotation)})
+
+    @app.post("/api/annotations/{annotation_id}/restore")
+    async def restore_annotation(annotation_id: str, request: Request) -> dict[str, object]:
+        _ = authorize(request, mutate=True, limiter=reader_limiter)
+        annotation = runtime.annotations.restore(annotation_id)
+        return serializers.envelope({"annotation": serializers.annotation(annotation)})
 
     @app.get("/api/books/{book_id}/conversation")
     async def get_book_conversation(book_id: str, request: Request) -> dict[str, object]:
@@ -954,14 +1052,21 @@ def _optional_int(payload: Mapping[str, object], key: str) -> int | None:
     return value
 
 
-def _content_anchor(value: object) -> ContentAnchor:
+def _content_anchor(
+    value: object,
+    *,
+    quote: str = "forbidden",
+) -> ContentAnchor:
     if not isinstance(value, Mapping):
         raise ApiProblem(422, "VALIDATION", "anchor must be an object")
     payload = cast(Mapping[str, object], value)
+    optional = {"start", "end", "chapter_ref"}
+    if quote != "forbidden":
+        optional.add("quote")
     _require_exact_fields(
         payload,
         required={"type", "anchor_sha256"},
-        optional={"start", "end", "chapter_ref"},
+        optional=optional,
     )
     raw_type = payload.get("type")
     if not isinstance(raw_type, str):
@@ -976,14 +1081,102 @@ def _content_anchor(value: object) -> ContentAnchor:
     chapter_ref = payload.get("chapter_ref")
     if chapter_ref is not None and not isinstance(chapter_ref, str):
         raise ApiProblem(422, "VALIDATION", "chapter_ref must be text")
+    parsed_quote = _text_quote(payload.get("quote"))
+    if quote == "required" and parsed_quote is None:
+        raise ApiProblem(422, "VALIDATION", "anchor quote is required")
     return ContentAnchor(
         type=location_type,
         anchor_sha256=sha256,
         start=_optional_int(payload, "start"),
         end=_optional_int(payload, "end"),
         chapter_ref=chapter_ref,
-        quote=None,
+        quote=parsed_quote,
     )
+
+
+def _text_quote(value: object) -> TextQuote | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ApiProblem(422, "VALIDATION", "anchor quote must be an object")
+    payload = cast(Mapping[str, object], value)
+    _require_exact_fields(payload, required={"exact"}, optional={"prefix", "suffix"})
+    parts: dict[str, str] = {}
+    for key in ("exact", "prefix", "suffix"):
+        raw = payload.get(key, "")
+        if not isinstance(raw, str):
+            raise ApiProblem(422, "VALIDATION", f"quote {key} must be text")
+        parts[key] = raw
+    return TextQuote(exact=parts["exact"], prefix=parts["prefix"], suffix=parts["suffix"])
+
+
+def _annotation_text(payload: Mapping[str, object], key: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or not value:
+        raise ApiProblem(422, "VALIDATION", f"{key} must be non-empty text")
+    return value
+
+
+def _optional_annotation_text(payload: Mapping[str, object], key: str) -> str | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise ApiProblem(422, "VALIDATION", f"{key} must be non-empty text or null")
+    return value
+
+
+def _annotation_color(value: object) -> AnnotationColor:
+    if not isinstance(value, str):
+        raise ApiProblem(422, "VALIDATION", "color must be text")
+    try:
+        return AnnotationColor(value)
+    except ValueError:
+        raise ApiProblem(422, "VALIDATION", "color is not supported") from None
+
+
+def _annotation_limit(request: Request) -> int:
+    raw = request.query_params.get("limit")
+    if raw is None:
+        return 50
+    try:
+        limit = int(raw)
+    except ValueError:
+        raise ApiProblem(422, "VALIDATION", "limit must be an integer") from None
+    if limit < 1 or limit > 100:
+        raise ApiProblem(422, "VALIDATION", "limit must be between 1 and 100")
+    return limit
+
+
+def _annotation_statuses(request: Request) -> tuple[AnnotationStatus, ...]:
+    raw = request.query_params.get("status")
+    if raw is None:
+        return (AnnotationStatus.ACTIVE, AnnotationStatus.ORPHANED)
+    statuses: list[AnnotationStatus] = []
+    for token in raw.split(","):
+        try:
+            status = AnnotationStatus(token.strip())
+        except ValueError:
+            raise ApiProblem(422, "VALIDATION", "status filter is not supported") from None
+        if status not in statuses:
+            statuses.append(status)
+    if not statuses:
+        raise ApiProblem(422, "VALIDATION", "status filter cannot be empty")
+    return tuple(statuses)
+
+
+def _annotation_cursor(request: Request) -> AnnotationCursor | None:
+    created_at = request.query_params.get("before_created_at")
+    identifier = request.query_params.get("before_id")
+    if created_at is None and identifier is None:
+        return None
+    if created_at is None or identifier is None:
+        raise ApiProblem(422, "VALIDATION", "before_created_at and before_id must be paired")
+    try:
+        parsed = datetime.fromisoformat(created_at)
+    except ValueError:
+        raise ApiProblem(422, "VALIDATION", "before_created_at must be ISO-8601") from None
+    return AnnotationCursor(created_at=parsed, id=identifier)
 
 
 def _book_query(request: Request) -> BookQuery:
