@@ -100,6 +100,7 @@ _CSP = "; ".join(
         "img-src 'self'",
         "font-src 'self'",
         "connect-src 'self'",
+        "worker-src 'self'",
         "base-uri 'none'",
         "form-action 'self'",
         "frame-ancestors 'none'",
@@ -402,7 +403,7 @@ def create_web_app(
             or not (static_root / "assets" / asset_name).is_file()
         ):
             raise ApiProblem(404, "NOT_FOUND", "Asset was not found")
-        if asset_name.endswith(".js"):
+        if asset_name.endswith((".js", ".mjs")):
             media_type = "text/javascript"
         elif asset_name.endswith(".css"):
             media_type = "text/css"
