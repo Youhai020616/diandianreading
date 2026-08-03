@@ -4,7 +4,7 @@
 >
 > 最后更新：2026-08-03
 
-本目录保存 `diandianreading` 的产品、架构、集成和功能设计文档。运行代码尚未建立时，文档中的 `Proposed` 表示目标设计，不代表已经实现。
+本目录保存 `diandianreading` 的产品、架构、集成和功能设计文档。Phase 0–2 已有可执行实现；文档中的 `Proposed` 仍只表示目标设计或尚未完成全部验收，不代表已经实现。
 
 ## 文档地图
 
@@ -14,11 +14,12 @@
 | [产品 Roadmap](../diandianreading-ROADMAP.md) | P0-P9 阶段目标与退出标准 | Draft v0.1 |
 | [API 参考](api.md) | `notebooklm-py`、`zlibrary-to-notebooklm` 及现有集成契约 | Active |
 | [架构文档索引](architecture/README.md) | 架构阅读顺序、ADR 状态和规则 | Active |
-| [两项目集成计划](architecture/integration-plan.md) | 目标架构、抽象边界、重构路径和分阶段迁移 | Proposed |
+| [两项目集成计划](architecture/integration-plan.md) | 目标架构、抽象边界、重构路径和分阶段迁移 | Active |
 | [本地 API 安全 ADR](architecture/adr/0005-local-api-security.md) | 每安装实例认证、同源浏览器边界、SSE/WS 与资源限制 | Proposed |
 | [AI 对话功能设计](features/ai-chat.md) | 可视化对话、引用、会话与 API 设计 | Proposed |
 | [Phase 0 本地 E2E](development/phase-0-e2e.md) | Fake Adapter、SQLite 与 Job 全链路验证 | Active |
 | [Phase 1 文档处理 E2E](development/phase-1-e2e.md) | 本地 Acquisition、Markdown/EPUB/PDF Preparation 与真实对象存储验证 | Active |
+| [Phase 2 NotebookLM Adapter E2E](development/phase-2-e2e.md) | 公开 Python SDK 边界、凭据隔离、引用映射、生成与下载验证 | Active |
 
 ## 推荐阅读顺序
 
@@ -30,6 +31,7 @@
 6. [AI 对话功能设计](features/ai-chat.md)：了解第一个 NotebookLM 用户界面。
 7. [Phase 0 本地 E2E](development/phase-0-e2e.md)：验证架构地基的可执行链路。
 8. [Phase 1 文档处理 E2E](development/phase-1-e2e.md)：验证真实本地文档处理、对象存储和持久化链路。
+9. [Phase 2 NotebookLM Adapter E2E](development/phase-2-e2e.md)：验证公开 SDK Adapter、凭据路径隔离、引用恢复和内容资产发布。
 
 ## 状态词
 

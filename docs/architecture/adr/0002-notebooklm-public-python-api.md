@@ -4,6 +4,8 @@
 
 `Proposed`
 
+> Phase 2 implementation is active, but this ADR remains Proposed until the protected live-provider and Phase 3 crash-recovery validation items below are satisfied.
+
 ## Date
 
 2026-08-03
@@ -26,7 +28,7 @@ notebooklm source add '<path>' --json
 - 子进程无法自然传递类型化异常、上传进度和 Client 生命周期。
 - Source 创建后没有可靠等待 ready 的统一流程。
 
-PRD 原计划第一阶段使用 CLI，稳定后切换 Python API。但当前仓库已经包含 `notebooklm-py 0.8.0rc1`，其公开 `NotebookLMClient` 提供创建 Notebook、添加文件、等待 Source、问答、生成和下载能力，并具有完整测试与异常体系。
+PRD 原计划第一阶段使用 CLI，稳定后切换 Python API。工作区的只读参考源码与 PyPI `notebooklm-py==0.8.0rc1` 一致；其公开 `NotebookLMClient` 提供创建 Notebook、添加文件、等待 Source、问答、生成和下载能力，并具有完整测试与异常体系。
 
 `notebooklm-py` 同时包含 `_app/`、`_runtime/` 和 RPC 内部实现；其稳定性文档明确将下划线模块和大部分 RPC 模块排除在公共兼容保证之外。
 
@@ -41,8 +43,8 @@ PRD 原计划第一阶段使用 CLI，稳定后切换 Python API。但当前仓�
 - 每个 Worker 进程、事件循环和 Profile 创建自己的 Client；Client 不跨线程或事件循环共享。
 - Application 只传递不含路径的 `CredentialRef(provider, profile)` 与 `StorageKey`；Infrastructure 分别解析、校验并限制凭据路径和文档路径，再把显式绝对路径传给 SDK。
 - 每次 Notebook/Source/Artifact 等远程写调用前，先按 ADR-0004 持久化独立 operation intent 与 correlation key；SDK 的进程内 probe/retry 不能替代跨进程 checkpoint。
-- 固定已验证的 package 版本或 Git commit。
-- 本地维护的登录域名/Playwright 修复应形成最小 patch queue，并优先贡献上游。
+- 生产依赖固定为 `notebooklm-py==0.8.0rc1`，只安装基础 SDK，不安装浏览器 extra；`source/notebooklm-py` 是只读核对依据，不进入主应用 workspace 或 wheel。
+- 只有出现可复现且上游未发布的必要补丁时才建立最小 patch queue/受控 Fork，并优先贡献上游。
 - CLI 保留给人工诊断和一次性运维，不作为主应用内部生产集成协议。
 - 如果确实需要短期兼容 CLI，只能作为可移除 Adapter，使用 argv list 与 `shell=False`，并通过同一 Contract Test；它不是目标实现。
 
@@ -89,18 +91,14 @@ async with NotebookLMClient.from_storage(path=str(credential_path)) as client:
 - 主 Worker 必须遵守 `NotebookLMClient` 的事件循环绑定规则。
 - Python 依赖与上游版本变化进入主应用发布管理。
 - Google RPC 变化仍可能使集成失效；公开 Python API 不能消除上游非官方风险。
-- 当前本地修复尚未确认是否全部进入上游版本，短期需要维护 Fork/patch。
+- 若未来必须采用未发布的上游修复，需要额外维护受控 Fork/patch；当前固定外部版本不自动包含未来修复。
 - Direct API 让主应用更接近 Provider，必须通过 Adapter 防止类型泄漏到 Domain。
 
-### Follow-up
+### Phase 2 implementation status
 
-- 定义 `KnowledgeIngestionPort`、`KnowledgeQueryPort` 和 `KnowledgeGenerationPort`。
-- 实现公开类型到主项目类型的 mapper。
-- 建立 Client factory/lifespan，按 Profile 和 event loop 管理。
-- 为 Auth、Rate Limit、Timeout、Protocol Drift 和远程结果不确定建立错误映射。
-- 为每个产品使用的 SDK 写操作登记幂等/重试策略，并与 [API 参考](../../api.md)中的当前上游矩阵核对。
-- 为 Adapter 建立 Contract Test；真实账号 smoke test 仅允许在受信任、受保护的手动 CI 上运行。
-- 更新 PRD 中“先 CLI 后 Python”的旧表述。
+Phase 2 已实现三个 Knowledge Ports、公开类型映射、按 Profile/event loop 管理的 Client factory/lifespan、固定脱敏错误映射、生成/下载输入指纹、Adapter Contract tests，以及浏览器无关的 SQLite/Object Store E2E。支持的生成类型为 `audio`、`video`、`report`、`study_guide`、`quiz`、`flashcards`、`infographic`、`slide_deck` 和 `data_table`。
+
+本地 E2E 使用确定性 SDK double，只证明主应用边界、调用参数、Intent 顺序、持久映射和资产发布，不证明 Google RPC 当前可用。真实账号 smoke 仍只能在受信任、受保护且人工批准的环境执行。跨进程 `dispatched` checkpoint、Lease fencing、ambiguous outcome reconciliation 和独立生成 Job 由 Phase 3 完成。PRD 中“先 CLI 后 Python”的旧表述仍需在产品文档收口阶段统一更新。
 
 ## Alternatives considered
 
@@ -126,7 +124,7 @@ async with NotebookLMClient.from_storage(path=str(credential_path)) as client:
 
 - 创建 Notebook、添加 Source、等待 ready 和问答的受信任 live-provider smoke test 通过。
 - 在每个远程写调用前都能观察到已提交的 Intent；调用后、ID checkpoint 前终止进程时恢复不会重复创建。
-- Adapter Contract Tests 使用 Fake 与真实实现均通过。
+- Adapter Contract Tests 使用 Fake Knowledge Adapter 与 NotebookLM Adapter 均通过；后者的默认 PR 测试注入确定性 SDK double，不等同于 live-provider 验证。
 - 代码库不存在主应用生产路径中的 `shell=True` NotebookLM 调用。
 - 代码库不存在 `notebooklm use` 依赖。
 - 代码库不存在对 `notebooklm._*` 的主应用导入。

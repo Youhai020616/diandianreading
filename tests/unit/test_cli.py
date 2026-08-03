@@ -77,6 +77,37 @@ def test_cli_runs_phase1_real_document_preparation_demo(tmp_path, capsys) -> Non
     assert payload["remote_operation_count"] == payload["source_count"] + 3
 
 
+def test_cli_runs_phase2_notebooklm_adapter_demo(tmp_path, capsys) -> None:
+    database = tmp_path / "state" / "app.sqlite3"
+    object_root = tmp_path / "objects"
+    credentials_root = tmp_path / "credentials"
+    workspace = tmp_path / "workspace"
+
+    exit_code = main(
+        [
+            "phase2-e2e",
+            "--database",
+            str(database),
+            "--object-root",
+            str(object_root),
+            "--credentials-root",
+            str(credentials_root),
+            "--workspace",
+            str(workspace),
+        ]
+    )
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["status"] == "ok"
+    assert payload["schema_version"] == 3
+    assert payload["citation_count"] == payload["source_count"]
+    assert payload["provider_write_intent_count"] == payload["remote_operation_count"]
+    assert str(credentials_root) not in captured.out
+
+
 def test_cli_expands_tilde_before_existing_database_check(tmp_path, monkeypatch, capsys) -> None:
     home = tmp_path / "home"
     state = home / ".state"

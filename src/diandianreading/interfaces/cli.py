@@ -13,6 +13,7 @@ from typing import Any
 from diandianreading.domain import DiandianError, ErrorCode, UnsafePathError
 from diandianreading.interfaces.phase0_demo import run_phase0_demo
 from diandianreading.interfaces.phase1_demo import run_phase1_demo
+from diandianreading.interfaces.phase2_demo import run_phase2_demo
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -33,6 +34,15 @@ def build_parser() -> argparse.ArgumentParser:
     phase1.add_argument("--database", type=Path, required=True)
     phase1.add_argument("--object-root", type=Path, required=True)
     phase1.add_argument("--workspace", type=Path, required=True)
+
+    phase2 = subparsers.add_parser(
+        "phase2-e2e",
+        help="run the NotebookLM adapter through an in-process SDK double",
+    )
+    phase2.add_argument("--database", type=Path, required=True)
+    phase2.add_argument("--object-root", type=Path, required=True)
+    phase2.add_argument("--credentials-root", type=Path, required=True)
+    phase2.add_argument("--workspace", type=Path, required=True)
     return parser
 
 
@@ -45,6 +55,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.command == "phase1-e2e":
             result = asyncio.run(run_phase1_demo(args.database, args.object_root, args.workspace))
+            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+        if args.command == "phase2-e2e":
+            result = asyncio.run(
+                run_phase2_demo(
+                    args.database,
+                    args.object_root,
+                    args.credentials_root,
+                    args.workspace,
+                )
+            )
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
         return _emit_error(

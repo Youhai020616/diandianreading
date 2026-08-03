@@ -84,9 +84,15 @@ class LocalFileStore(FileStore):
             temporary.unlink(missing_ok=True)
             raise
 
-    def open(self, key: StorageKey) -> BinaryIO:
+    def resolve_for_read(self, key: StorageKey) -> Path:
+        """Return a validated absolute path for SDKs that cannot consume file handles."""
+
         target = self._target(key, create_parents=False)
         self._validate_file(target)
+        return target
+
+    def open(self, key: StorageKey) -> BinaryIO:
+        target = self.resolve_for_read(key)
         flags = os.O_RDONLY
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW

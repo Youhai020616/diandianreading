@@ -87,6 +87,6 @@ def test_main_application_never_imports_notebooklm_internal_modules() -> None:
     violations: list[str] = []
     for path in PACKAGE.rglob("*.py"):
         for module in imported_modules(path):
-            if module.startswith(("notebooklm._app", "notebooklm._runtime")):
+            if module.startswith("notebooklm._"):
                 violations.append(f"{path.relative_to(ROOT)} -> {module}")
     assert violations == []
