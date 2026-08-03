@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import sqlite3
 import stat
 from dataclasses import replace
 from datetime import timedelta
@@ -28,6 +29,8 @@ from diandianreading.domain import (
     RemoteOperationStatus,
     RemoteProbeStrategy,
     RepositoryConflict,
+    RightsBasis,
+    RightsProvenance,
     StorageKey,
     UnsafePathError,
 )
@@ -39,6 +42,7 @@ from diandianreading.infrastructure.persistence import (
     SQLiteJobStepRepository,
     SQLiteKnowledgeMappingRepository,
     SQLiteRemoteOperationRepository,
+    SQLiteRightsProvenanceRepository,
     SQLiteUnitOfWorkFactory,
 )
 from tests.support import FIXED_NOW, make_import_command
@@ -77,8 +81,8 @@ def make_operation(job_id: str) -> RemoteOperation:
 
 def test_migrations_are_idempotent_verified_and_database_is_private(tmp_path) -> None:
     database = make_database(tmp_path)
-    assert database.migrate() == 4
-    assert database.schema_version() == 4
+    assert database.migrate() == 5
+    assert database.schema_version() == 5
     assert database.integrity_check()
     if os.name != "nt":
         assert stat.S_IMODE(database.path.stat().st_mode) == 0o600
@@ -91,7 +95,15 @@ def test_migrations_are_idempotent_verified_and_database_is_private(tmp_path) ->
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             ).fetchall()
         }
-    assert {"jobs", "job_events", "job_steps", "job_payloads", "remote_operations"} <= tables
+    assert {
+        "jobs",
+        "job_events",
+        "job_steps",
+        "job_payloads",
+        "remote_operations",
+        "rights_provenance",
+        "rights_provenance_events",
+    } <= tables
 
     with database.connect(immediate=True) as connection:
         connection.execute("UPDATE schema_migrations SET checksum = 'tampered' WHERE version = 1")
@@ -214,7 +226,7 @@ def test_schema_v3_data_migrates_to_recoverable_v4_states(tmp_path) -> None:
             )
 
     assert database.schema_version() == 3
-    assert database.migrate() == 4
+    assert database.migrate() == 5
     migrated_job = SQLiteJobRepository(database).get("job-v3")
     assert migrated_job is not None
     assert migrated_job.status is JobStatus.FAILED
@@ -621,3 +633,167 @@ def test_unit_of_work_rolls_back_related_book_job_and_claim_changes(tmp_path) ->
 
     assert SQLiteCatalogRepository(database).get_book(book.id) == book
     assert SQLiteJobRepository(database).get(job.id) == job
+
+
+def test_schema_v4_migrates_to_v5_rights_audit_tables(tmp_path) -> None:
+    database = SQLiteDatabase(tmp_path / "state" / "app.sqlite3")
+    migration_root = files("diandianreading.infrastructure.persistence.migrations")
+    with database.connect() as connection:
+        connection.execute(
+            """
+            CREATE TABLE schema_migrations (
+                version INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                checksum TEXT NOT NULL,
+                applied_at TEXT NOT NULL
+            )
+            """
+        )
+        for version, name in (
+            (1, "0001_initial.sql"),
+            (2, "0002_document_preparation.sql"),
+            (3, "0003_notebooklm_operations.sql"),
+            (4, "0004_recoverable_workflow.sql"),
+        ):
+            sql = migration_root.joinpath(name).read_text(encoding="utf-8")
+            connection.executescript(sql)
+            connection.execute(
+                """
+                INSERT INTO schema_migrations(version, name, checksum, applied_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    version,
+                    name,
+                    hashlib.sha256(sql.encode()).hexdigest(),
+                    FIXED_NOW.isoformat(),
+                ),
+            )
+
+    assert database.schema_version() == 4
+    assert database.migrate() == 5
+    with database.connect() as connection:
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+    assert {"rights_provenance", "rights_provenance_events"} <= tables
+    assert database.integrity_check()
+
+
+def test_rights_repository_preserves_history_and_rejects_fact_mutation(tmp_path) -> None:
+    database = make_database(tmp_path)
+    repository = SQLiteRightsProvenanceRepository(database)
+    provenance = RightsProvenance(
+        id="rights-1",
+        provider="zlibrary",
+        source_locator_redacted="https://zlibrary.invalid/book/synthetic-book",
+        rights_basis=RightsBasis.PUBLIC_DOMAIN,
+        license_identifier="Public Domain Mark 1.0",
+        evidence_storage_key=None,
+        attestation_version="zlibrary-rights-v1",
+        attested_at=FIXED_NOW,
+        acquisition_job_id=None,
+        content_sha256=None,
+        supersedes_id=None,
+        updated_at=FIXED_NOW,
+        version=0,
+    )
+
+    repository.add(provenance)
+    repository.add(provenance)
+    assert repository.get(provenance.id) == provenance
+    assert repository.get("missing") is None
+
+    bound = provenance.bind_content("a" * 64, now=FIXED_NOW + timedelta(seconds=1))
+    repository.save(provenance, bound)
+    assert repository.get(provenance.id) == bound
+    events = repository.list_events(provenance.id)
+    assert [event.version for event in events] == [0, 1]
+    assert events[0].content_sha256 is None
+    assert events[1].content_sha256 == "a" * 64
+
+    with pytest.raises(RepositoryConflict, match="identity collision"):
+        repository.add(replace(provenance, provider="another-provider"))
+    with pytest.raises(RepositoryConflict, match="facts cannot be changed"):
+        repository.save(
+            bound,
+            replace(
+                bound,
+                provider="another-provider",
+                updated_at=FIXED_NOW + timedelta(seconds=2),
+                version=2,
+            ),
+        )
+    with pytest.raises(RepositoryConflict, match="changed at version"):
+        repository.save(provenance, bound)
+    with pytest.raises(RepositoryConflict, match="content binding"):
+        repository.save(
+            bound,
+            replace(
+                bound,
+                content_sha256="b" * 64,
+                updated_at=FIXED_NOW + timedelta(seconds=2),
+                version=2,
+            ),
+        )
+
+    job = Job.create(
+        job_id="job-rights-binding",
+        job_type="import_book",
+        input_hash="rights-binding",
+        now=FIXED_NOW,
+    )
+    SQLiteJobRepository(database).add(job)
+    job_bound = bound.bind_acquisition_job(
+        job.id,
+        now=FIXED_NOW + timedelta(seconds=2),
+    )
+    repository.save(bound, job_bound)
+    with pytest.raises(RepositoryConflict, match="Job binding"):
+        repository.save(
+            job_bound,
+            replace(
+                job_bound,
+                acquisition_job_id=None,
+                updated_at=FIXED_NOW + timedelta(seconds=3),
+                version=3,
+            ),
+        )
+    with pytest.raises(sqlite3.IntegrityError), database.connect(immediate=True) as connection:
+        connection.execute("DELETE FROM jobs WHERE id = ?", (job.id,))
+    assert repository.get(provenance.id) == job_bound
+    assert [event.version for event in repository.list_events(provenance.id)] == [0, 1, 2]
+
+
+def test_unit_of_work_commits_and_rolls_back_rights_provenance(tmp_path) -> None:
+    database = make_database(tmp_path)
+    factory = SQLiteUnitOfWorkFactory(database)
+    provenance = RightsProvenance(
+        id="rights-uow-1",
+        provider="zlibrary",
+        source_locator_redacted="https://zlibrary.invalid/book/synthetic-book",
+        rights_basis=RightsBasis.OWNED_COPY,
+        license_identifier=None,
+        evidence_storage_key=None,
+        attestation_version="zlibrary-rights-v1",
+        attested_at=FIXED_NOW,
+        acquisition_job_id=None,
+        content_sha256=None,
+        supersedes_id=None,
+        updated_at=FIXED_NOW,
+        version=0,
+    )
+    with factory() as unit_of_work:
+        unit_of_work.rights.add(provenance)
+        unit_of_work.commit()
+
+    rolled_back = replace(provenance, id="rights-uow-2")
+    with factory() as unit_of_work:
+        unit_of_work.rights.add(rolled_back)
+
+    repository = SQLiteRightsProvenanceRepository(database)
+    assert repository.get(provenance.id) == provenance
+    assert repository.get(rolled_back.id) is None

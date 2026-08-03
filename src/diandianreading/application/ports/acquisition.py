@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from diandianreading.application.ports.progress import ProgressSink
-from diandianreading.domain import DocumentAsset, StorageKey
+from diandianreading.domain import CredentialRef, DocumentAsset, StorageKey
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,6 +16,7 @@ class AcquisitionRequest:
     location: str
     rights_confirmed: bool
     options: Mapping[str, str]
+    credential: CredentialRef | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,3 +31,11 @@ class DocumentAcquirer(Protocol):
         request: AcquisitionRequest,
         progress: ProgressSink,
     ) -> AcquiredAsset: ...
+
+
+class ZLibraryAcquisitionPort(DocumentAcquirer, Protocol):
+    provider: str
+
+    def canonicalize_location(self, location: str) -> str: ...
+
+    def redact_location(self, location: str) -> str: ...

@@ -20,6 +20,8 @@ from diandianreading.domain import (
     LeaseToken,
     PreparationManifest,
     RemoteOperation,
+    RightsProvenance,
+    RightsProvenanceEvent,
 )
 
 
@@ -105,6 +107,16 @@ class KnowledgeMappingRepository(Protocol):
     def list_sources(self, workspace_id: str) -> Sequence[ExternalSource]: ...
 
 
+class RightsProvenanceRepository(Protocol):
+    def add(self, provenance: RightsProvenance) -> None: ...
+
+    def save(self, previous: RightsProvenance, current: RightsProvenance) -> None: ...
+
+    def get(self, provenance_id: str) -> RightsProvenance | None: ...
+
+    def list_events(self, provenance_id: str) -> Sequence[RightsProvenanceEvent]: ...
+
+
 class RemoteOperationRepository(Protocol):
     def add(self, operation: RemoteOperation, token: LeaseToken | None = None) -> None: ...
 
@@ -126,6 +138,7 @@ class UnitOfWork(Protocol):
     job_steps: JobStepRepository
     job_payloads: JobPayloadRepository
     mappings: KnowledgeMappingRepository
+    rights: RightsProvenanceRepository
     operations: RemoteOperationRepository
 
     def __enter__(self) -> Self: ...

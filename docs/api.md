@@ -1463,6 +1463,81 @@ notebooklm source add '<file_path>' --json
 
 仅供 NotebookLM 使用。两个目录不能互换，也不会相互同步。
 
+### 14.4 `diandianreading` Phase 4 生产契约
+
+上面的 14.1–14.3 描述 Legacy `source/zlibrary-to-notebooklm` 脚本事实。主项目不会调用其 `upload_to_notebooklm()`、外部 `notebooklm` CLI、`~/Downloads` 扫描或明文账号逻辑。Phase 4 已提供以下 Python 边界：
+
+```python
+from diandianreading.application.use_cases import (
+    ZLIBRARY_RIGHTS_POLICY_VERSION,
+    ZLibraryAcquisitionCommand,
+    ZLibraryAcquisitionUseCase,
+)
+from diandianreading.domain import CredentialRef, RightsBasis
+
+command = ZLibraryAcquisitionCommand(
+    location="https://zlibrary.invalid/book/<synthetic-book-id>",
+    credential=CredentialRef(provider="zlibrary", profile="personal"),
+    rights_basis=RightsBasis.PUBLIC_DOMAIN,
+    license_identifier="<reviewed-license-or-public-domain-identifier>",
+    evidence_storage_key=None,
+    attestation_version=ZLIBRARY_RIGHTS_POLICY_VERSION,
+    rights_confirmed=True,  # 必须由当前书目逐项、不可预选地提交
+    options={"title": "<display-title>"},
+)
+result = await use_case.execute(command)
+```
+
+`ZLibraryAcquisitionUseCase` 构造参数：
+
+```python
+ZLibraryAcquisitionUseCase(
+    *,
+    unit_of_work: UnitOfWorkFactory,
+    acquirer: ZLibraryAcquisitionPort,
+    enabled: bool = False,
+    current_attestation_version: str = "zlibrary-rights-v1",
+    id_factory: Callable[[], str] | None = None,
+    clock: Callable[[], datetime] = utc_now,
+)
+```
+
+关键返回：
+
+```python
+ZLibraryAcquisitionResult(
+    acquired=AcquiredAsset(asset=DocumentAsset(...), temporary_key=None),
+    rights_provenance=RightsProvenance(content_sha256="<final-sha256>", ...),
+)
+```
+
+Infrastructure 入口：
+
+| 类型 | 职责 |
+| --- | --- |
+| `ZLibraryAdapterConfig` | 默认关闭、精确 Host 与 finite download/archive limits |
+| `ZLibraryNetworkPolicy` | URL/Redirect/子请求/DNS 公网与 pinning 策略 |
+| `ZLibraryCredentialResolver` | `CredentialRef` → Provider 私有哈希 Profile |
+| `ZLibrarySessionManager` | 交互登录、真实 marker health、logout |
+| `PlaywrightZLibraryBrowser` | lazy Playwright、版本化 selector、`expect_download()`/cancel |
+| `BoundedZLibraryDownloader` | 手动 Redirect、pinned TLS、Cookie scope 和流式硬上限 |
+| `ZLibraryAcquirer` | Session + ticket + download + PDF/EPUB preflight + atomic publish |
+| `ZLibraryLegacyProfileMigrator` | dry-run、no-read `config.json` 检测、验证后 atomic migration |
+
+当前仅公开浏览器无关的诊断 E2E：
+
+```bash
+uv run diandian phase4-e2e \
+  --database <new-db-path> \
+  --object-root <new-object-root> \
+  --credentials-root <new-credentials-root> \
+  --workspace <new-workspace>
+```
+
+该命令只用 `.invalid` fixture 和 Fake 边界，不访问 Provider。正式 `diandian auth ...`、`diandian import --provider zlibrary ...` 和 HTTP API 属于 Phase 5，当前不能把 `phase4-e2e` 当作用户下载命令。
+
+完整安全与验证说明见 [Phase 4 Z-Library 可选 Adapter E2E](development/phase-4-e2e.md)。
+
 ## 15. E2E 证据记录规范（脱敏）
 
 真实 Provider 测试不得把可访问的 Z-Library URL、远程返回文件名、Notebook/Source UUID、账号或物理路径写入文档和 CI Artifact。记录统一采用合成占位符：
