@@ -20,7 +20,7 @@ notebooklm use <notebook_id>
 notebooklm source add '<path>' --json
 ```
 
-实现位于 [`scripts/upload.py`](../../../source/zlibrary-to-notebooklm/scripts/upload.py)。该方式存在：
+实现位于 [`scripts/upload.py`](https://github.com/zstmfhy/zlibrary-to-notebooklm/blob/main/scripts/upload.py)。该方式存在：
 
 - `shell=True` 和字符串转义/注入风险。
 - 依赖全局 active Notebook context，并发 Job 可能互相覆盖。
@@ -43,7 +43,7 @@ PRD 原计划第一阶段使用 CLI，稳定后切换 Python API。工作区的�
 - 每个 Worker 进程、事件循环和 Profile 创建自己的 Client；Client 不跨线程或事件循环共享。
 - Application 只传递不含路径的 `CredentialRef(provider, profile)` 与 `StorageKey`；Infrastructure 分别解析、校验并限制凭据路径和文档路径，再把显式绝对路径传给 SDK。
 - 每次 Notebook/Source/Artifact 等远程写调用前，先按 ADR-0004 持久化独立 operation intent 与 correlation key；SDK 的进程内 probe/retry 不能替代跨进程 checkpoint。
-- 生产依赖固定为 `notebooklm-py==0.8.0rc1`，只安装基础 SDK，不安装浏览器 extra；`source/notebooklm-py` 是只读核对依据，不进入主应用 workspace 或 wheel。
+- 生产依赖固定为 `notebooklm-py==0.8.0rc1`，只安装基础 SDK，不安装浏览器 extra；上游仓库 [teng-lin/notebooklm-py](https://github.com/teng-lin/notebooklm-py) 是只读核对依据；vendored 副本已移除（见 [移除记录](../../development/removed-vendored-sources.md)），不进入主应用 workspace 或 wheel。
 - 只有出现可复现且上游未发布的必要补丁时才建立最小 patch queue/受控 Fork，并优先贡献上游。
 - CLI 保留给人工诊断和一次性运维，不作为主应用内部生产集成协议。
 - 如果确实需要短期兼容 CLI，只能作为可移除 Adapter，使用 argv list 与 `shell=False`，并通过同一 Contract Test；它不是目标实现。
@@ -135,8 +135,8 @@ Phase 2 已实现三个 Knowledge Ports、公开类型映射、按 Profile/event
 
 - [API 参考](../../api.md)
 - [集成计划](../integration-plan.md)
-- [`notebooklm-py` Python API](../../../source/notebooklm-py/docs/python-api.md)
-- [`notebooklm-py` 稳定性边界](../../../source/notebooklm-py/docs/stability.md)
+- [`notebooklm-py` Python API](https://github.com/teng-lin/notebooklm-py/blob/main/docs/python-api.md)
+- [`notebooklm-py` 稳定性边界](https://github.com/teng-lin/notebooklm-py/blob/main/docs/stability.md)
 - [ADR-0001](0001-local-first-modular-monolith.md)
 - [ADR-0004](0004-durable-import-saga.md)
 - [ADR-0003](0003-provider-credential-isolation.md)

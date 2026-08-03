@@ -19,6 +19,7 @@
 | [阅读器与标注实施计划](architecture/reader-annotation-plan.md) | 阅读正文服务、划线/笔记、锚点与再锚定、Chat 缝合与 R1–R4 验收 | Proposed |
 | [阅读器与标注 ADR](architecture/adr/0007-reader-annotation-anchor-model.md) | 派生 Markdown 正文源、单一 locator 契约与本地标注的强制边界 | Proposed |
 | [并行交付策略](development/parallel-delivery-strategy.md) | 契约冻结、串行区保护、波次模型与对抗评审的多单元并行纪律 | Proposed |
+| [Vendored 源码移除记录](development/removed-vendored-sources.md) | vendored 第三方副本的移除原因、历史修复取回方式与上游化待办 | Active |
 | [本地 API 安全 ADR](architecture/adr/0005-local-api-security.md) | 每安装实例认证、同源浏览器边界、SSE/WS 与资源限制 | Proposed |
 | [桌面架构 ADR](architecture/adr/0006-desktop-first-tauri-python-sidecar.md) | 桌面优先、Tauri 2 壳、React/Vite UI 与 Python Sidecar 的强制边界 | Proposed |
 | [AI 对话功能设计](features/ai-chat.md) | 已实现整本书对话切片，以及后续章节/笔记/选区目标设计 | Active / Proposed |
