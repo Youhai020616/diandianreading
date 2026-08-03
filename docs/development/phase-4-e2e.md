@@ -20,7 +20,7 @@ explicit per-item RightsProvenance
 → bind final SHA-256 to RightsProvenance
 ```
 
-Z-Library Adapter 不导入、不调用 NotebookLM，也不提供任意 URL 的通用下载接口。NotebookLM 上传仍通过独立 Knowledge Adapter；Phase 5 才把二者编排进统一用户入口。
+Z-Library Adapter 不导入、不调用 NotebookLM，也不提供任意 URL 的通用下载接口。NotebookLM 上传仍通过独立 Knowledge Adapter；Phase 5 已在保持该边界的前提下把二者编排进统一用户入口。
 
 ## 2. 已实现边界 / Implemented Boundaries
 
@@ -215,9 +215,9 @@ GitHub CI 只能在 Phase 4 PR 创建后确认；本节不将尚未运行的远�
 
 因此当前结论是“安全边界与离线契约通过”，不是“真实 Provider 页面兼容性已通过”。
 
-## 6. Phase 5 接口边界 / Next Phase
+## 6. Phase 5 接口边界 / Delivered Integration
 
-Phase 4 尚未公开正式用户命令或 HTTP 下载 API。Phase 5 才交付：
+Phase 4 本身仍不公开用户下载命令或 HTTP 下载 API。Phase 5 已交付：
 
 ```text
 diandian auth login zlibrary
@@ -229,4 +229,4 @@ diandian jobs ...
 Web progress UI
 ```
 
-正式入口必须继续执行相同 rights、credential、network 和 Job 策略，不能绕过 Adapter 调用底层 downloader。
+这些正式入口继续执行相同 rights、credential、network 和 Job 策略，不绕过 Adapter 调用底层 downloader。Z-Library 仍默认关闭，真实 Provider 页面兼容性仍未由自动化验证；详见 [Phase 5 统一产品 E2E](phase-5-e2e.md)。

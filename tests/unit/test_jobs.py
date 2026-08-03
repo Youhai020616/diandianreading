@@ -232,6 +232,32 @@ def test_job_rejects_out_of_order_steps_and_unsafe_completion() -> None:
     assert cancelled.status is JobStatus.CANCELLED
 
 
+def test_running_job_attaches_one_immutable_book_only_during_acquisition_or_storage() -> None:
+    queued = Job.create(
+        job_id="job-source",
+        job_type="import_book",
+        input_hash="source-hash",
+        now=FIXED_NOW,
+    )
+    running = claim_job(queued)
+    token = running.lease_token
+
+    with pytest.raises(InvalidStateTransition, match="acquiring or storing"):
+        running.attach_book("book-source", token, now=FIXED_NOW)
+
+    acquiring = running.begin_step(JobStep.ACQUIRING, token, now=FIXED_NOW)
+    attached = acquiring.attach_book("book-source", token, now=FIXED_NOW)
+    assert attached.book_id == "book-source"
+    assert attached.version == acquiring.version + 1
+
+    with pytest.raises(InvalidStateTransition, match="immutable"):
+        attached.attach_book("book-other", token, now=FIXED_NOW)
+    with pytest.raises(InvalidStateTransition, match="immutable"):
+        attached.attach_book("book-source", token, now=FIXED_NOW)
+    with pytest.raises(InvalidStateTransition, match="stale"):
+        acquiring.attach_book("book-source", LeaseToken("worker-b", token.generation))
+
+
 def test_running_job_reports_progress_at_valid_boundaries() -> None:
     running = claim_job()
     token = running.lease_token

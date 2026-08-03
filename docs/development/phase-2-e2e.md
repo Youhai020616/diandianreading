@@ -148,7 +148,7 @@ Adapter 当前支持以下 provider-neutral 类型；连字符输入会在指纹
 
 ## 7. Intent、幂等与当前恢复边界 / Intent and Recovery Boundary
 
-Phase 2 的 schema v3 首次将 `remote_operations.kind` 扩展为以下类型；Phase 3 schema v4 保留这些 kind，并新增 `prepared/dispatched/ambiguous/succeeded/reconciled` lifecycle、probe strategy、dispatch attempt 与解析时间；当前 schema v5 继续保留该协议并增加独立 Rights audit：
+Phase 2 的 schema v3 首次将 `remote_operations.kind` 扩展为以下类型；Phase 3 schema v4 保留这些 kind，并新增 `prepared/dispatched/ambiguous/succeeded/reconciled` lifecycle、probe strategy、dispatch attempt 与解析时间；Phase 4 schema v5 增加独立 Rights audit，当前 Phase 5 schema v6 继续保留该协议并加入 Local API Session 与 durable Chat：
 
 ```text
 ensure_workspace

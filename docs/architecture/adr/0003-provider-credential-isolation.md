@@ -4,7 +4,7 @@
 
 `Proposed`
 
-> NotebookLM 的 Phase 2 Resolver 与 Z-Library 的 Phase 4 Profile/Session/Migration/跨 Provider 隔离已实现。ADR 仍保持 `Proposed`：Phase 5 尚需用统一 CLI/API 证明 NotebookLM 与 Z-Library 都可分别 login/status/logout，且 API/浏览器响应不暴露 Secret 或物理路径，之后才能满足全部 Accepted 条件。
+> NotebookLM 的 Phase 2 Resolver、Z-Library 的 Phase 4 Profile/Session/Migration，以及 Phase 5 的统一 login/status/logout、API redaction 和跨 Provider 隔离均已实现并通过离线自动化测试。ADR 仍保持 `Proposed`：真实 NotebookLM/Z-Library 浏览器登录与登出将由用户手工验证，默认备份排除与安装器恢复流程也尚未完成全部验收。
 
 ## Date
 
@@ -28,16 +28,18 @@ Provider 凭据采用 **物理隔离目录 + 不含路径的业务引用**：
 
 ```text
 ~/.diandianreading/
-├── data/
-│   └── app.db
-├── files/
+├── state/
+│   └── app.sqlite3
+├── objects/
+├── staging/
+├── uploads/
 └── credentials/
+    ├── local-api/
     ├── notebooklm/
-    │   ├── config.json
     │   └── profiles/<safe-profile-key>/...
     ├── zlibrary/
     │   └── profiles/<safe-profile-key>/...
-    └── publishing/<provider>/<safe-profile-key>/...
+    └── publishing/<provider>/<safe-profile-key>/...  # future
 ```
 
 业务契约只有：
@@ -80,6 +82,14 @@ Resolver 创建/校验私有 `0700` 目录和 `0600` 普通文件，拒绝符号
 
 统一的是引用、健康检查和 UI 状态，不统一 Provider 的 Secret Schema 或物理路径。
 
+### Phase 5 implementation evidence
+
+- `diandian auth login/status/logout` 通过同一 composition root 调用两个独立的 Provider Session Manager；删除一个逻辑 Profile 不会访问另一个 Provider 根目录。
+- `GET /api/auth/status` 只返回 provider、逻辑 profile、状态和检查时间，不返回 Cookie、账号、Provider 内部 ID 或凭据路径。
+- `ApplicationRuntime` 把 NotebookLM 与 Z-Library Resolver 固定到 `credentials/notebooklm` 与 `credentials/zlibrary` 的独立命名空间；Install Token 使用第三个 `credentials/local-api` 命名空间。
+- SQLite/API/CLI/E2E 具备 Secret、物理路径和 Provider ID 的回归断言；本地与 installed-wheel E2E 不读取真实账号凭据。
+- 这些证据验证代码边界，不等价于真实 Provider 页面和 Cookie 生命周期已经通过手工浏览器测试。
+
 ## Consequences
 
 ### Positive
@@ -104,7 +114,7 @@ Resolver 创建/校验私有 `0700` 目录和 `0600` 普通文件，拒绝符号
 - Phase 4 已实现 Z-Library 专用 Resolver、Session Manager、登录/登出、Legacy no-read migration 与跨 Provider 隔离验证；离线测试不声称 live Provider 页面已验证。
 - 将凭据目录加入产品安装器的默认备份排除清单，并持续执行日志/CLI/API redaction 测试。
 - 为迁移现有 Profile 提供 dry-run、staging 验证与显式清理命令，并专门检测 `~/.zlibrary/config.json`。
-- Phase 5 在统一 CLI/API/UI 中接入两个 Provider 的 login/status/logout，并只提供连接状态，不展示 Secret 内容或路径；完成 API/浏览器 redaction 验证后重新评估本 ADR 为 `Accepted`。
+- Phase 5 已在统一 CLI/API/UI 中接入两个 Provider 的 login/status/logout，并完成 API/CLI redaction 自动化验证；真实浏览器登录/登出和安装器默认备份排除通过后，再重新评估本 ADR 为 `Accepted`。
 
 ## Alternatives considered
 

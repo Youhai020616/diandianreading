@@ -31,7 +31,7 @@
 | --- | --- | --- |
 | `notebooklm-py` | Typed async client、Notebook/Source/Chat/Artifact API、认证、重试、等待、进度、完整测试 | Google RPC 非官方；MCP/REST 实验性；内部模块不可作为稳定依赖 |
 | `zlibrary-to-notebooklm` | Playwright 登录与下载思路、EPUB 转 Markdown、词数统计、章节分块 | 单类职责过多、`shell=True`、返回类型不稳定、会话检查错位、无持久任务、测试不足 |
-| 根项目 | PRD、Roadmap、静态高保真原型、API 梳理 | 没有根 `pyproject.toml`、应用包、数据库、Worker 或真实 UI 后端 |
+| 根项目 | Phase 0–5 模块化单体、SQLite、私有对象存储、Worker、统一 CLI、安全 Web/API、整本书 Chat 与离线 E2E | 阅读器、标注/笔记、章节/选区问答、内容工作台和真实 Provider 浏览器验收仍未完成 |
 
 源码依据：
 
@@ -483,8 +483,6 @@ async with NotebookLMClient.from_storage(path=str(credential_path)) as client:
 diandianreading/
 ├── pyproject.toml
 ├── uv.lock
-├── apps/
-│   └── web/
 ├── source/                    # 迁移期只读参考，不进入 uv workspace/构建产物
 ├── src/
 │   └── diandianreading/
@@ -495,12 +493,15 @@ diandianreading/
 │       ├── infrastructure/
 │       │   ├── acquisition/
 │       │   ├── documents/
+│       │   ├── local_api/
 │       │   ├── notebooklm/
 │       │   ├── persistence/
 │       │   └── storage/
 │       ├── interfaces/
-│       │   ├── api/
-│       │   └── cli/
+│       │   ├── cli.py
+│       │   ├── runtime.py
+│       │   └── web/
+│       │       └── static/
 │       └── worker/
 └── tests/
     ├── unit/
@@ -561,7 +562,7 @@ diandianreading/
 - 支持 `audio`、`video`、`report`、`study_guide`、`quiz`、`flashcards`、`infographic`、`slide_deck` 与 `data_table`。
 - Infrastructure `CredentialPathResolver` 把不透明 Profile 哈希为私有目录键，校验根目录 confinement、当前用户所有权、`0700/0600` 权限、普通文件、无符号链接和 storage-state JSON；物理凭据路径不进入 Domain、Application、SQLite 或 CLI 输出。
 - `NotebookLMAdapter` 绑定单一 event loop，每个 Adapter/Profile 缓存一个 SDK Client，并提供显式异步关闭生命周期。
-- Phase 2 schema v3 引入 `generate_content` 与 `download_content` intent；Phase 3 schema v4 保留这些 kind，并增加完整恢复 lifecycle；当前 schema v5 继续保留该协议并增加 Rights audit。所有 Adapter 远程写都要求匹配输入指纹的 `RemoteOperationRef`，已解析操作可按持久化 external ID 协调，而不是无条件重建。
+- Phase 2 schema v3 引入 `generate_content` 与 `download_content` intent；Phase 3 schema v4 保留这些 kind，并增加完整恢复 lifecycle；Phase 4 schema v5 增加 Rights audit，Phase 5 schema v6 增加 Local API Session 与 durable Chat。所有 Adapter 远程写都要求匹配输入指纹的 `RemoteOperationRef`，已解析操作可按持久化 external ID 协调，而不是无条件重建。
 - 下载先进入私有 staging，再通过 `FileStore.put()` 原子发布并清理 staging。
 - Fake Knowledge Adapter 与真实 NotebookLM Adapter 共用 Contract tests；SDK 层使用确定性进程内 double，不读取真实凭据、不启动浏览器、不访问 Provider。
 
@@ -604,30 +605,45 @@ Phase 2 的本地退出标准已由浏览器无关 E2E 覆盖：不存在生产�
 
 退出标准已由离线测试满足：Adapter 不引用 NotebookLM；没有有效权利来源记录时 Application 在 Adapter 前拒绝；恶意 URL/Redirect/下载/Archive 失败不发布成功 Asset；Cookie、Query 和凭据物理路径不进入 SQLite 或 E2E 输出。
 
-当前不声称真实 `z-library.sk` 页面、Cookie、Selector 或下载已验证。统一登录/import/jobs CLI、HTTP API 和 Web 进度界面仍属于 Phase 5。
+当前不声称真实 `z-library.sk` 页面、Cookie、Selector 或下载已验证。统一登录/import/jobs CLI、HTTP API 和 Web 进度界面已在 Phase 5 接入，但真实浏览器页面兼容性仍由用户手工验证。
 
 ### Phase 5 / PR 6：统一入口与清理
 
-交付：
+> 实现状态：Active。可执行边界、验证命令和未验证项见 [Phase 5 统一产品 E2E](../development/phase-5-e2e.md)。
+
+已交付统一入口：
 
 ```text
 diandian auth login notebooklm
 diandian auth login zlibrary
 diandian auth status
-diandian import /path/to/book.epub
-diandian import --provider zlibrary <url>
+diandian auth logout <provider>
+diandian import <local-path>
+diandian import <url> --provider zlibrary --enable-zlibrary --title <title>
 diandian jobs list
 diandian jobs retry <job-id>
+diandian worker [--once]
+diandian serve [--no-open]
 ```
 
-以及：
+已交付运行边界：
 
-- `/api/imports` 与 `/api/jobs/{id}`，返回正交 Job 字段且遵守 ADR-0005 Token/Session、Origin/CSRF、CORS、SSE/WS 和限额。
-- Web 进度界面。
-- 旧 `upload_to_notebooklm()` 和脚本生产入口移除。
-- PRD、Roadmap、API 文档同步更新。
+- `ApplicationRuntime` 统一组合 SQLite schema v6、私有对象/凭据/staging/upload 目录、Provider Adapter、Session Manager、Import/Job/Catalog/Chat Use Case 和 Worker。
+- `diandian serve` 只绑定 `127.0.0.1:3000`，浏览器规范 Origin 固定为 `http://localhost:3000`；端口占用时拒绝启动第二个实例。
+- `/api/session/*`、`/api/auth/status`、`/api/imports`、`/api/jobs/*`、`/api/books/*`、`/api/conversations/*` 与 `/api/chat-runs/*` 实现每安装实例 Bearer、浏览器 Session、单次 Bootstrap Nonce、CSRF、Peer/Host/Origin、Header/Body/upload、速率和 SSE 连接限制。
+- CORS 默认关闭，Preflight 拒绝，OpenAPI/交互文档关闭；Uvicorn 禁用 trusted proxy、访问日志和 WebSocket（`ws="none"`）。Phase 5 只提供可重连 SSE，不提供 WebSocket。
+- 本地上传在 HTTP 请求内先复制到受管对象存储，随后只把逻辑键和安全展示文件名写入持久 Job；临时上传文件始终清理，物理路径不进入 payload/API。
+- Z-Library 默认关闭；提交阶段只保存 canonical、带 rights attestation 的命令，不在 POST 请求中访问 Provider。
+- SQLite 持久化唯一 Conversation、成对 Message、ChatRun、Provider Attempt、本地 Reference 与 Event；Worker 完成整本书问答并把 Provider citation 映射回本地 Book/DocumentPart。
+- 静态 Web UI 提供连接状态、导入、Job 和整本书 AI Chat。当前只开放 `owned_copy`、`public_domain`、`open_license`；需要单独 evidence 文件的 `licensed`/`explicit_permission` 尚未在 HTTP UI/CLI 中提供。
 
-退出标准：用户只需要主项目入口，对外仅 `localhost:3000`；回环请求仍需授权，完整构建、测试和 review 通过。
+明确未交付：
+
+- `chapters`、`notes`、`selection` Chat Scope；它们仍为 Proposed，请求会 fail closed。
+- 保存回答为 Note、生成内容、Conversation archive/delete/reset 等后续 API。
+- 真实 `z-library.sk` 页面、真实 NotebookLM 账号和浏览器交互自动化验证；用户将另行手工测试。
+
+离线退出标准由 source-tree 和 installed-wheel `phase5-e2e` 覆盖：Session Bootstrap → raw local import → durable Job → Worker → ready Book → whole-book Conversation/Chat → grounded local citation → Job/Chat SSE，并验证跨 Origin 拒绝。完整构建、测试、direct review 和远端 CI 仍以对应 PR 的最终结果为准。
 
 ## 13. 测试策略
 
@@ -776,9 +792,9 @@ attestation_version, attested_at, acquisition_job_id?, content_sha256?
 - 首个稳定 Python 版本是否固定为 3.12。
 - `notebooklm-py` 长期采用仓库内 Fork 还是固定外部版本。
 - PDF 超过 NotebookLM 限制时，采用 PDF 拆页还是提取文本分块。
-- AI 对话第一版是否仅允许每本书一个活跃 Provider Conversation。
+- Phase 5 已采用每本书一个活跃本地 Conversation/Provider Conversation；何时迁移到稳定的多 Conversation 能力仍待确认。
 - 派生 Markdown/Part 成功上传后保留多久。
-- 浏览器 Session Bootstrap 最终采用 OS IPC 还是短时单次 Fragment Nonce。
+- Phase 5 已采用短时单次 Fragment Bootstrap Nonce；桌面安装器成熟后是否迁移到 OS IPC 仍待确认。
 - Phase 1 已提供有限默认阈值；仍需根据低配置设备实测决定是否收紧或分级配置。
 - `RightsProvenance` 各 `rights_basis` 所需证据、保留期与用户更正流程。
 - Live-provider CI 使用哪个 protected environment、专用账号和运行频率。

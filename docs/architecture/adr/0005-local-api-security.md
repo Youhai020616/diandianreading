@@ -4,6 +4,8 @@
 
 `Proposed`
 
+> Phase 5 已实现并自动化验证 HTTP/SSE 安全切片；WebSocket 传输在 Uvicorn 中以 `ws="none"` 明确关闭，应用没有 WS 路由。ADR 暂不升为 `Accepted`：真实浏览器交互、安装 Token 损坏/丢失后的完整 CLI 恢复流程，以及所有慢请求/运维回滚场景仍需完成验收。
+
 ## Date
 
 2026-08-03
@@ -36,7 +38,7 @@ ADR-0001 选择单用户、local-first 架构，并把 Web/API 绑定到 `localh
 - 服务只绑定回环接口；Worker 不监听端口。
 - 每个请求同时校验实际 TCP Peer 为回环地址，并校验规范化后的 `Host` 属于固定回环 Host/端口允许列表。两项任一失败即拒绝，不能只依赖 DNS 解析结果。
 - 本地配置禁用 trusted-proxy 模式，不信任 `Forwarded`、`X-Forwarded-For`、`X-Forwarded-Host` 或 `X-Forwarded-Proto`。出现这些 Header 时拒绝请求，而不是据此改写 Peer、Host 或 Scheme。
-- 除最小化且不返回版本、路径、账号或任务信息的 liveness 外，所有 API、SSE 和 WebSocket 都必须认证。回环来源本身不授予权限。
+- 除最小化且不返回版本、路径、账号或任务信息的 liveness 外，所有 API 和 SSE 都必须认证。Phase 5 不开放 WebSocket；未来若启用，仍必须认证。回环来源本身不授予权限。
 
 ### 2. 每安装实例的 Token 与浏览器 Session
 
@@ -52,13 +54,14 @@ ADR-0001 选择单用户、local-first 架构，并把 Web/API 绑定到 `localh
 - 携带 Cookie 的浏览器请求必须验证 `Origin` 与规范 Origin 完全一致。所有改变状态的方法还必须携带与 Session 绑定的 CSRF Token；仅依赖 `SameSite` 不足以替代 CSRF 校验。
 - Bearer 客户端可在不携带 Cookie 时使用 API；一旦请求携带浏览器 Cookie，就按浏览器请求执行 Origin/CSRF 规则，不能用 Header 混搭绕过。
 - 默认不发送 CORS 允许 Header，并拒绝跨 Origin Preflight。若未来确需跨 Origin，必须通过新 ADR 给出精确 Origin 允许列表；禁止 `*`、动态反射 Origin 或宽泛的 localhost 端口范围。
-- `GET`/`HEAD` 不得产生远程或本地写副作用。
+- `GET`/`HEAD` 不得创建或改变 Book、Job、Message、ChatRun、Provider 资源等业务状态，也不得发起 Provider 写操作。认证中刷新 Session `last_seen_at`/idle expiry 属于安全元数据维护，不改变业务语义；如果该维护失败，请求必须 fail closed。
 
 ### 4. SSE 与 WebSocket
 
 - SSE 使用已认证的同源 Cookie Session；EventSource URL 不接受 Token 查询参数。连接建立与重连都重新验证 Session，Session 撤销后服务端关闭连接。
-- WebSocket 在 Upgrade 前校验 Peer、Host、精确 `Origin` 和认证 Session/Bearer；浏览器 Session 还需提交一次性、与 Session 绑定的握手 Nonce。凭据不得放在查询参数。
-- 限制每 Session 的 SSE/WS 连接数、WS 单消息大小、发送队列和空闲时间；慢消费者必须被断开，不能无限缓存 Job 事件。
+- Phase 5 明确不提供 WebSocket：应用没有 Upgrade 路由，Uvicorn 配置为 `ws="none"`。不能把未实现的 WS 描述成受支持传输。
+- 如果未来启用 WebSocket，必须在 Upgrade 前校验 Peer、Host、精确 `Origin` 和认证 Session/Bearer；浏览器 Session 还需提交一次性、与 Session 绑定的握手 Nonce。凭据不得放在查询参数，并需限制每 Session 连接数、单消息大小、发送队列和空闲时间。
+- Phase 5 限制每 Session 的 SSE 连接数、连接总时长、轮询/心跳间隔，并从数据库按游标重放有限事件；慢消费者和撤销 Session 必须断开，不能无限缓存 Job 事件。
 
 ### 5. 资源与接口限制
 
@@ -100,11 +103,22 @@ ADR-0001 选择单用户、local-first 架构，并把 Web/API 绑定到 `localh
 
 ### Follow-up
 
-- 定义 Token 文件、Session、Bootstrap Nonce 和 CSRF Token 的 Schema 与轮换命令。
-- 为 HTTP、SSE、WebSocket 实现统一 Peer/Host/Origin 验证中间件。
-- 为请求大小、连接、超时和并发限制建立配置上限与拒绝测试。
-- 建立 DNS rebinding、CSRF、CORS、代理 Header 和 Token 泄露回归测试。
-- 在开发服务器入口保持 `localhost:3000` 单 Origin。
+- Token 文件、Session、Bootstrap Nonce 与 CSRF Token Schema 已实现；补齐面向 Token 损坏/丢失和安全迁移失败的最终用户恢复/轮换 CLI。
+- HTTP/SSE 已实现统一 Peer/Host/Origin 边界；WebSocket 保持关闭，未来启用前另行实现握手认证与容量测试。
+- Header、request target、JSON、上传、Bootstrap/mutation rate 与 SSE 连接上限已有拒绝测试；继续补齐真实服务下的慢请求和操作性回滚演练。
+- DNS rebinding Host、CSRF、CORS Preflight、代理 Header、Cookie/Bearer 混搭和 Token redaction 已建立回归测试。
+- 开发/产品入口固定为 `localhost:3000` 单 Origin、单实例。
+
+## Phase 5 implementation evidence
+
+- `diandian serve` 先探测端口，只绑定 `127.0.0.1:3000`；浏览器 canonical Origin 固定为 `http://localhost:3000`，端口占用时拒绝第二实例。
+- Uvicorn 设置 `proxy_headers=False`、`access_log=False`、`server_header=False`、`ws="none"` 和有限连接/keep-alive/Header 配置。
+- 每安装实例 Token 保存在私有文件；浏览器只通过短时单次 Fragment Bootstrap Nonce 换取 HttpOnly Session 与双提交 CSRF Cookie。Token 轮换会撤销 Session。
+- 中间件拒绝非回环 Peer、非法/重复 Host、Forwarded Headers、重复 Cookie/Authorization/Origin、安全 Header 混搭、跨 Origin 和 Preflight。
+- 默认无 CORS，OpenAPI/交互文档关闭；静态 HTML/JS/CSS 同源提供，CSP 不允许 inline script/style、外部 frame/object 或远程连接。
+- raw upload 同时执行 `Content-Length` 预检和流式硬上限；JSON、Header 数量/字节、request target、Bootstrap/mutation 速率和 SSE 并发/时长均有限值。
+- Job/Chat SSE 只接受浏览器 Session，支持 durable cursor replay，并在 Session 撤销后关闭；API 响应和事件不包含安装 Token、Provider ID、凭据路径或物理文件路径。
+- `tests/integration/test_local_api_app.py`、`tests/integration/test_local_api_security.py`、`tests/unit/test_local_api_security.py` 与 `phase5-e2e` 覆盖上述离线边界；真实浏览器手工测试不在本次自动化声明内。
 
 ## Alternatives considered
 
@@ -128,12 +142,12 @@ ADR-0001 选择单用户、local-first 架构，并把 Web/API 绑定到 `localh
 
 本 ADR 变为 `Accepted` 前必须证明：
 
-- 无 Token/Session 的 API、SSE、WS 请求均被拒绝，最小 liveness 不泄露信息。
+- 无 Token/Session 的 API、SSE 请求均被拒绝，最小 liveness 不泄露信息；WebSocket 在传输层和路由层保持关闭。
 - 非回环 Peer、非法 `Host`、转发 Header 和 DNS-rebinding Host 测试均 fail closed。
-- 跨 Origin 读写、缺失/错误 CSRF、跨站 WebSocket 和 CORS Preflight 被拒绝。
+- 跨 Origin 读写、缺失/错误 CSRF 和 CORS Preflight 被拒绝；WebSocket Upgrade 不可用。
 - 安装 Token 不出现在数据库、URL、前端存储、日志、异常或诊断包；文件权限/所有权符合 ADR-0001。
-- Token 轮换会撤销旧 Bearer 与全部 Session；过期/撤销 Session 的 SSE/WS 被关闭。
-- Body、上传、Header、并发、SSE/WS 消息与慢连接上限均有边界测试。
+- Token 轮换会撤销旧 Bearer 与全部 Session；过期/撤销 Session 的 SSE 被关闭。
+- Body、上传、Header、并发与 SSE 连接上限均有边界测试；若未来启用 WS，消息/队列/慢连接上限必须先有测试。
 - trusted-proxy 保持关闭，应用不根据转发 Header 改写请求身份。
 - 安全迁移失败时服务停止且本机恢复命令可轮换 Token；不存在无认证降级路径。
 

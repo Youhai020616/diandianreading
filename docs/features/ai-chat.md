@@ -1,6 +1,6 @@
 # AI 对话功能设计
 
-> 状态：Proposed
+> 状态：Active（Phase 5 整本书切片）/ Proposed（章节、笔记、选区及后续操作）
 >
 > 产品阶段：Roadmap P4 AI Alpha
 >
@@ -44,24 +44,32 @@ MVP 不包含：
 
 ## 3. 当前状态
 
-静态原型 [`ai-reading-ecosystem-demo/index.html`](../../ai-reading-ecosystem-demo/index.html) 已有：
+### 3.1 Phase 5 已实现
 
-- 首页“问问这本书”。
-- 阅读器“问问 AI”。
-- AI 建议卡片“展开对话”。
-- 模拟回答和继续追问输入框。
+当前主应用不再只依赖静态模拟 Modal。Phase 5 已提供：
 
-当前交互由 `setTimeout()` 和通用 Modal 模拟，没有：
+- SQLite schema v6 中的唯一 Conversation、成对 user/assistant Message、ChatRun、Provider Attempt、本地 ChatReference、Retry 和 append-only Event；
+- HTTP 接受命令后持久化再返回，`client_message_id`/`Idempotency-Key` 重放、冲突和单 Conversation busy 约束；
+- Lease/fencing Worker、显式 Provider dispatch intent、完整回答持久化、失败/取消/重试和模糊结果 fail-closed；
+- `book` QueryScope 的整本书范围解析、实际 `effective_scope` 和 NotebookLM 引用到本地 Book/DocumentPart/chapter refs 的映射；
+- 连接状态、书籍列表、消息历史、提问、取消/重试、Job/Chat SSE 的同源 Web UI；
+- 每安装实例 Token、浏览器 Session、单次 Bootstrap Nonce、CSRF、Peer/Host/Origin、CORS/Preflight、请求大小、速率和 SSE 连接限制；
+- 无 inline JS/CSS、无 CDN、无 `innerHTML` 的静态 HTML/CSS/JS；Provider 回答按文本节点渲染；
+- 浏览器无关 `phase5-e2e`，验证导入 → Worker → Book ready → Conversation → whole-book Chat → local citation → SSE。
 
-- 真实 NotebookLM 调用。
-- 消息列表和本地 Conversation。
-- 持久化 `chat_run`。
-- 引用映射。
-- 认证、限流、幂等、恢复和模糊结果处理。
-- 完整的响应式、键盘、焦点和读屏契约。
-- 安全 Markdown 渲染和 CSP 约束。
+Phase 5 的 SSE 只传输持久状态事件，不提供逐 Token Streaming。WebSocket 没有路由，Uvicorn 明确配置 `ws="none"`。
 
-实现时应把通用 Modal 替换成本文定义的完整对话界面。原型只用于说明入口和视觉方向，不作为 API、响应式或无障碍实现依据。
+### 3.2 仍为 Proposed
+
+以下设计尚未实现，本文后续章节描述的是目标契约而非当前能力：
+
+- `conversation_default`、`chapters`、`notes`、`selection` QueryScope；当前 API 只接受 `{"type":"book"}`，其他范围返回 `422`；
+- 阅读器正文、划线/笔记上下文、引用精确定位和完整响应式 Drawer/移动页；
+- 保存回答为 Note、生成内容 Job、Conversation archive、删除本地历史和重置 Provider Context；
+- 上下文/事件保留清理任务、真实 Provider History reconciliation 的 live smoke、回答质量人工验收；
+- 真实 NotebookLM/Z-Library 浏览器交互测试。本阶段只完成离线 Fake/contract/API/installed-wheel E2E，用户将另行手工测试。
+
+旧静态原型 [`ai-reading-ecosystem-demo/index.html`](../../ai-reading-ecosystem-demo/index.html) 仍只用于视觉方向；它的 `setTimeout()` 模拟不属于主应用运行链路，也不作为 API、响应式或无障碍实现依据。
 
 ## 4. 入口与查询上下文
 
@@ -457,9 +465,22 @@ EffectiveScope            → ChatRun.effective_scope_json
 
 Web UI 不得直接依赖 `AskResult`、NotebookLM 类型、Provider Conversation ID 或 Provider Source ID。
 
-## 8. HTTP API
+## 8. HTTP API：已实现子集与后续目标
 
-所有状态变更接口只接受同源请求。示例省略未来可能增加的本地用户认证，但不省略幂等、状态和错误契约。
+Phase 5 已实现：
+
+```text
+GET  /api/books/{book_id}/conversation
+PUT  /api/books/{book_id}/conversation
+GET  /api/conversations/{conversation_id}/messages
+POST /api/conversations/{conversation_id}/messages
+GET  /api/chat-runs/{run_id}
+POST /api/chat-runs/{run_id}/cancel
+POST /api/chat-runs/{run_id}/retry
+GET  /api/chat-runs/{run_id}/events
+```
+
+所有状态变更接口执行同源 Session + CSRF，或在没有 Cookie 时执行每安装实例 Bearer；SSE 只接受浏览器 Session。Phase 5 的 Conversation 默认范围和 Message `query_scope` 只允许 `book`。本节后续包含 `chapters`/`selection`、save-as-note、generate-content、archive/delete/reset 等示例时，它们仍是 Proposed 目标，不是已部署路由。
 
 ### 8.1 获取或建立唯一活跃 Conversation
 
@@ -562,8 +583,8 @@ Location: /api/chat-runs/run-local-id
       "phase": null,
       "error": null,
       "effective_scope": null,
-      "attempt": 0,
-      "version": 1,
+      "attempt": 1,
+      "version": 0,
       "created_at": "2026-08-03T12:01:00Z",
       "updated_at": "2026-08-03T12:01:00Z"
     },

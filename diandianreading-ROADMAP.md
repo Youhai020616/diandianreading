@@ -255,6 +255,8 @@ class Publisher:
 
 ## 7. P4：AI Alpha——NotebookLM 接入
 
+> 工程状态：Phase 2–5 已交付 NotebookLM Adapter、可恢复导入、统一 CLI/Web/API、持久 Job，以及带本地引用的 whole-book Chat 离线链路。P4 产品阶段尚未完成：章节/选区/个人笔记范围、内容生成界面、真实 Provider 浏览器手测和回答质量人工验收仍待实施。
+
 ### 目标
 
 验证 AI 是否真的能帮助用户理解自己的阅读，而不是只会生成普通摘要。
@@ -264,8 +266,8 @@ class Publisher:
 1. 为书籍创建 NotebookLM Notebook。
 2. 上传正文来源。
 3. 上传用户划线和笔记。
-4. 对当前书籍提问。
-5. 获取带来源的答案。
+4. 对当前书籍提问（whole-book 已实现；章节/选区/笔记仍为 Proposed）。
+5. 获取带来源的答案（本地 Book/DocumentPart 引用映射已实现）。
 6. 生成读书报告。
 7. 生成知识卡片。
 8. 生成测验或闪卡。
@@ -306,6 +308,8 @@ current_step: creating_workspace → uploading → processing → verifying
 - 是否能回答“这和我有什么关系”。
 
 ### 退出标准
+
+> 当前尚未达到本节全部退出标准；离线 Fake/Contract/API/installed-wheel E2E 不能替代真实账号与人工回答质量评估。
 
 - 80% 以上测试问题能够给出可接受回答。
 - 用户能明显感受到“基于我的标注”比普通摘要更有价值。

@@ -119,6 +119,15 @@ class ImportBookCommand:
             raise ValueError("PreparationManifest must describe the command root asset")
 
 
+class DurableImportMaterializerPort(Protocol):
+    async def materialize(
+        self,
+        job: Job,
+        payload: JobPayload,
+        progress: ProgressSink,
+    ) -> tuple[Job, ImportBookCommand]: ...
+
+
 @dataclass(frozen=True, slots=True)
 class ImportBookResult:
     book: Book
@@ -147,6 +156,7 @@ class ImportBookUseCase:
         retry_delay: timedelta = timedelta(seconds=5),
         max_attempts: int = 3,
         checkpoint_hook: WorkflowCheckpointHook | None = None,
+        materializer: DurableImportMaterializerPort | None = None,
     ) -> None:
         if lease_duration <= timedelta(0) or retry_delay < timedelta(0):
             raise ValueError("Workflow Lease and retry durations must be finite and valid")
@@ -160,6 +170,7 @@ class ImportBookUseCase:
         self._retry_delay = retry_delay
         self._max_attempts = max_attempts
         self._checkpoint_hook = checkpoint_hook or (lambda checkpoint, job_id, key: None)
+        self._materializer = materializer
 
     def submit(self, command: ImportBookCommand) -> Job:
         timestamp = self._clock()
@@ -223,65 +234,70 @@ class ImportBookUseCase:
                 now=now,
             )
             unit_of_work.commit()
+        return await self._execute_claimed(job, progress=progress)
+
+    async def run_next(
+        self,
+        *,
+        worker_id: str,
+        progress: ProgressSink | None = None,
+    ) -> ImportBookResult | None:
+        now = self._clock()
+        with self._unit_of_work() as unit_of_work:
+            job = unit_of_work.jobs.claim_next(
+                worker_id,
+                lease_expires_at=now + self._lease_duration,
+                now=now,
+            )
+            unit_of_work.commit()
+        if job is None:
+            return None
+        return await self._execute_claimed(job, progress=progress)
+
+    async def _execute_claimed(
+        self,
+        job: Job,
+        *,
+        progress: ProgressSink | None,
+    ) -> ImportBookResult:
         sink = BestEffortProgressSink(
             ScopedProgressSink(job.id, progress or NullProgressSink(job.id))
         )
         token = job.lease_token
 
         try:
-            command = self._load_command(job)
-            book = self._require_book(job)
+            payload = self._load_payload(job)
             job = self._check_cancellation(job)
-            job = await self._run_local_step(
-                job,
-                JobStep.ACQUIRING,
-                command.asset.sha256,
-                _canonical_json({"asset_id": command.asset.id}),
-                sink,
-            )
-            job = await self._run_local_step(
-                job,
-                JobStep.STORING,
-                command.asset.sha256,
-                _canonical_json({"storage_key": command.asset.storage_key.value}),
-                sink,
-                mutation=lambda unit_of_work: unit_of_work.catalog.add_asset(
-                    book.id, command.asset
-                ),
-            )
-            preparation_hash = _preparation_input_hash(command)
+            if payload.payload_type == "import_book.v1":
+                command = _deserialize_command(payload.payload_json)
+                book = self._require_book(job)
+                job = await self._materialize_v1(job, book, command, sink)
+            elif payload.payload_type == "import_source.v2":
+                if self._materializer is None:
+                    raise DiandianError(
+                        ErrorCode.REPOSITORY_CONFLICT,
+                        "Durable import source materialization is unavailable",
+                        retryable=False,
+                    )
+                job, command = await self._materializer.materialize(job, payload, sink)
+                book = self._require_book(job)
+            else:
+                raise DiandianError(
+                    ErrorCode.REPOSITORY_CONFLICT,
+                    "Import Job payload type is unsupported",
+                    retryable=False,
+                )
 
-            def save_prepared_document(unit_of_work: UnitOfWork) -> None:
-                for derived in command.derived_assets:
-                    unit_of_work.catalog.add_asset(book.id, derived)
-                for part in command.parts:
-                    unit_of_work.catalog.add_part(part)
-                if command.manifest is not None:
-                    unit_of_work.catalog.add_manifest(book.id, command.manifest)
-
-            job = await self._run_local_step(
-                job,
-                JobStep.PREPARING,
-                preparation_hash,
-                _canonical_json(
-                    {
-                        "part_ids": [part.id for part in command.parts],
-                        "manifest": (
-                            command.manifest.storage_key.value if command.manifest else None
-                        ),
-                    }
-                ),
-                sink,
-                mutation=save_prepared_document,
-            )
             workspace, job = await self._ensure_workspace(job, book, command, sink)
             sources, job = await self._upload_sources(job, workspace, command, sink)
             ready, job = await self._wait_sources(job, workspace, command, sources, sink)
             return await self._verify_and_complete(job, book, workspace, command, ready, sink)
         except _WorkflowPaused as paused:
+            _mark_durably_projected(paused.error)
             raise paused.error from None
         except DiandianError as error:
-            self._fail_running_job(job.id, error, token)
+            if self._fail_running_job(job.id, error, token):
+                _mark_durably_projected(error)
             raise
         except Exception as error:
             unexpected = DiandianError(
@@ -289,8 +305,55 @@ class ImportBookUseCase:
                 "Unexpected recoverable import failure",
                 retryable=False,
             )
-            self._fail_running_job(job.id, unexpected, token)
+            if self._fail_running_job(job.id, unexpected, token):
+                _mark_durably_projected(unexpected)
             raise unexpected from error
+
+    async def _materialize_v1(
+        self,
+        job: Job,
+        book: Book,
+        command: ImportBookCommand,
+        sink: ProgressSink,
+    ) -> Job:
+        job = await self._run_local_step(
+            job,
+            JobStep.ACQUIRING,
+            command.asset.sha256,
+            _canonical_json({"asset_id": command.asset.id}),
+            sink,
+        )
+        job = await self._run_local_step(
+            job,
+            JobStep.STORING,
+            command.asset.sha256,
+            _canonical_json({"storage_key": command.asset.storage_key.value}),
+            sink,
+            mutation=lambda unit_of_work: unit_of_work.catalog.add_asset(book.id, command.asset),
+        )
+        preparation_hash = _preparation_input_hash(command)
+
+        def save_prepared_document(unit_of_work: UnitOfWork) -> None:
+            for derived in command.derived_assets:
+                unit_of_work.catalog.add_asset(book.id, derived)
+            for part in command.parts:
+                unit_of_work.catalog.add_part(part)
+            if command.manifest is not None:
+                unit_of_work.catalog.add_manifest(book.id, command.manifest)
+
+        return await self._run_local_step(
+            job,
+            JobStep.PREPARING,
+            preparation_hash,
+            _canonical_json(
+                {
+                    "part_ids": [part.id for part in command.parts],
+                    "manifest": command.manifest.storage_key.value if command.manifest else None,
+                }
+            ),
+            sink,
+            mutation=save_prepared_document,
+        )
 
     def request_cancel(self, job_id: str) -> Job:
         now = self._clock()
@@ -330,12 +393,12 @@ class ImportBookUseCase:
     async def resume_after_auth(self, job_id: str) -> Job:
         with self._unit_of_work() as unit_of_work:
             job = unit_of_work.jobs.get(job_id)
-            payload = unit_of_work.job_payloads.get(job_id)
             unit_of_work.commit()
-        if job is None or payload is None:
+        if job is None:
             raise KeyError(f"Unknown Job: {job_id}")
-        command = _deserialize_command(payload.payload_json)
-        if not await self._knowledge.credential_is_healthy(command.credential):
+        payload = self._load_payload(job)
+        credential = _target_credential(payload)
+        if not await self._knowledge.credential_is_healthy(credential):
             raise DiandianError(
                 ErrorCode.AUTH_REQUIRED,
                 "Provider authentication is still unavailable",
@@ -1250,7 +1313,7 @@ class ImportBookUseCase:
         job_id: str,
         error: DiandianError,
         token: LeaseToken,
-    ) -> None:
+    ) -> bool:
         with self._unit_of_work() as unit_of_work:
             job = unit_of_work.jobs.get(job_id)
             if (
@@ -1260,7 +1323,7 @@ class ImportBookUseCase:
                 or job.lease_generation != token.generation
             ):
                 unit_of_work.commit()
-                return
+                return False
 
             now = self._clock()
             active_record = (
@@ -1342,12 +1405,13 @@ class ImportBookUseCase:
                         )
             unit_of_work.jobs.save_transition(job, current)
             unit_of_work.commit()
+        return True
 
-    def _load_command(self, job: Job) -> ImportBookCommand:
+    def _load_payload(self, job: Job) -> JobPayload:
         with self._unit_of_work() as unit_of_work:
             payload = unit_of_work.job_payloads.get(job.id)
             unit_of_work.commit()
-        if payload is None or payload.payload_type != "import_book.v1":
+        if payload is None:
             raise DiandianError(
                 ErrorCode.REPOSITORY_CONFLICT,
                 "Import Job payload is unavailable",
@@ -1360,7 +1424,7 @@ class ImportBookUseCase:
                 "Import Job payload fingerprint does not match",
                 retryable=False,
             )
-        return _deserialize_command(payload.payload_json)
+        return payload
 
     def _require_book(self, job: Job) -> Book:
         if job.book_id is None:
@@ -1442,6 +1506,51 @@ class ImportBookUseCase:
                 or ready_source.status is not KnowledgeStatus.READY
             ):
                 raise _source_verification_error()
+
+
+def _mark_durably_projected(error: DiandianError) -> None:
+    error.__dict__["durably_projected"] = True
+
+
+def _target_credential(payload: JobPayload) -> CredentialRef:
+    if payload.payload_type == "import_book.v1":
+        return _deserialize_command(payload.payload_json).credential
+    if payload.payload_type == "import_source.v2":
+        try:
+            value = json.loads(payload.payload_json)
+            if not isinstance(value, dict) or set(value) != {
+                "acquisition_credential",
+                "author",
+                "captured_asset",
+                "provider",
+                "rights_provenance_id",
+                "source_url",
+                "target_capabilities",
+                "target_credential",
+                "title",
+            }:
+                raise ValueError("Invalid import source payload")
+            if _canonical_json(value) != payload.payload_json:
+                raise ValueError("Import source payload is not canonical")
+            credential = value["target_credential"]
+            if not isinstance(credential, dict) or set(credential) != {"profile", "provider"}:
+                raise ValueError("Invalid target credential reference")
+            provider = credential["provider"]
+            profile = credential["profile"]
+            if provider != "notebooklm" or not isinstance(profile, str) or not profile:
+                raise ValueError("Invalid target credential reference")
+            return CredentialRef(provider, profile)
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+            raise DiandianError(
+                ErrorCode.REPOSITORY_CONFLICT,
+                "Import source payload is invalid",
+                retryable=False,
+            ) from error
+    raise DiandianError(
+        ErrorCode.REPOSITORY_CONFLICT,
+        "Import Job payload type is unsupported",
+        retryable=False,
+    )
 
 
 def _serialize_command(command: ImportBookCommand) -> str:

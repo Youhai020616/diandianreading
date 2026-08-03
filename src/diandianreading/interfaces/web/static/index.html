@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self'; font-src 'none'; connect-src 'self'; media-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; trusted-types 'none'; require-trusted-types-for 'script'">
+  <title>diandianreading · Local reading workspace</title>
+  <link rel="stylesheet" href="./app.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">跳到主要内容 / Skip to content</a>
+
+  <div class="app-shell" id="app-shell">
+    <div class="workspace-shell" id="workspace-shell">
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="diandianreading 首页">
+          <span class="brand-mark" aria-hidden="true">d</span>
+          <span class="brand-copy">
+            <strong>diandianreading</strong>
+            <span>local reading workspace</span>
+          </span>
+        </a>
+        <div class="topbar-actions">
+          <p class="session-pill" id="session-pill" data-state="loading">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="session-pill-text">正在检查会话 / Checking session</span>
+          </p>
+          <button class="button button-secondary compact-only" id="open-chat-button" type="button" aria-controls="chat-panel" aria-expanded="false">AI Chat / 对话</button>
+        </div>
+      </header>
+
+      <nav class="primary-nav" aria-label="工作区 / Workspace">
+        <button class="nav-button is-active" type="button" data-view="connections" aria-current="page"><span aria-hidden="true">01</span>Connections / 连接</button>
+        <button class="nav-button" type="button" data-view="import"><span aria-hidden="true">02</span>Import / 导入</button>
+        <button class="nav-button" type="button" data-view="jobs"><span aria-hidden="true">03</span>Jobs / 任务</button>
+        <button class="nav-button" id="nav-chat-button" type="button" aria-controls="chat-panel" aria-expanded="false"><span aria-hidden="true">04</span>AI Chat / 对话</button>
+      </nav>
+
+      <div class="connectivity-banner" id="connectivity-banner" role="status" aria-live="polite" hidden>
+        <strong id="connectivity-title">Offline / 离线</strong>
+        <span id="connectivity-message">浏览器报告网络不可用；本地数据暂时无法刷新。</span>
+      </div>
+
+      <main class="main-content" id="main-content" tabindex="-1">
+        <section class="view" id="view-connections" data-view-panel="connections" aria-labelledby="connections-title">
+          <div class="view-heading">
+            <div>
+              <p class="eyebrow">LOCAL-FIRST CONTROL CENTER</p>
+              <h1 id="connections-title">Connections <span>/ 连接状态</span></h1>
+              <p>确认浏览器会话与本地 Provider 认证。状态会明确显示，不依赖颜色判断。</p>
+            </div>
+            <button class="button button-secondary" id="refresh-connections-button" type="button">Refresh / 刷新状态</button>
+          </div>
+
+          <section class="session-card" aria-labelledby="browser-session-title">
+            <div>
+              <p class="card-kicker">SECURE LOCAL SESSION</p>
+              <h2 id="browser-session-title">Browser session / 浏览器会话</h2>
+              <p class="status-copy" id="session-detail" role="status" aria-live="polite">正在验证本地会话。</p>
+            </div>
+            <button class="button button-quiet" id="logout-button" type="button" disabled>Log out / 退出</button>
+          </section>
+
+          <div class="provider-grid" aria-label="Provider authentication status">
+            <article class="provider-card">
+              <div class="provider-card-heading">
+                <span class="provider-monogram" aria-hidden="true">N</span>
+                <div>
+                  <p class="card-kicker">KNOWLEDGE CONNECTION</p>
+                  <h2>NotebookLM</h2>
+                </div>
+              </div>
+              <p class="status-badge" id="notebooklm-status" data-state="loading">Checking / 检查中</p>
+              <p class="provider-description" id="notebooklm-description">正在读取本地认证健康状态。</p>
+              <p class="command-hint">需要重新认证时运行 <code>diandian auth login notebooklm</code></p>
+            </article>
+
+            <article class="provider-card">
+              <div class="provider-card-heading">
+                <span class="provider-monogram provider-monogram-lavender" aria-hidden="true">Z</span>
+                <div>
+                  <p class="card-kicker">OPTIONAL ACQUISITION</p>
+                  <h2>Z-Library</h2>
+                </div>
+              </div>
+              <p class="status-badge" id="zlibrary-status" data-state="loading">Checking / 检查中</p>
+              <p class="provider-description" id="zlibrary-description">正在读取可选连接状态。</p>
+              <p class="command-hint">需要重新认证时运行 <code>diandian auth login zlibrary</code></p>
+            </article>
+          </div>
+
+          <aside class="privacy-note" aria-labelledby="privacy-title">
+            <span class="privacy-icon" aria-hidden="true">◎</span>
+            <div>
+              <h2 id="privacy-title">Credentials stay local / 凭据保留在本机</h2>
+              <p>此页面不持久化 Bootstrap nonce、Session、CSRF token 或 Provider 凭据，也不会显示 Provider ID 与物理文件路径。</p>
+            </div>
+          </aside>
+        </section>
+
+        <section class="view" id="view-import" data-view-panel="import" aria-labelledby="import-title" hidden>
+          <div class="view-heading">
+            <div>
+              <p class="eyebrow">ONE SOURCE, EXPLICIT RIGHTS</p>
+              <h1 id="import-title">Import <span>/ 导入书籍</span></h1>
+              <p>每次导入都需要单独确认权利依据。默认使用本地文件；可选连接仅用于你有权访问的资料。</p>
+            </div>
+          </div>
+
+          <div class="segmented-control" role="tablist" aria-label="Import source / 导入来源">
+            <button class="segment is-active" id="local-import-tab" type="button" role="tab" aria-selected="true" aria-controls="local-import-panel">Local file / 本地文件</button>
+            <button class="segment" id="zlibrary-import-tab" type="button" role="tab" aria-selected="false" aria-controls="zlibrary-import-panel" tabindex="-1">Z-Library / 可选连接</button>
+          </div>
+
+          <section class="import-panel" id="local-import-panel" role="tabpanel" aria-labelledby="local-import-tab">
+            <form id="local-import-form" novalidate>
+              <div class="form-intro">
+                <div>
+                  <p class="card-kicker">RECOMMENDED</p>
+                  <h2>Upload a local PDF or EPUB</h2>
+                  <p>文件字节直接发送到同源 API；页面只显示文件名，不读取或显示物理路径。</p>
+                </div>
+                <span class="format-chip">PDF · EPUB</span>
+              </div>
+
+              <div class="field full-field">
+                <label for="local-file">Book file / 书籍文件</label>
+                <input id="local-file" name="file" type="file" accept=".pdf,.epub,application/pdf,application/epub+zip" required aria-describedby="local-file-help">
+                <p class="field-help" id="local-file-help">选择一个你有权处理的 PDF 或 EPUB 文件。</p>
+              </div>
+
+              <div class="form-grid">
+                <div class="field">
+                  <label for="local-notebooklm-profile">NotebookLM profile / 配置名称</label>
+                  <input id="local-notebooklm-profile" name="notebooklm_profile" type="text" maxlength="128" autocomplete="off" required placeholder="例如：default">
+                </div>
+                <div class="field">
+                  <label for="local-rights-basis">Rights basis / 权利依据</label>
+                  <select id="local-rights-basis" name="rights_basis" required>
+                    <option value="" selected>请选择 / Select one</option>
+                    <option value="owned_copy">Owned copy / 合法持有副本</option>
+                    <option value="public_domain">Public domain / 公版</option>
+                    <option value="open_license">Open license / 开放许可</option>
+                  </select>
+                </div>
+                <div class="field full-field">
+                  <label for="local-license-identifier">License identifier / 许可标识（可选）</label>
+                  <input id="local-license-identifier" name="license_identifier" type="text" maxlength="256" autocomplete="off" placeholder="例如：CC BY 4.0">
+                </div>
+              </div>
+
+              <label class="confirmation" for="local-rights-confirmed">
+                <input id="local-rights-confirmed" name="rights_confirmed" type="checkbox" required>
+                <span>
+                  <strong>I confirm my rights / 我确认拥有处理权利</strong>
+                  <small>我确认此单项资料的使用符合所选依据，并理解该声明会被记录用于本地审计。</small>
+                </span>
+              </label>
+
+              <div class="form-actions">
+                <button class="button button-primary" type="submit">Start import / 开始导入</button>
+                <p class="form-status" id="local-import-status" role="status" aria-live="polite"></p>
+              </div>
+            </form>
+          </section>
+
+          <section class="import-panel" id="zlibrary-import-panel" role="tabpanel" aria-labelledby="zlibrary-import-tab" hidden>
+            <form id="zlibrary-import-form" novalidate>
+              <div class="form-intro">
+                <div>
+                  <p class="card-kicker">OPTIONAL · EXPLICIT ATTESTATION</p>
+                  <h2>Import from an approved location</h2>
+                  <p>仅提交你有合法访问权的 HTTPS 位置。此入口不会绕过 DRM、访问控制或站点授权。</p>
+                </div>
+              </div>
+
+              <div class="field full-field">
+                <label for="zlibrary-location">Book location / 资料位置</label>
+                <input id="zlibrary-location" name="location" type="url" inputmode="url" maxlength="2048" autocomplete="off" required placeholder="https://…" aria-describedby="zlibrary-location-help">
+                <p class="field-help" id="zlibrary-location-help">必须是已配置连接允许的 HTTPS 地址，且不得包含 URL 用户名或密码。</p>
+              </div>
+
+              <div class="form-grid">
+                <div class="field">
+                  <label for="zlibrary-title">Book title / 书名</label>
+                  <input id="zlibrary-title" name="title" type="text" maxlength="200" autocomplete="off" required>
+                </div>
+                <div class="field">
+                  <label for="zlibrary-author">Author / 作者（可选）</label>
+                  <input id="zlibrary-author" name="author" type="text" maxlength="200" autocomplete="off">
+                </div>
+                <div class="field">
+                  <label for="zlibrary-profile">Z-Library profile / 配置名称</label>
+                  <input id="zlibrary-profile" name="zlibrary_profile" type="text" maxlength="128" autocomplete="off" required placeholder="例如：default">
+                </div>
+                <div class="field">
+                  <label for="zlibrary-notebooklm-profile">NotebookLM profile / 配置名称</label>
+                  <input id="zlibrary-notebooklm-profile" name="notebooklm_profile" type="text" maxlength="128" autocomplete="off" required placeholder="例如：default">
+                </div>
+                <div class="field">
+                  <label for="zlibrary-rights-basis">Rights basis / 权利依据</label>
+                  <select id="zlibrary-rights-basis" name="rights_basis" required>
+                    <option value="" selected>请选择 / Select one</option>
+                    <option value="owned_copy">Owned copy / 合法持有副本</option>
+                    <option value="public_domain">Public domain / 公版</option>
+                    <option value="open_license">Open license / 开放许可</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="zlibrary-license-identifier">License identifier / 许可标识（可选）</label>
+                  <input id="zlibrary-license-identifier" name="license_identifier" type="text" maxlength="256" autocomplete="off" placeholder="例如：CC BY 4.0">
+                </div>
+              </div>
+
+              <label class="confirmation" for="zlibrary-rights-confirmed">
+                <input id="zlibrary-rights-confirmed" name="rights_confirmed" type="checkbox" required>
+                <span>
+                  <strong>I confirm this specific acquisition / 我确认本次单项获取</strong>
+                  <small>我确认有权从所填位置获取并处理该资料；确认不会被预选，也不能用于批量或通用下载。</small>
+                </span>
+              </label>
+
+              <div class="form-actions">
+                <button class="button button-primary" type="submit">Start import / 开始导入</button>
+                <p class="form-status" id="zlibrary-import-status" role="status" aria-live="polite"></p>
+              </div>
+            </form>
+          </section>
+        </section>
+
+        <section class="view" id="view-jobs" data-view-panel="jobs" aria-labelledby="jobs-title" hidden>
+          <div class="view-heading">
+            <div>
+              <p class="eyebrow">DURABLE LOCAL WORK</p>
+              <h1 id="jobs-title">Jobs <span>/ 任务进度</span></h1>
+              <p>状态来自持久化快照。实时事件只触发重新获取，不模拟 Token 流或虚假百分比。</p>
+            </div>
+            <button class="button button-secondary" id="refresh-jobs-button" type="button">Refresh / 刷新任务</button>
+          </div>
+
+          <p class="section-status" id="jobs-status" role="status" aria-live="polite">等待加载任务。</p>
+
+          <div class="jobs-layout">
+            <section class="jobs-list-panel" aria-labelledby="job-list-title">
+              <div class="panel-heading">
+                <h2 id="job-list-title">Recent jobs / 最近任务</h2>
+                <span>最多 50 条</span>
+              </div>
+              <ul class="job-list" id="job-list"></ul>
+            </section>
+
+            <section class="job-detail-panel" id="job-detail-panel" aria-label="Job details / 任务详情">
+              <div class="empty-state" id="job-detail-empty">
+                <span aria-hidden="true">↗</span>
+                <h2>Select a job / 选择任务</h2>
+                <p>查看持久状态、当前步骤、阻塞原因与安全重试选项。</p>
+              </div>
+              <div id="job-detail-content" hidden></div>
+            </section>
+          </div>
+        </section>
+      </main>
+
+      <footer class="workspace-footer">
+        <p>Local-first · Same-origin · No credential persistence in browser storage</p>
+        <p id="last-refresh-text">尚未刷新 / Not refreshed yet</p>
+      </footer>
+    </div>
+
+    <button class="chat-backdrop" id="chat-backdrop" type="button" aria-label="关闭 AI 对话 / Close AI chat" hidden></button>
+
+    <aside class="chat-panel" id="chat-panel" data-open="false" aria-labelledby="chat-title" tabindex="-1">
+      <header class="chat-header">
+        <div>
+          <p class="card-kicker">BOOK-GROUNDED CONVERSATION</p>
+          <h1 id="chat-title">AI Chat <span>/ 阅读对话</span></h1>
+        </div>
+        <button class="icon-button" id="close-chat-button" type="button" aria-label="关闭 AI 对话 / Close AI chat"><span aria-hidden="true">×</span></button>
+      </header>
+
+      <section class="chat-book-picker" aria-labelledby="book-picker-title">
+        <label id="book-picker-title" for="chat-book-select">Book / 选择书籍</label>
+        <div class="book-picker-row">
+          <select id="chat-book-select" disabled>
+            <option value="">正在加载书籍 / Loading books</option>
+          </select>
+          <button class="button button-lavender" id="load-conversation-button" type="button" disabled>Open / 打开</button>
+        </div>
+        <p id="book-picker-help">选择已完成处理的书籍，建立或恢复唯一活跃对话。</p>
+      </section>
+
+      <div class="chat-state" id="chat-state" role="status" aria-live="polite" aria-atomic="true">请选择一本可用书籍开始对话。</div>
+
+      <div class="message-log" id="message-log" role="log" aria-label="AI chat messages / AI 对话消息" aria-relevant="additions text">
+        <div class="empty-chat" id="empty-chat">
+          <span aria-hidden="true">✦</span>
+          <h2>Ask from the book / 从书中提问</h2>
+          <p>回答会以纯文本显示；可操作的来源按钮只来自 API references。</p>
+        </div>
+      </div>
+
+      <div class="run-actions" id="run-actions" hidden>
+        <button class="button button-secondary" id="retry-chat-button" type="button" hidden>Retry / 重试回答</button>
+        <button class="button button-quiet" id="cancel-chat-button" type="button" hidden>Cancel / 请求取消</button>
+      </div>
+
+      <form class="chat-composer" id="chat-form">
+        <label for="chat-question">Question / 问题</label>
+        <textarea id="chat-question" name="question" rows="3" maxlength="8000" required disabled placeholder="先选择一本书…"></textarea>
+        <div class="composer-footer">
+          <p>Enter 发送 · Shift+Enter 换行</p>
+          <button class="button button-primary" id="send-chat-button" type="submit" disabled>Send / 发送</button>
+        </div>
+      </form>
+    </aside>
+  </div>
+
+  <p class="sr-only" id="global-live" role="status" aria-live="polite" aria-atomic="true"></p>
+
+  <noscript>
+    <p class="noscript-message">此本地工作区需要 JavaScript 才能安全调用同源 API。/ JavaScript is required for this local workspace.</p>
+  </noscript>
+</body>
+</html>

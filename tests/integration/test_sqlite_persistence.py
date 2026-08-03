@@ -81,8 +81,8 @@ def make_operation(job_id: str) -> RemoteOperation:
 
 def test_migrations_are_idempotent_verified_and_database_is_private(tmp_path) -> None:
     database = make_database(tmp_path)
-    assert database.migrate() == 5
-    assert database.schema_version() == 5
+    assert database.migrate() == 6
+    assert database.schema_version() == 6
     assert database.integrity_check()
     if os.name != "nt":
         assert stat.S_IMODE(database.path.stat().st_mode) == 0o600
@@ -226,7 +226,7 @@ def test_schema_v3_data_migrates_to_recoverable_v4_states(tmp_path) -> None:
             )
 
     assert database.schema_version() == 3
-    assert database.migrate() == 5
+    assert database.migrate() == 6
     migrated_job = SQLiteJobRepository(database).get("job-v3")
     assert migrated_job is not None
     assert migrated_job.status is JobStatus.FAILED
@@ -671,7 +671,7 @@ def test_schema_v4_migrates_to_v5_rights_audit_tables(tmp_path) -> None:
             )
 
     assert database.schema_version() == 4
-    assert database.migrate() == 5
+    assert database.migrate() == 6
     with database.connect() as connection:
         tables = {
             str(row[0])
@@ -797,3 +797,156 @@ def test_unit_of_work_commits_and_rolls_back_rights_provenance(tmp_path) -> None
     repository = SQLiteRightsProvenanceRepository(database)
     assert repository.get(provenance.id) == provenance
     assert repository.get(rolled_back.id) is None
+
+
+def test_catalog_and_job_keyset_lists_are_bounded_and_deterministic(tmp_path) -> None:
+    database = make_database(tmp_path)
+    catalog = SQLiteCatalogRepository(database)
+    jobs = SQLiteJobRepository(database)
+    for book_id in ("book-a", "book-c", "book-b"):
+        catalog.add_book(
+            Book(
+                id=book_id,
+                title=book_id,
+                author=None,
+                source_hash=f"hash-{book_id}",
+                status=BookStatus.READY,
+                created_at=FIXED_NOW,
+                updated_at=FIXED_NOW,
+            )
+        )
+    assert catalog.get_book_by_source_hash("hash-book-b") is not None
+    first_books = tuple(catalog.list_books(2))
+    assert [book.id for book in first_books] == ["book-c", "book-b"]
+    second_books = tuple(catalog.list_books(2, first_books[-1].created_at, first_books[-1].id))
+    assert [book.id for book in second_books] == ["book-a"]
+
+    for job_id in ("job-a", "job-c", "job-b"):
+        jobs.add(
+            Job.create(
+                job_id=job_id,
+                job_type="import_book",
+                input_hash=f"hash-{job_id}",
+                now=FIXED_NOW,
+            )
+        )
+    recent = tuple(jobs.list_recent(JobStatus.QUEUED, 2))
+    assert [job.id for job in recent] == ["job-c", "job-b"]
+    older = tuple(jobs.list_recent(JobStatus.QUEUED, 2, recent[-1].created_at, recent[-1].id))
+    assert [job.id for job in older] == ["job-a"]
+
+    with pytest.raises(ValueError, match="between 1 and 100"):
+        catalog.list_books(101)
+    with pytest.raises(ValueError, match="requires both"):
+        jobs.list_recent(None, 10, FIXED_NOW, None)
+
+
+def test_claim_next_prefers_oldest_eligible_and_takes_over_expired_lease(tmp_path) -> None:
+    database = make_database(tmp_path)
+    jobs = SQLiteJobRepository(database)
+    expired = Job.create(
+        job_id="job-expired",
+        job_type="import_book",
+        input_hash="expired",
+        now=FIXED_NOW - timedelta(seconds=20),
+    )
+    jobs.add(expired)
+    jobs.claim(
+        expired.id,
+        "worker-old",
+        lease_expires_at=FIXED_NOW - timedelta(seconds=5),
+        now=FIXED_NOW - timedelta(seconds=10),
+    )
+    for job_id in ("job-b", "job-a"):
+        jobs.add(
+            Job.create(
+                job_id=job_id,
+                job_type="import_book",
+                input_hash=job_id,
+                now=FIXED_NOW,
+            )
+        )
+    deferred = replace(
+        Job.create(
+            job_id="job-deferred",
+            job_type="import_book",
+            input_hash="deferred",
+            now=FIXED_NOW - timedelta(seconds=30),
+        ),
+        not_before=FIXED_NOW + timedelta(minutes=1),
+    )
+    jobs.add(deferred)
+    cancelled = Job.create(
+        job_id="job-cancel-requested",
+        job_type="import_book",
+        input_hash="cancelled",
+        now=FIXED_NOW - timedelta(seconds=40),
+    )
+    jobs.add(cancelled)
+    jobs.request_cancel(cancelled.id, now=FIXED_NOW)
+
+    first = jobs.claim_next(
+        "worker-new",
+        lease_expires_at=FIXED_NOW + timedelta(minutes=1),
+        now=FIXED_NOW,
+    )
+    assert first is not None
+    assert first.id == expired.id
+    assert first.lease_owner == "worker-new"
+    assert first.lease_generation == 2
+
+    second = jobs.claim_next(
+        "worker-new",
+        lease_expires_at=FIXED_NOW + timedelta(minutes=1),
+        now=FIXED_NOW,
+    )
+    assert second is not None and second.id == "job-a"
+
+
+def test_persistence_rejects_changing_or_removing_attached_book_id(tmp_path) -> None:
+    database = make_database(tmp_path)
+    catalog = SQLiteCatalogRepository(database)
+    for book_id in ("book-one", "book-two"):
+        catalog.add_book(
+            Book(
+                id=book_id,
+                title=book_id,
+                author=None,
+                source_hash=f"hash-{book_id}",
+                status=BookStatus.IMPORTING,
+                created_at=FIXED_NOW,
+                updated_at=FIXED_NOW,
+            )
+        )
+    jobs = SQLiteJobRepository(database)
+    queued = Job.create(
+        job_id="job-attach",
+        job_type="import_book",
+        input_hash="attach",
+        now=FIXED_NOW,
+    )
+    jobs.add(queued)
+    claimed = jobs.claim(
+        queued.id,
+        "worker",
+        lease_expires_at=FIXED_NOW + timedelta(minutes=1),
+        now=FIXED_NOW,
+    )
+    acquiring = claimed.begin_step(JobStep.ACQUIRING, claimed.lease_token, now=FIXED_NOW)
+    jobs.save_transition(claimed, acquiring)
+    attached = acquiring.attach_book("book-one", acquiring.lease_token, now=FIXED_NOW)
+    jobs.save_transition(acquiring, attached)
+
+    for replacement in ("book-two", None):
+        with pytest.raises(RepositoryConflict, match="cannot be changed or removed"):
+            jobs.save_transition(
+                attached,
+                replace(attached, book_id=replacement, version=attached.version + 1),
+            )
+    forged_previous = replace(attached, book_id=None)
+    with pytest.raises(RepositoryConflict, match="cannot be changed or removed"):
+        jobs.save_transition(
+            forged_previous,
+            replace(forged_previous, book_id="book-two", version=attached.version + 1),
+        )
+    assert jobs.get(attached.id) == attached

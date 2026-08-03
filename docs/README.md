@@ -4,7 +4,7 @@
 >
 > 最后更新：2026-08-03
 
-本目录保存 `diandianreading` 的产品、架构、集成和功能设计文档。Phase 0–4 已有可执行实现；文档中的 `Proposed` 仍只表示目标设计或尚未完成全部验收，不代表已经实现。
+本目录保存 `diandianreading` 的产品、架构、集成和功能设计文档。Phase 0–5 已有可执行实现；Phase 5 已交付统一 CLI、本地 Web/API、持久导入/Job 与整本书 AI Chat。文档中的 `Proposed` 仍只表示目标设计或尚未完成全部验收，不代表已经实现。
 
 ## 文档地图
 
@@ -12,16 +12,17 @@
 | --- | --- | --- |
 | [产品 PRD](../diandianreading-PRD.md) | 产品定位、用户流程、功能范围和数据模型 | Draft v0.1 |
 | [产品 Roadmap](../diandianreading-ROADMAP.md) | P0-P9 阶段目标与退出标准 | Draft v0.1 |
-| [API 参考](api.md) | `notebooklm-py`、`zlibrary-to-notebooklm` 及现有集成契约 | Active |
+| [API 参考](api.md) | `notebooklm-py`、`zlibrary-to-notebooklm` 及 Phase 5 统一产品契约 | Active |
 | [架构文档索引](architecture/README.md) | 架构阅读顺序、ADR 状态和规则 | Active |
 | [两项目集成计划](architecture/integration-plan.md) | 目标架构、抽象边界、重构路径和分阶段迁移 | Active |
 | [本地 API 安全 ADR](architecture/adr/0005-local-api-security.md) | 每安装实例认证、同源浏览器边界、SSE/WS 与资源限制 | Proposed |
-| [AI 对话功能设计](features/ai-chat.md) | 可视化对话、引用、会话与 API 设计 | Proposed |
+| [AI 对话功能设计](features/ai-chat.md) | 已实现整本书对话切片，以及后续章节/笔记/选区目标设计 | Active / Proposed |
 | [Phase 0 本地 E2E](development/phase-0-e2e.md) | Fake Adapter、SQLite 与 Job 全链路验证 | Active |
 | [Phase 1 文档处理 E2E](development/phase-1-e2e.md) | 本地 Acquisition、Markdown/EPUB/PDF Preparation 与真实对象存储验证 | Active |
 | [Phase 2 NotebookLM Adapter E2E](development/phase-2-e2e.md) | 公开 Python SDK 边界、凭据隔离、引用映射、生成与下载验证 | Active |
 | [Phase 3 可恢复 Workflow E2E](development/phase-3-e2e.md) | Lease fencing、Step checkpoint、Intent reconciliation、认证恢复、解歧与取消验证 | Active |
 | [Phase 4 Z-Library 可选 Adapter E2E](development/phase-4-e2e.md) | Rights gate、真实 session marker、逐跳网络、bounded download、Archive 与 Legacy migration 验证 | Active |
+| [Phase 5 统一产品 E2E](development/phase-5-e2e.md) | Session/CSRF、导入、Worker、书库、整本书 Chat、引用与 SSE 全链路验证 | Active |
 
 ## 推荐阅读顺序
 
@@ -36,6 +37,7 @@
 9. [Phase 2 NotebookLM Adapter E2E](development/phase-2-e2e.md)：验证公开 SDK Adapter、凭据路径隔离、引用恢复和内容资产发布。
 10. [Phase 3 可恢复 Workflow E2E](development/phase-3-e2e.md)：验证进程崩溃边界、Lease 接管、远程结果协调、恢复控制与安全取消。
 11. [Phase 4 Z-Library 可选 Adapter E2E](development/phase-4-e2e.md)：验证强制权利来源、Provider 会话隔离、浏览器网络策略、受限下载和 Legacy migration。
+12. [Phase 5 统一产品 E2E](development/phase-5-e2e.md)：验证安装后仍可执行的安全 Web/API、持久导入、Job、整本书 Chat、引用与 SSE 链路。
 
 ## 状态词
 

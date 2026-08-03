@@ -271,6 +271,31 @@ class Job:
             version=self.version + 1,
         )
 
+    def attach_book(
+        self,
+        book_id: str,
+        token: LeaseToken,
+        *,
+        now: datetime | None = None,
+    ) -> Job:
+        """Attach the Book created by a running durable import exactly once."""
+
+        self.assert_lease(token)
+        if self.current_step not in {JobStep.ACQUIRING, JobStep.STORING}:
+            raise InvalidStateTransition(
+                "A Book can be attached only while an import is acquiring or storing"
+            )
+        if self.book_id is not None:
+            raise InvalidStateTransition("A Job Book binding is immutable once attached")
+        if not book_id.strip():
+            raise ValueError("Attached Book ID cannot be empty")
+        return replace(
+            self,
+            book_id=book_id,
+            updated_at=now or _utc_now(),
+            version=self.version + 1,
+        )
+
     def report_progress(
         self,
         current: int,

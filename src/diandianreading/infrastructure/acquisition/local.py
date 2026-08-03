@@ -71,6 +71,11 @@ class LocalFileAcquirer(DocumentAcquirer):
 
         source = Path(os.path.abspath(Path(request.location).expanduser()))
         suffix = source.suffix.casefold()
+        display_filename = _requested_display_filename(
+            request.options.get("display_filename"),
+            fallback=source.name,
+            expected_suffix=suffix,
+        )
         mime_type = _MIME_BY_SUFFIX.get(suffix)
         if mime_type is None:
             raise DiandianError(
@@ -127,11 +132,11 @@ class LocalFileAcquirer(DocumentAcquirer):
         asset = DocumentAsset(
             id=asset_id,
             storage_key=stored.key,
-            display_filename=source.name,
+            display_filename=display_filename,
             mime_type=mime_type,
             size_bytes=stored.size_bytes,
             sha256=stored.sha256,
-            title=_display_title(source.stem),
+            title=_display_title(Path(display_filename).stem),
             author=request.options.get("author") or None,
             origin=SourceOrigin.LOCAL,
             origin_locator=None,
@@ -205,6 +210,30 @@ class LocalFileAcquirer(DocumentAcquirer):
                 "Local Markdown signature does not match its extension",
                 retryable=False,
             )
+
+
+def _requested_display_filename(
+    requested: str | None,
+    *,
+    fallback: str,
+    expected_suffix: str,
+) -> str:
+    value = requested.strip() if requested is not None and requested.strip() else fallback
+    if (
+        not value
+        or Path(value).name != value
+        or "/" in value
+        or "\\" in value
+        or len(value.encode("utf-8")) > 255
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+        or Path(value).suffix.casefold() != expected_suffix
+    ):
+        raise DiandianError(
+            ErrorCode.VALIDATION,
+            "Local document display filename is invalid",
+            retryable=False,
+        )
+    return value
 
 
 def _display_title(stem: str) -> str:
