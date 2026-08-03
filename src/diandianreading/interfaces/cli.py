@@ -32,6 +32,7 @@ from diandianreading.interfaces.phase2_demo import run_phase2_demo
 from diandianreading.interfaces.phase3_demo import run_phase3_demo
 from diandianreading.interfaces.phase4_demo import run_phase4_demo
 from diandianreading.interfaces.phase5_demo import run_phase5_demo
+from diandianreading.interfaces.r1_demo import run_r1_demo
 from diandianreading.interfaces.runtime import (
     ApplicationPaths,
     RuntimeConfig,
@@ -151,6 +152,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     phase5.add_argument("--app-home", type=Path, required=True)
     phase5.add_argument("--workspace", type=Path, required=True)
+
+    r1 = subparsers.add_parser(
+        "r1-e2e",
+        help="run reader detail, content, chapters, and progress over the secured local API",
+    )
+    r1.add_argument("--app-home", type=Path, required=True)
+    r1.add_argument("--workspace", type=Path, required=True)
     return parser
 
 
@@ -161,6 +169,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _serve(args)
         if args.command == "phase5-e2e":
             _print_result(run_phase5_demo(args.app_home, args.workspace))
+            return 0
+        if args.command == "r1-e2e":
+            _print_result(run_r1_demo(args.app_home, args.workspace))
             return 0
         if args.command in {"auth", "import", "jobs", "worker"}:
             result = asyncio.run(_run_product_command(args))

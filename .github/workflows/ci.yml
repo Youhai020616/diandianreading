@@ -98,6 +98,12 @@ jobs:
           --app-home .tmp/ci-wheel/phase5/app-home
           --workspace .tmp/ci-wheel/phase5/workspace
 
+      - name: Run installed-wheel R1 reading-service smoke
+        run: >-
+          .tmp/ci-wheel-venv/bin/diandian r1-e2e
+          --app-home .tmp/ci-wheel/r1/app-home
+          --workspace .tmp/ci-wheel/r1/workspace
+
   test:
     name: Test Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest

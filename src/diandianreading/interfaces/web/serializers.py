@@ -11,8 +11,14 @@ from diandianreading.application.ports.chat import (
     ChatSubmissionResult,
     ConversationEnsureResult,
 )
+from diandianreading.application.ports.reading import ChapterSpanView
 from diandianreading.application.use_cases.catalog import BookPage, BookView
 from diandianreading.application.use_cases.jobs import JobPage, JobView
+from diandianreading.application.use_cases.reading import (
+    BookDetailView,
+    ReadingDocumentView,
+)
+from diandianreading.domain.annotations import ContentAnchor, ReadingProgress
 from diandianreading.domain.chat import (
     ChatError,
     ChatMessage,
@@ -55,6 +61,53 @@ def book_page(page: BookPage) -> dict[str, object]:
             if page.next_cursor is not None
             else None
         ),
+    }
+
+
+def chapter_span(view: ChapterSpanView) -> dict[str, object]:
+    return {
+        "reference": view.reference,
+        "title": view.title,
+        "start": view.start,
+        "end": view.end,
+    }
+
+
+def content_anchor(value: ContentAnchor) -> dict[str, object]:
+    return {
+        "type": value.type.value,
+        "anchor_sha256": value.anchor_sha256,
+        "start": value.start,
+        "end": value.end,
+        "chapter_ref": value.chapter_ref,
+    }
+
+
+def reading_progress(value: ReadingProgress) -> dict[str, object]:
+    return {
+        "book_id": value.book_id,
+        "anchor": content_anchor(value.anchor),
+        "percent": value.percent,
+        "updated_at": iso(value.updated_at),
+        "version": value.version,
+    }
+
+
+def reading_document(value: ReadingDocumentView) -> dict[str, object]:
+    return {
+        "book_id": value.book_id,
+        "anchor_sha256": value.anchor_sha256,
+        "mime_type": value.mime_type,
+        "size_bytes": value.size_bytes,
+    }
+
+
+def book_detail(value: BookDetailView) -> dict[str, object]:
+    return {
+        "book": book_view(value.book),
+        "document": reading_document(value.document),
+        "chapters": [chapter_span(item) for item in value.chapters],
+        "progress": (reading_progress(value.progress) if value.progress is not None else None),
     }
 
 

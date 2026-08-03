@@ -24,6 +24,7 @@ from diandianreading.application.use_cases.import_source import (
     ImportSubmissionUseCase,
 )
 from diandianreading.application.use_cases.jobs import JobService
+from diandianreading.application.use_cases.reading import ReadingService
 from diandianreading.domain import (
     CredentialRef,
     DiandianError,
@@ -32,11 +33,17 @@ from diandianreading.domain import (
     utc_now,
 )
 from diandianreading.infrastructure.acquisition.local import LocalFileAcquirer
-from diandianreading.infrastructure.documents import LocalDocumentPreparationAdapter
+from diandianreading.infrastructure.documents import (
+    LocalDocumentPreparationAdapter,
+    PolicyReadingDocumentProcessor,
+)
 from diandianreading.infrastructure.fakes import FakeKnowledgeAdapter
 from diandianreading.infrastructure.local_api import InstallTokenStore, LocalApiSecurityService
 from diandianreading.infrastructure.persistence import SQLiteDatabase, SQLiteUnitOfWorkFactory
 from diandianreading.infrastructure.persistence.chat import SQLiteChatRepository
+from diandianreading.infrastructure.persistence.reading import (
+    SQLiteReadingProgressRepository,
+)
 from diandianreading.infrastructure.storage import LocalFileStore
 from diandianreading.interfaces.runtime import ApplicationPaths
 from diandianreading.interfaces.web import LocalHttpConfig, create_web_app
@@ -100,6 +107,7 @@ class Phase5DemoRuntime:
     imports: ImportBookUseCase
     jobs: JobService
     catalog: CatalogService
+    reading: ReadingService
     chat: ChatUseCase
     security: LocalApiSecurityService
     notebooklm_session: ProviderSessionPort
@@ -162,6 +170,12 @@ def create_phase5_demo_runtime(home: Path) -> tuple[Phase5DemoRuntime, SQLiteDat
         imports=imports,
         jobs=JobService(unit_of_work=unit_of_work),
         catalog=CatalogService(unit_of_work=unit_of_work),
+        reading=ReadingService(
+            unit_of_work=unit_of_work,
+            file_store=store,
+            processor=PolicyReadingDocumentProcessor(),
+            progress=SQLiteReadingProgressRepository(database),
+        ),
         chat=chat,
         security=security,
         notebooklm_session=_DemoSessionManager("notebooklm"),
