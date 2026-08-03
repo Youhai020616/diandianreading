@@ -50,6 +50,20 @@ diandianreading 采用“个人优先、桌面优先、验证先行、逐步开�
 
 每个 D 阶段独立 PR、direct review、本地构建和 CI；前一阶段退出标准未通过时不开始下一阶段。详细契约见 [桌面应用实施计划](docs/architecture/desktop-application-plan.md)。
 
+### 阅读器交付轨 / Reader Track
+
+阅读器交付轨补齐 P3（个人 Alpha：阅读与标注）与 P4 的入口部分，恢复"以划线为 AI 中心"的产品差异化；详细契约见 [阅读器与标注实施计划](docs/architecture/reader-annotation-plan.md) 与 [ADR-0007](docs/architecture/adr/0007-reader-annotation-anchor-model.md)。
+
+| 阅读器阶段 | 对应产品阶段 | 交付 |
+| --- | --- | --- |
+| W0 | P2 | 锚点契约、Annotation 领域模型与 migration 冻结 |
+| R1 | P3 | 正文/章节/进度服务与只读内容 API |
+| R2 | P3 | 标注存储、CRUD API 与再锚定引擎 |
+| R3 | P3 | React 阅读器 UI：渲染、导航、划线与笔记交互 |
+| R4 | P4 | 引用回原文、选区提问与笔记范围的 Chat 缝合 |
+
+R 轨与 D 轨并行推进（R1/R2 ∥ D1/D2，R3 依赖 D3）；多工作单元并行时遵循 [并行交付策略](docs/development/parallel-delivery-strategy.md)。Gate 2 的进入证据由 R3 验收产出。
+
 ---
 
 ## 2. 总体时间建议
