@@ -14,6 +14,7 @@ from diandianreading.domain import DiandianError, ErrorCode, UnsafePathError
 from diandianreading.interfaces.phase0_demo import run_phase0_demo
 from diandianreading.interfaces.phase1_demo import run_phase1_demo
 from diandianreading.interfaces.phase2_demo import run_phase2_demo
+from diandianreading.interfaces.phase3_demo import run_phase3_demo
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,6 +44,13 @@ def build_parser() -> argparse.ArgumentParser:
     phase2.add_argument("--object-root", type=Path, required=True)
     phase2.add_argument("--credentials-root", type=Path, required=True)
     phase2.add_argument("--workspace", type=Path, required=True)
+
+    phase3 = subparsers.add_parser(
+        "phase3-e2e",
+        help="run crash-boundary recovery, auth resume, ambiguity, and cancellation E2E",
+    )
+    phase3.add_argument("--database", type=Path, required=True)
+    phase3.add_argument("--workspace", type=Path, required=True)
     return parser
 
 
@@ -66,6 +74,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     args.workspace,
                 )
             )
+            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+        if args.command == "phase3-e2e":
+            result = asyncio.run(run_phase3_demo(args.database, args.workspace))
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
         return _emit_error(

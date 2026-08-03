@@ -25,7 +25,7 @@ CLI
 → SQLite/Object Store reopen and invariant checks
 ```
 
-真实边界包括 SQLite schema v3、Acquisition、Markdown Preparation、私有对象存储、公开 SDK Adapter 的调用形状、凭据路径解析、Client 生命周期、引用映射和生成资产发布。只有最外层 Provider RPC 被确定性 SDK double 替代。
+真实边界包括当前 SQLite schema v4、Acquisition、Markdown Preparation、私有对象存储、公开 SDK Adapter 的调用形状、凭据路径解析、Client 生命周期、引用映射和生成资产发布。只有最外层 Provider RPC 被确定性 SDK double 替代；schema v4 的恢复语义由 Phase 3 E2E 单独验证。
 
 ## 2. 依赖与公开 API 边界 / Dependency Boundary
 
@@ -94,7 +94,7 @@ uv run diandian phase2-e2e \
 | 字段 | 不变量 |
 | --- | --- |
 | `status` | `ok` |
-| `schema_version` | `3` |
+| `schema_version` | `4` |
 | `book_count` | `1` |
 | `part_count` | 至少 `1` |
 | `source_count` | 等于 `part_count`，且全部 ready |
@@ -148,7 +148,7 @@ Adapter 当前支持以下 provider-neutral 类型；连字符输入会在指纹
 
 ## 7. Intent、幂等与当前恢复边界 / Intent and Recovery Boundary
 
-Schema v3 将 `remote_operations.kind` 扩展为：
+Phase 2 的 schema v3 首次将 `remote_operations.kind` 扩展为以下类型；当前 schema v4 保留这些 kind，并新增 `prepared/dispatched/ambiguous/succeeded/reconciled` lifecycle、probe strategy、dispatch attempt 与解析时间：
 
 ```text
 ensure_workspace
@@ -157,18 +157,17 @@ generate_content
 download_content
 ```
 
-每个 Adapter 写方法都要求 `RemoteOperationRef`，并校验 kind、local resource ID、完整输入指纹和已知 external ID。E2E 的 `before_call_observer` 在每个 fake Provider 写调用发生前直接查询 SQLite，只有对应 kind 已存在 pending intent 时才允许继续。
+每个 Adapter 写方法都要求 `RemoteOperationRef`，并校验 kind、local resource ID、完整输入指纹和已知 external ID。E2E 的 `before_call_observer` 在每个 fake Provider 写调用发生前直接查询 SQLite，只有对应 kind 已提交为 `dispatched` 才允许继续；成功后记录 `succeeded`。
 
-已完成的 Workspace/Source operation 会按持久 external ID 调用公开 lookup API 协调；生成 handle 与已发布下载对象也可按 completed operation replay，避免在已知完成时盲目重建。
+已解析的 Workspace/Source operation 会按持久 external ID 调用公开 lookup API 协调；生成 handle 与已发布下载对象也可按已解析 operation replay，避免在已知完成时盲目重建。
 
-Phase 2 **不声称完整的 durable workflow recovery 已完成**：
+Phase 2 E2E **自身不作为完整 durable workflow recovery 的证明**：
 
-- 生成/下载 E2E intent 暂关联到已完成的导入 Job，因为当前没有独立的 Generation Job state machine；
-- `pending → dispatched → completed/reconciliation_required` 的崩溃边界尚未全部建模；
-- Lease heartbeat、generation fencing、retry/cancel/resume、部分上传恢复和 ambiguous remote outcome 人工解歧属于 Phase 3；
-- 真实 Provider 在“请求已落地但响应丢失”时的可探测性尚未通过 live smoke 证明。
+- 生成/下载诊断 intent 仍关联到已完成的导入 Job，因为当前没有独立的 Generation Job state machine；
+- Import Job 的 Lease heartbeat/generation fencing、retry/cancel/resume、部分上传恢复和 ambiguous remote outcome 人工解歧已由 [Phase 3 可恢复 Workflow E2E](phase-3-e2e.md) 交付；
+- 真实 Provider 在“请求已落地但响应丢失”时的可探测性仍未通过 live smoke 证明，NotebookLM Adapter 无可靠 probe 时会保守进入人工解歧，而不是 blind recreation。
 
-因此，本 E2E 证明“调用前有 intent、已知完成不盲目重建”的 Phase 2 Adapter 契约，不替代 Phase 3 的进程终止恢复测试。
+因此，本 E2E 证明公开 SDK Adapter 与调用前 Intent 契约；Phase 3 E2E 负责进程终止、Lease 接管与 reconciliation 证明。
 
 ## 8. 自动化验证 / Automated Checks
 
@@ -195,7 +194,7 @@ uv lock --check
 uv build --no-build-isolation
 ```
 
-CI 将 wheel 连同生产依赖安装到新的 Python 3.12 虚拟环境，并依次运行 `phase0-e2e`、`phase1-e2e` 与 `phase2-e2e`。默认测试和 CI 不安装浏览器、不发起 live-provider 调用，也不注入真实凭据。
+CI 将 wheel 连同生产依赖安装到新的 Python 3.12 虚拟环境，并依次运行 `phase0-e2e`、`phase1-e2e`、`phase2-e2e` 与 `phase3-e2e`。默认测试和 CI 不安装浏览器、不发起 live-provider 调用，也不注入真实凭据。
 
 ## 9. 当前验证证据 / Validation Evidence
 
@@ -207,7 +206,7 @@ CI 将 wheel 连同生产依赖安装到新的 Python 3.12 虚拟环境，并依
 - branch coverage：`90.36%`；
 - `uv lock --check`：通过；
 - sdist/wheel build：通过；
-- source Phase 0、1、2 E2E：全部通过；Phase 2 为 2 Parts、2 ready Sources、2 Citations、1 份生成内容、1 个下载资产、5 个 completed remote intents；
+- source Phase 0、1、2 E2E：全部通过；Phase 2 为 2 Parts、2 ready Sources、2 Citations、1 份生成内容、1 个下载资产、5 个 succeeded remote intents；
 - isolated installed-wheel Phase 0、1、2 E2E：全部通过，且实际解析安装 `notebooklm-py==0.8.0rc1` 及其生产依赖；
 - wheel 内容：包含 `0001_initial.sql`、`0002_document_preparation.sql`、`0003_notebooklm_operations.sql`、`epub_worker.py` 和全部 NotebookLM Adapter 模块。
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from uuid import NAMESPACE_URL, uuid5
 
 from diandianreading.application.ports import (
@@ -12,43 +12,80 @@ from diandianreading.application.ports import (
     GenerationHandle,
     KnowledgeAnswer,
     KnowledgeGenerationPort,
+    KnowledgeHealthPort,
     KnowledgeIngestionPort,
     KnowledgeQueryPort,
+    KnowledgeReconciliationPort,
     KnowledgeReference,
     ProgressSink,
+    ReconciliationResult,
+    ReconciliationStatus,
     download_input_hash,
     generation_input_hash,
     normalize_content_type,
+    source_input_hash,
+    workspace_input_hash,
 )
 from diandianreading.domain import (
     Book,
     CredentialRef,
+    DiandianError,
     DocumentAsset,
     DocumentPart,
+    ErrorCode,
     KnowledgeSourceRef,
     KnowledgeStatus,
     ProgressEvent,
+    RemoteOperation,
     RemoteOperationKind,
     RemoteOperationRef,
+    RemoteProbeStrategy,
     SourceOrigin,
     StorageKey,
     WorkspaceRef,
 )
 
 
-class FakeKnowledgeAdapter(KnowledgeIngestionPort, KnowledgeQueryPort, KnowledgeGenerationPort):
-    """A deterministic, idempotent adapter with create/upload/wait semantics."""
+@dataclass(slots=True)
+class FakeKnowledgeService:
+    workspaces: dict[str, WorkspaceRef]
+    sources: dict[str, KnowledgeSourceRef]
+    workspace_operations: dict[str, WorkspaceRef]
+    source_operations: dict[str, KnowledgeSourceRef]
+    operation_bindings: dict[str, tuple[RemoteOperationKind, str, str]]
+    generation_operations: dict[str, GenerationHandle]
+    download_operations: dict[str, DocumentAsset]
+    ambiguous_operations: set[str]
+    healthy: bool
+    workspace_write_count: int
+    source_write_count: int
+
+    @classmethod
+    def create(cls) -> FakeKnowledgeService:
+        return cls({}, {}, {}, {}, {}, {}, {}, set(), True, 0, 0)
+
+
+class FakeKnowledgeAdapter(
+    KnowledgeIngestionPort,
+    KnowledgeQueryPort,
+    KnowledgeGenerationPort,
+    KnowledgeReconciliationPort,
+    KnowledgeHealthPort,
+):
+    """A deterministic adapter backed by a shareable authoritative fake service."""
 
     provider = "fake"
+    probe_strategy = RemoteProbeStrategy.AUTHORITATIVE_OPERATION_KEY
 
-    def __init__(self) -> None:
-        self.workspaces: dict[str, WorkspaceRef] = {}
-        self.sources: dict[str, KnowledgeSourceRef] = {}
-        self._workspace_operations: dict[str, WorkspaceRef] = {}
-        self._source_operations: dict[str, KnowledgeSourceRef] = {}
-        self._operation_bindings: dict[str, tuple[RemoteOperationKind, str, str]] = {}
-        self._generation_operations: dict[str, GenerationHandle] = {}
-        self._download_operations: dict[str, DocumentAsset] = {}
+    def __init__(self, service: FakeKnowledgeService | None = None) -> None:
+        self.service = service or FakeKnowledgeService.create()
+        self.workspaces = self.service.workspaces
+        self.sources = self.service.sources
+        self._workspace_operations = self.service.workspace_operations
+        self._source_operations = self.service.source_operations
+        self._operation_bindings = self.service.operation_bindings
+        self._generation_operations = self.service.generation_operations
+        self._download_operations = self.service.download_operations
 
     async def ensure_workspace(
         self,
@@ -59,10 +96,18 @@ class FakeKnowledgeAdapter(KnowledgeIngestionPort, KnowledgeQueryPort, Knowledge
     ) -> WorkspaceRef:
         if credential.provider != self.provider:
             raise ValueError(f"Fake adapter cannot use provider {credential.provider}")
+        if not self.service.healthy:
+            raise DiandianError(
+                ErrorCode.AUTH_REQUIRED,
+                "Fake provider authentication is required",
+                retryable=False,
+            )
         if operation.kind is not RemoteOperationKind.ENSURE_WORKSPACE:
             raise ValueError("Workspace creation requires an ensure_workspace operation")
-        if operation.local_resource_id != book.id or operation.input_hash != book.source_hash:
-            raise ValueError("Workspace operation does not match the Book")
+        if operation.local_resource_id != book.id or operation.input_hash != workspace_input_hash(
+            book, credential
+        ):
+            raise ValueError("Workspace operation does not match the Book and credential")
         self._validate_operation_binding(operation)
 
         existing = self._workspace_operations.get(operation.idempotency_key)
@@ -73,11 +118,13 @@ class FakeKnowledgeAdapter(KnowledgeIngestionPort, KnowledgeQueryPort, Knowledge
         workspace = WorkspaceRef(
             id=local_id,
             provider=self.provider,
-            external_id=f"fake-notebook-{local_id}",
+            external_id=operation.external_id or f"fake-notebook-{local_id}",
             status=KnowledgeStatus.READY,
         )
         self.workspaces[workspace.id] = workspace
         self._workspace_operations[operation.idempotency_key] = workspace
+        if operation.external_id is None:
+            self.service.workspace_write_count += 1
         await progress.emit(
             ProgressEvent(
                 job_id=progress.job_id,
@@ -98,10 +145,18 @@ class FakeKnowledgeAdapter(KnowledgeIngestionPort, KnowledgeQueryPort, Knowledge
     ) -> KnowledgeSourceRef:
         if workspace.id not in self.workspaces:
             raise ValueError(f"Unknown fake workspace: {workspace.id}")
+        if not self.service.healthy:
+            raise DiandianError(
+                ErrorCode.AUTH_REQUIRED,
+                "Fake provider authentication is required",
+                retryable=False,
+            )
         if operation.kind is not RemoteOperationKind.ADD_SOURCE:
             raise ValueError("Source upload requires an add_source operation")
-        if operation.local_resource_id != part.id or operation.input_hash != part.sha256:
-            raise ValueError("Source operation does not match the DocumentPart")
+        if operation.local_resource_id != part.id or operation.input_hash != source_input_hash(
+            workspace, part
+        ):
+            raise ValueError("Source operation does not match the Workspace and DocumentPart")
         self._validate_operation_binding(operation)
 
         existing = self._source_operations.get(operation.idempotency_key)
@@ -119,12 +174,14 @@ class FakeKnowledgeAdapter(KnowledgeIngestionPort, KnowledgeQueryPort, Knowledge
             id=source_id,
             workspace_id=workspace.id,
             document_part_id=part.id,
-            external_id=f"fake-source-{source_id}",
+            external_id=operation.external_id or f"fake-source-{source_id}",
             checksum=part.sha256,
             status=KnowledgeStatus.PROCESSING,
         )
         self.sources[source.id] = source
         self._source_operations[operation.idempotency_key] = source
+        if operation.external_id is None:
+            self.service.source_write_count += 1
         await progress.emit(
             ProgressEvent(
                 job_id=progress.job_id,
@@ -144,6 +201,12 @@ class FakeKnowledgeAdapter(KnowledgeIngestionPort, KnowledgeQueryPort, Knowledge
     ) -> Sequence[KnowledgeSourceRef]:
         if workspace.id not in self.workspaces:
             raise ValueError(f"Unknown fake workspace: {workspace.id}")
+        if not self.service.healthy:
+            raise DiandianError(
+                ErrorCode.AUTH_REQUIRED,
+                "Fake provider authentication is required",
+                retryable=False,
+            )
         if len({source.id for source in sources}) != len(sources):
             raise ValueError("Duplicate fake source references are not allowed")
 
@@ -297,6 +360,39 @@ class FakeKnowledgeAdapter(KnowledgeIngestionPort, KnowledgeQueryPort, Knowledge
         )
         self._download_operations[operation.idempotency_key] = asset
         return asset
+
+    async def credential_is_healthy(self, credential: CredentialRef) -> bool:
+        if credential.provider != self.provider:
+            return False
+        return self.service.healthy
+
+    async def reconcile_workspace(
+        self,
+        book: Book,
+        credential: CredentialRef,
+        operation: RemoteOperation,
+    ) -> ReconciliationResult:
+        del book, credential
+        if operation.idempotency_key in self.service.ambiguous_operations:
+            return ReconciliationResult(ReconciliationStatus.AMBIGUOUS)
+        workspace = self._workspace_operations.get(operation.idempotency_key)
+        if workspace is None:
+            return ReconciliationResult(ReconciliationStatus.PROVEN_ABSENT)
+        return ReconciliationResult(ReconciliationStatus.RECOVERED, workspace.external_id)
+
+    async def reconcile_source(
+        self,
+        workspace: WorkspaceRef,
+        part: DocumentPart,
+        operation: RemoteOperation,
+    ) -> ReconciliationResult:
+        del workspace, part
+        if operation.idempotency_key in self.service.ambiguous_operations:
+            return ReconciliationResult(ReconciliationStatus.AMBIGUOUS)
+        source = self._source_operations.get(operation.idempotency_key)
+        if source is None:
+            return ReconciliationResult(ReconciliationStatus.PROVEN_ABSENT)
+        return ReconciliationResult(ReconciliationStatus.RECOVERED, source.external_id)
 
     def _validate_operation_binding(self, operation: RemoteOperationRef) -> None:
         binding = (operation.kind, operation.local_resource_id, operation.input_hash)

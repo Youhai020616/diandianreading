@@ -4,7 +4,7 @@
 >
 > 最后更新：2026-08-03
 
-本目录记录 `diandianreading` 的目标架构与架构决策。当前主项目仍处在 Roadmap 的 P0/P2 设计阶段，因此首批 ADR 均为 `Proposed`；进入实现后，应在对应 PR 中将已验证决策改为 `Accepted`。
+本目录记录 `diandianreading` 的目标架构与架构决策。已通过实现、故障注入、构建与 CI 验证的决策应标记为 `Accepted`；其余仍保持 `Proposed`，不得用规划状态替代验证证据。
 
 ## 核心文档
 
@@ -19,7 +19,7 @@
 | [ADR-0001](adr/0001-local-first-modular-monolith.md) | Proposed | 使用 local-first Python 模块化单体作为首个运行架构 |
 | [ADR-0002](adr/0002-notebooklm-public-python-api.md) | Proposed | 通过 `NotebookLMClient` 公开 Python API 集成 NotebookLM |
 | [ADR-0003](adr/0003-provider-credential-isolation.md) | Proposed | Provider 凭据物理隔离，业务数据库只保存引用 |
-| [ADR-0004](adr/0004-durable-import-saga.md) | Proposed | 资料导入使用可恢复的持久化 Saga/Job 状态机 |
+| [ADR-0004](adr/0004-durable-import-saga.md) | Accepted | 资料导入使用可恢复的持久化 Saga/Job 状态机 |
 | [ADR-0005](adr/0005-local-api-security.md) | Proposed | 回环 API 仍执行每安装实例认证与浏览器安全边界 |
 
 新增 ADR 时从 [模板](adr/0000-template.md) 开始。

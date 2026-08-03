@@ -61,6 +61,33 @@ def normalize_content_type(content_type: str) -> str:
     return normalized
 
 
+def workspace_input_hash(book: Book, credential: CredentialRef) -> str:
+    """Bind every input that affects remote workspace creation."""
+
+    payload = {
+        "book_id": book.id,
+        "provider": credential.provider,
+        "profile": credential.profile,
+        "source_hash": book.source_hash,
+        "title": book.title.strip(),
+    }
+    canonical = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def source_input_hash(workspace: WorkspaceRef, part: DocumentPart) -> str:
+    """Bind the target workspace and verified local Part for one upload."""
+
+    payload = {
+        "part_id": part.id,
+        "part_sha256": part.sha256,
+        "workspace_external_id": workspace.external_id,
+        "workspace_id": workspace.id,
+    }
+    canonical = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
 def generation_input_hash(content_type: str, instructions: str | None) -> str:
     """Build the stable input fingerprint required by a generation intent."""
 

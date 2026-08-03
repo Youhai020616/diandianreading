@@ -21,14 +21,20 @@ from diandianreading.application.ports import (
     GenerationHandle,
     KnowledgeAnswer,
     KnowledgeGenerationPort,
+    KnowledgeHealthPort,
     KnowledgeIngestionPort,
     KnowledgeMappingRepository,
     KnowledgeQueryPort,
+    KnowledgeReconciliationPort,
     KnowledgeReference,
     ProgressSink,
+    ReconciliationResult,
+    ReconciliationStatus,
     download_input_hash,
     generation_input_hash,
     normalize_content_type,
+    source_input_hash,
+    workspace_input_hash,
 )
 from diandianreading.domain import (
     Book,
@@ -40,8 +46,10 @@ from diandianreading.domain import (
     KnowledgeSourceRef,
     KnowledgeStatus,
     ProgressEvent,
+    RemoteOperation,
     RemoteOperationKind,
     RemoteOperationRef,
+    RemoteProbeStrategy,
     SourceOrigin,
     StorageKey,
     UnsafePathError,
@@ -102,10 +110,17 @@ _CONTENT_SPECS = {
 }
 
 
-class NotebookLMAdapter(KnowledgeIngestionPort, KnowledgeQueryPort, KnowledgeGenerationPort):
+class NotebookLMAdapter(
+    KnowledgeIngestionPort,
+    KnowledgeQueryPort,
+    KnowledgeGenerationPort,
+    KnowledgeReconciliationPort,
+    KnowledgeHealthPort,
+):
     """Translate product models into the SDK's explicit notebook-scoped calls."""
 
     provider = "notebooklm"
+    probe_strategy = RemoteProbeStrategy.UNSUPPORTED
 
     def __init__(
         self,
@@ -186,6 +201,38 @@ class NotebookLMAdapter(KnowledgeIngestionPort, KnowledgeQueryPort, KnowledgeGen
             notebook_count=len(notebooks),
         )
 
+    async def credential_is_healthy(self, credential: CredentialRef) -> bool:
+        health = await self.health_check(credential)
+        return health.healthy
+
+    async def reconcile_workspace(
+        self,
+        book: Book,
+        credential: CredentialRef,
+        operation: RemoteOperation,
+    ) -> ReconciliationResult:
+        del book, credential
+        if operation.external_id:
+            return ReconciliationResult(
+                ReconciliationStatus.RECOVERED,
+                operation.external_id,
+            )
+        return ReconciliationResult(ReconciliationStatus.AMBIGUOUS)
+
+    async def reconcile_source(
+        self,
+        workspace: WorkspaceRef,
+        part: DocumentPart,
+        operation: RemoteOperation,
+    ) -> ReconciliationResult:
+        del workspace, part
+        if operation.external_id:
+            return ReconciliationResult(
+                ReconciliationStatus.RECOVERED,
+                operation.external_id,
+            )
+        return ReconciliationResult(ReconciliationStatus.AMBIGUOUS)
+
     async def ensure_workspace(
         self,
         book: Book,
@@ -198,7 +245,7 @@ class NotebookLMAdapter(KnowledgeIngestionPort, KnowledgeQueryPort, KnowledgeGen
             operation,
             expected_kind=RemoteOperationKind.ENSURE_WORKSPACE,
             local_resource_id=book.id,
-            input_hash=book.source_hash,
+            input_hash=workspace_input_hash(book, credential),
         )
         self._validate_operation_binding(operation)
         cached = self._workspace_operations.get(operation.idempotency_key)
@@ -256,7 +303,7 @@ class NotebookLMAdapter(KnowledgeIngestionPort, KnowledgeQueryPort, KnowledgeGen
             operation,
             expected_kind=RemoteOperationKind.ADD_SOURCE,
             local_resource_id=part.id,
-            input_hash=part.sha256,
+            input_hash=source_input_hash(workspace, part),
         )
         self._validate_operation_binding(operation)
         cached = self._source_operations.get(operation.idempotency_key)

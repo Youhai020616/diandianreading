@@ -8,6 +8,7 @@ from enum import StrEnum
 from urllib.parse import urlsplit
 
 from diandianreading.domain.errors import InvalidStateTransition
+from diandianreading.domain.jobs import JobStep
 
 
 def utc_now() -> datetime:
@@ -45,9 +46,19 @@ class RemoteOperationKind(StrEnum):
 
 
 class RemoteOperationStatus(StrEnum):
-    PENDING = "pending"
-    COMPLETED = "completed"
-    RECONCILIATION_REQUIRED = "reconciliation_required"
+    PREPARED = "prepared"
+    DISPATCHED = "dispatched"
+    AMBIGUOUS = "ambiguous"
+    SUCCEEDED = "succeeded"
+    RECONCILED = "reconciled"
+    FAILED_TERMINAL = "failed_terminal"
+    CANCELLED_BEFORE_DISPATCH = "cancelled_before_dispatch"
+
+
+class RemoteProbeStrategy(StrEnum):
+    EXTERNAL_ID = "external_id"
+    AUTHORITATIVE_OPERATION_KEY = "authoritative_operation_key"
+    UNSUPPORTED = "unsupported"
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,28 +255,185 @@ class ExternalSource:
 class RemoteOperation:
     id: str
     job_id: str
+    step: JobStep
+    provider: str
+    credential_profile: str
     kind: RemoteOperationKind
     idempotency_key: str
     local_resource_id: str
     input_hash: str
+    probe_strategy: RemoteProbeStrategy
+    baseline_snapshot_redacted: str
+    request_summary_redacted: str
     status: RemoteOperationStatus
+    dispatch_attempt: int
     external_id: str | None
     created_at: datetime
     updated_at: datetime
+    dispatched_at: datetime | None
+    resolved_at: datetime | None
     version: int
 
-    def complete(self, external_id: str, *, now: datetime | None = None) -> RemoteOperation:
-        if self.status is not RemoteOperationStatus.PENDING:
+    def __post_init__(self) -> None:
+        required = (
+            self.id,
+            self.job_id,
+            self.provider,
+            self.credential_profile,
+            self.idempotency_key,
+            self.local_resource_id,
+            self.input_hash,
+            self.baseline_snapshot_redacted,
+            self.request_summary_redacted,
+        )
+        if any(not value for value in required):
+            raise ValueError("Remote operation identity and redacted audit fields are required")
+        if self.dispatch_attempt < 0 or self.version < 0:
+            raise ValueError("Remote operation counters cannot be negative")
+        resolved = self.status in {
+            RemoteOperationStatus.SUCCEEDED,
+            RemoteOperationStatus.RECONCILED,
+            RemoteOperationStatus.FAILED_TERMINAL,
+            RemoteOperationStatus.CANCELLED_BEFORE_DISPATCH,
+        }
+        if resolved != (self.resolved_at is not None):
+            raise ValueError("Resolved remote operation states must have resolved_at")
+        if (
+            self.status
+            in {
+                RemoteOperationStatus.SUCCEEDED,
+                RemoteOperationStatus.RECONCILED,
+            }
+            and not self.external_id
+        ):
+            raise ValueError("Successful remote operation states require an external identifier")
+        if (
+            self.status
+            in {
+                RemoteOperationStatus.PREPARED,
+                RemoteOperationStatus.CANCELLED_BEFORE_DISPATCH,
+            }
+            and self.dispatch_attempt == 0
+            and self.dispatched_at is not None
+        ):
+            raise ValueError("An undispatched remote operation cannot have dispatched_at")
+
+    @property
+    def is_unresolved(self) -> bool:
+        return self.status in {
+            RemoteOperationStatus.PREPARED,
+            RemoteOperationStatus.DISPATCHED,
+            RemoteOperationStatus.AMBIGUOUS,
+        }
+
+    def dispatch(self, *, now: datetime | None = None) -> RemoteOperation:
+        if self.status is not RemoteOperationStatus.PREPARED:
             raise InvalidStateTransition(
-                f"Remote operation {self.id} cannot complete from {self.status.value}"
+                f"Remote operation {self.id} cannot dispatch from {self.status.value}"
+            )
+        timestamp = now or utc_now()
+        return replace(
+            self,
+            status=RemoteOperationStatus.DISPATCHED,
+            dispatch_attempt=self.dispatch_attempt + 1,
+            dispatched_at=timestamp,
+            updated_at=timestamp,
+            version=self.version + 1,
+        )
+
+    def mark_ambiguous(self, *, now: datetime | None = None) -> RemoteOperation:
+        if self.status is not RemoteOperationStatus.DISPATCHED:
+            raise InvalidStateTransition(
+                f"Remote operation {self.id} cannot become ambiguous from {self.status.value}"
+            )
+        timestamp = now or utc_now()
+        return replace(
+            self,
+            status=RemoteOperationStatus.AMBIGUOUS,
+            updated_at=timestamp,
+            version=self.version + 1,
+        )
+
+    def prepare_retry_after_absence(self, *, now: datetime | None = None) -> RemoteOperation:
+        if self.status not in {
+            RemoteOperationStatus.DISPATCHED,
+            RemoteOperationStatus.AMBIGUOUS,
+        }:
+            raise InvalidStateTransition(
+                f"Remote operation {self.id} cannot retry from {self.status.value}"
+            )
+        timestamp = now or utc_now()
+        return replace(
+            self,
+            status=RemoteOperationStatus.PREPARED,
+            external_id=None,
+            updated_at=timestamp,
+            version=self.version + 1,
+        )
+
+    def succeed(self, external_id: str, *, now: datetime | None = None) -> RemoteOperation:
+        return self._resolve(RemoteOperationStatus.SUCCEEDED, external_id, now=now)
+
+    def reconcile(self, external_id: str, *, now: datetime | None = None) -> RemoteOperation:
+        return self._resolve(RemoteOperationStatus.RECONCILED, external_id, now=now)
+
+    def fail_terminal(self, *, now: datetime | None = None) -> RemoteOperation:
+        if self.status not in {
+            RemoteOperationStatus.PREPARED,
+            RemoteOperationStatus.DISPATCHED,
+            RemoteOperationStatus.AMBIGUOUS,
+        }:
+            raise InvalidStateTransition(
+                f"Remote operation {self.id} cannot fail from {self.status.value}"
+            )
+        timestamp = now or utc_now()
+        return replace(
+            self,
+            status=RemoteOperationStatus.FAILED_TERMINAL,
+            resolved_at=timestamp,
+            updated_at=timestamp,
+            version=self.version + 1,
+        )
+
+    def cancel_before_dispatch(self, *, now: datetime | None = None) -> RemoteOperation:
+        if self.status is not RemoteOperationStatus.PREPARED:
+            raise InvalidStateTransition(
+                "Only an operation proven safe before its next dispatch can be cancelled"
+            )
+        timestamp = now or utc_now()
+        return replace(
+            self,
+            status=RemoteOperationStatus.CANCELLED_BEFORE_DISPATCH,
+            resolved_at=timestamp,
+            updated_at=timestamp,
+            version=self.version + 1,
+        )
+
+    def _resolve(
+        self,
+        status: RemoteOperationStatus,
+        external_id: str,
+        *,
+        now: datetime | None,
+    ) -> RemoteOperation:
+        allowed = (
+            {RemoteOperationStatus.DISPATCHED}
+            if status is RemoteOperationStatus.SUCCEEDED
+            else {RemoteOperationStatus.DISPATCHED, RemoteOperationStatus.AMBIGUOUS}
+        )
+        if self.status not in allowed:
+            raise InvalidStateTransition(
+                f"Remote operation {self.id} cannot resolve from {self.status.value}"
             )
         if not external_id:
             raise ValueError("Remote operation external_id cannot be empty")
+        timestamp = now or utc_now()
         return replace(
             self,
-            status=RemoteOperationStatus.COMPLETED,
+            status=status,
             external_id=external_id,
-            updated_at=now or utc_now(),
+            resolved_at=timestamp,
+            updated_at=timestamp,
             version=self.version + 1,
         )
 

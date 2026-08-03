@@ -9,7 +9,17 @@ from diandianreading.domain.errors import (
     is_retryable_error,
     safe_public_message,
 )
-from diandianreading.domain.jobs import Job, JobEvent, JobStatus, JobStep
+from diandianreading.domain.jobs import (
+    BlockedReason,
+    Job,
+    JobEvent,
+    JobPayload,
+    JobStatus,
+    JobStep,
+    JobStepRecord,
+    JobStepStatus,
+    LeaseToken,
+)
 from diandianreading.domain.models import (
     Book,
     BookStatus,
@@ -26,6 +36,7 @@ from diandianreading.domain.models import (
     RemoteOperationKind,
     RemoteOperationRef,
     RemoteOperationStatus,
+    RemoteProbeStrategy,
     SourceOrigin,
     StorageKey,
     TargetCapabilities,
@@ -34,6 +45,7 @@ from diandianreading.domain.models import (
 )
 
 __all__ = [
+    "BlockedReason",
     "Book",
     "BookStatus",
     "CredentialRef",
@@ -46,16 +58,21 @@ __all__ = [
     "InvalidStateTransition",
     "Job",
     "JobEvent",
+    "JobPayload",
     "JobStatus",
     "JobStep",
+    "JobStepRecord",
+    "JobStepStatus",
     "KnowledgeSourceRef",
     "KnowledgeStatus",
+    "LeaseToken",
     "PreparationManifest",
     "ProgressEvent",
     "RemoteOperation",
     "RemoteOperationKind",
     "RemoteOperationRef",
     "RemoteOperationStatus",
+    "RemoteProbeStrategy",
     "RepositoryConflict",
     "SourceOrigin",
     "StorageKey",

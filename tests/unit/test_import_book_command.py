@@ -8,6 +8,31 @@ from diandianreading.domain import PreparationManifest, StorageKey
 from tests.support import make_import_command
 
 
+def test_import_command_requires_title_parts_unique_assets_and_contiguous_sequences(
+    tmp_path,
+) -> None:
+    base = make_import_command(tmp_path, part_count=2)
+
+    with pytest.raises(ValueError, match="title"):
+        replace(base, title=" ")
+    with pytest.raises(ValueError, match="At least one"):
+        replace(base, parts=())
+    with pytest.raises(ValueError, match="identities must be unique"):
+        replace(
+            base,
+            derived_assets=(
+                replace(
+                    base.asset,
+                    storage_key=StorageKey("derived/asset-1/root-copy.md"),
+                ),
+            ),
+        )
+    with pytest.raises(ValueError, match="belong to"):
+        replace(base, parts=(replace(base.parts[0], asset_id="unknown-asset"),))
+    with pytest.raises(ValueError, match="contiguous"):
+        replace(base, parts=(replace(base.parts[0], sequence=1),))
+
+
 def test_import_command_requires_a_root_and_parent_before_each_derived_asset(tmp_path) -> None:
     base = make_import_command(tmp_path, part_count=1)
     with pytest.raises(ValueError, match="root DocumentAsset"):

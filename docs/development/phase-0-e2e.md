@@ -48,12 +48,12 @@ uv run diandian phase0-e2e \
 ```json
 {
   "status": "ok",
-  "schema_version": 3,
+  "schema_version": 4,
   "part_count": 2,
   "source_count": 2,
   "preparation_manifest_key": "manifests/<asset-id>.json",
   "remote_operation_count": 3,
-  "job_event_count": 11
+  "job_event_count": 21
 }
 ```
 
@@ -63,7 +63,7 @@ ID、数据库绝对路径和 progress 数量会随本次运行输出。
 
 命令只有在以下条件全部满足时才返回退出码 `0`：
 
-- migration 升级到当前 schema version 3（Phase 1 增加文档派生与 manifest，Phase 2 增加生成/下载远程操作类型）；
+- migration 升级到当前 schema version 4（Phase 1 增加文档派生与 manifest，Phase 2 增加生成/下载远程操作类型，Phase 3 增加 Lease、Step checkpoint、Job payload 与远程 Intent lifecycle）；
 - Fake Preparation 根据 `TargetCapabilities` 返回确定性的两个 `DocumentPart` 和受限 `manifest StorageKey`；
 - Fake Knowledge Adapter 创建 workspace；
 - 两个已准备的 `DocumentPart` 均保存并生成 Source 映射；
@@ -82,8 +82,8 @@ Phase 0 只验证 Fake Preparation 返回的 manifest **逻辑引用**，不伪�
 同一链路由以下测试覆盖：
 
 - `tests/e2e/test_phase0_fake_import.py`：子进程 CLI E2E；
-- `tests/integration/test_import_workflow.py`：成功、阻塞/可重试/终止失败、错误 Source 身份与 observer 断开；
-- `tests/integration/test_sqlite_persistence.py`：事务回滚、migration 校验和、repository、状态回退和乐观锁；
+- `tests/integration/test_import_workflow.py`：成功、认证/歧义阻塞、有界重试、终止失败、安全取消与 observer 断开；
+- `tests/integration/test_sqlite_persistence.py`：事务回滚、migration 校验和、repository、Lease takeover、generation fencing 与乐观锁；
 - `tests/contract/test_fake_document_preparation_adapter.py`：Preparation 成功路径、MIME、资产归属、词数和 Source 数量限制；
 - `tests/contract/test_fake_knowledge_adapter.py`：Knowledge Ingestion 契约；
 - `tests/unit/test_architecture_boundaries.py`：分层依赖约束。
