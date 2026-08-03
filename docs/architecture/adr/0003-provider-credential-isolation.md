@@ -4,6 +4,8 @@
 
 `Proposed`
 
+> NotebookLM 的 Phase 2 Resolver 已实现；Z-Library Profile、迁移、登录/登出和跨 Provider 验证仍属于 Phase 4，因此本 ADR 尚未满足全部 Accepted 条件。
+
 ## Date
 
 2026-08-03
@@ -68,6 +70,14 @@ class CredentialRef:
 - Migration **不得**导入、记录或打印该 JSON 中的邮箱/密码，也不得把密码转换成新 Schema。应提示用户通过交互式登录建立新 Profile；验证新会话后，只能在再次确认且通过无链接/所有权检查时 unlink 旧文件。普通 unlink 不能保证 SSD、快照或备份中的历史副本被安全擦除；若文件曾暴露，提示用户轮换密码。
 - 迁移和清理日志只记录 Provider、逻辑 Profile、结果与脱敏错误，不记录旧/新绝对路径或账号标识。
 
+Phase 2 的 NotebookLM 实现将逻辑 Profile 映射为：
+
+```text
+<credentials-root>/notebooklm/profiles/profile-<sha256(profile)前32位>/storage_state.json
+```
+
+Resolver 创建/校验私有 `0700` 目录和 `0600` 普通文件，拒绝符号链接、非当前用户所有对象、根目录越界、空文件、超过 16 MiB 或缺少 `cookies` 列表的 storage-state JSON。只有 Infrastructure 把该绝对路径传给公开 `NotebookLMClient.from_storage(path=...)`；Domain/Application/SQLite/CLI 输出中仍只有 provider/profile。缺失或畸形状态固定映射为脱敏 `AUTH_REQUIRED`。
+
 统一的是引用、健康检查和 UI 状态，不统一 Provider 的 Secret Schema 或物理路径。
 
 ## Consequences
@@ -90,12 +100,11 @@ class CredentialRef:
 
 ### Follow-up
 
-- 定义仅含 `provider/profile` 的 `CredentialRef`、`CredentialHealth` 和 Provider auth port。
-- 在 Infrastructure 内实现 NotebookLM 与 Z-Library `CredentialPathResolver`，以及根目录/无链接/所有权守卫。
-- 建立日志 redaction 测试。
-- 将凭据目录加入 `.gitignore` 和备份排除清单。
+- Phase 2 已定义仅含 `provider/profile` 的 `CredentialRef`，并实现 NotebookLM `CredentialPathResolver`、健康检查、根目录/无链接/所有权/权限守卫和错误脱敏测试。
+- Phase 4 实现 Z-Library 专用 Resolver、Session Manager、登录/登出与跨 Provider 隔离验证。
+- 将凭据目录加入产品安装器的默认备份排除清单，并持续执行日志/CLI/API redaction 测试。
 - 为迁移现有 Profile 提供 dry-run、staging 验证与显式清理命令，并专门检测 `~/.zlibrary/config.json`。
-- 在 UI 中提供 Provider 连接状态，不展示 Secret 内容或路径。
+- Phase 5 在 UI 中只提供 Provider 连接状态，不展示 Secret 内容或路径。
 
 ## Alternatives considered
 

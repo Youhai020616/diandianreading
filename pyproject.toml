@@ -6,7 +6,7 @@ readme = "docs/README.md"
 requires-python = ">=3.11"
 license = { text = "Proprietary" }
 authors = [{ name = "diandianreading contributors" }]
-dependencies = []
+dependencies = ["notebooklm-py==0.8.0rc1"]
 
 [project.scripts]
 diandian = "diandianreading.interfaces.cli:main"

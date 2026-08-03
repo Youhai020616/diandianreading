@@ -55,7 +55,6 @@ jobs:
           uv venv --python 3.12 .tmp/ci-wheel-venv
           uv pip install \
             --python .tmp/ci-wheel-venv/bin/python \
-            --no-deps \
             ./dist/diandianreading-0.1.0-py3-none-any.whl
 
       - name: Run installed-wheel Phase 0 migration and import smoke
@@ -70,6 +69,14 @@ jobs:
           --database .tmp/ci-wheel/phase1/app.sqlite3
           --object-root .tmp/ci-wheel/phase1/objects
           --workspace .tmp/ci-wheel/phase1/workspace
+
+      - name: Run installed-wheel Phase 2 NotebookLM adapter smoke
+        run: >-
+          .tmp/ci-wheel-venv/bin/diandian phase2-e2e
+          --database .tmp/ci-wheel/phase2/app.sqlite3
+          --object-root .tmp/ci-wheel/phase2/objects
+          --credentials-root .tmp/ci-wheel/phase2/credentials
+          --workspace .tmp/ci-wheel/phase2/workspace
 
   test:
     name: Test Python ${{ matrix.python-version }}

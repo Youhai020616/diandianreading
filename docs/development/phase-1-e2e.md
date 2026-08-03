@@ -52,7 +52,7 @@ uv run diandian phase1-e2e \
 | 字段 | 不变量 |
 | --- | --- |
 | `status` | `ok` |
-| `schema_version` | 当前为 `2` |
+| `schema_version` | 当前为 `3`；Phase 2 migration 扩展远程操作类型，不改变 Phase 1 文档处理语义 |
 | `format_count` / `book_count` | 均为 `3` |
 | `manifest_count` | 每个根 Asset 一个，共 `3` |
 | `asset_count` | `4`：三个根 Asset，加一个 EPUB 派生 Markdown Asset |
@@ -133,7 +133,7 @@ Domain/Application/SQLite 只保存不透明 `StorageKey`，不保存对象根�
 - `tests/integration/test_local_acquisition.py`：权利确认、格式/魔数、大小、符号链接、去重和 observer 失败。
 - `tests/integration/test_document_preparation.py`：Markdown/PDF/EPUB、spine、manifest、目标能力与恶意 Archive/markup fixture。
 - `tests/integration/test_import_workflow.py`：派生 Asset、Part、manifest 与 Job transition 同一 Unit of Work。
-- `tests/integration/test_sqlite_persistence.py`：schema version 2、round-trip、manifest 所属 Book 约束与事务回滚。
+- `tests/integration/test_sqlite_persistence.py`：当前 schema version 3、round-trip、manifest 所属 Book 约束与事务回滚。
 - `tests/unit/test_document_policy.py`：中英文计数、章节追踪、字节/词数双限制和超长文本。
 - `tests/unit/test_epub_worker.py`：HTML 状态机、Archive member、XML/metadata、引用解析、网络禁用与资源限制。
 - `tests/unit/test_local_file_store.py`：私有权限、namespace、原子发布、去重、冲突和符号链接拒绝。
@@ -144,7 +144,7 @@ Domain/Application/SQLite 只保存不透明 `StorageKey`，不保存对象根�
 uv run pytest
 ```
 
-CI 还会构建 wheel，在隔离环境安装后分别执行 Phase 0 与 Phase 1 CLI smoke，以验证 migration 和 `epub_worker.py` 等运行时文件确实进入构建产物。
+CI 还会构建 wheel、连同生产依赖安装到隔离环境，并分别执行 Phase 0、Phase 1 与 Phase 2 CLI smoke，以验证全部 migration、`epub_worker.py` 和 NotebookLM Adapter 模块确实进入可安装产物。
 
 ## 8. 当前验证证据 / Validation Evidence
 

@@ -17,6 +17,9 @@ from diandianreading.application.ports.knowledge import (
     KnowledgeIngestionPort,
     KnowledgeQueryPort,
     KnowledgeReference,
+    download_input_hash,
+    generation_input_hash,
+    normalize_content_type,
 )
 from diandianreading.application.ports.progress import (
     BestEffortProgressSink,
@@ -59,4 +62,7 @@ __all__ = [
     "StoredFile",
     "UnitOfWork",
     "UnitOfWorkFactory",
+    "download_input_hash",
+    "generation_input_hash",
+    "normalize_content_type",
 ]

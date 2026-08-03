@@ -43,8 +43,8 @@ def make_database(tmp_path) -> SQLiteDatabase:
 
 def test_migrations_are_idempotent_verified_and_database_is_private(tmp_path) -> None:
     database = make_database(tmp_path)
-    assert database.migrate() == 2
-    assert database.schema_version() == 2
+    assert database.migrate() == 3
+    assert database.schema_version() == 3
     assert database.integrity_check()
     if os.name != "nt":
         assert stat.S_IMODE(database.path.stat().st_mode) == 0o600

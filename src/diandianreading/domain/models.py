@@ -40,6 +40,8 @@ class KnowledgeStatus(StrEnum):
 class RemoteOperationKind(StrEnum):
     ENSURE_WORKSPACE = "ensure_workspace"
     ADD_SOURCE = "add_source"
+    GENERATE_CONTENT = "generate_content"
+    DOWNLOAD_CONTENT = "download_content"
 
 
 class RemoteOperationStatus(StrEnum):

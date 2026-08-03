@@ -1,6 +1,6 @@
 # `notebooklm-py` 与 `zlibrary-to-notebooklm` 集成计划
 
-> 状态：Proposed
+> 状态：Active
 >
 > 目标阶段：Roadmap P2-P4
 >
@@ -48,7 +48,7 @@
 | 仓库形态 | 单仓库、模块化单体，不合并成单一大包 |
 | 主后端 | Python，local-first |
 | NotebookLM | 直接调用公开 `NotebookLMClient` API |
-| `notebooklm-py` 源码 | 保留为 workspace package/受控 Fork，不放产品业务逻辑 |
+| `notebooklm-py` 源码 | 生产固定 `notebooklm-py==0.8.0rc1` 外部依赖；`source/` 仅作只读依据，只有出现已验证且上游未发布的必要补丁时才引入受控 Fork |
 | Z-Library | 拆为可选 `DocumentAcquirer` 实现 |
 | 本地资料 | 默认入口；Z-Library 不是核心供应链 |
 | 数据 | SQLite + 私有本地对象存储起步；业务层只保存 `StorageKey` |
@@ -207,7 +207,7 @@ class DocumentPreparationPort(Protocol):
         ...
 ```
 
-`PreparedDocument` 返回确定性的派生 Asset、按序 `DocumentPart` 和 manifest 引用。Application 只依赖该 Port；Phase 0 使用 Fake 实现，Phase 1 才实现 PDF/EPUB/Markdown 的真实解析、规范化、限制检查和分块。Parser 不接收物理路径；Infrastructure 实现通过 `FileStore` 把 `StorageKey` 解析为受限路径或已安全打开的文件句柄。
+`PreparedDocument` 返回确定性的派生 Asset、按序 `DocumentPart` 和 manifest 引用。Application 只依赖该 Port；Phase 0 使用 Fake 实现，Phase 1 实现 Markdown/EPUB 的解析与规范化、能力限制和分块，以及 PDF 文件头/EOF/大小校验后的单 Source passthrough；它不包含 PDF 文本解析、OCR 或拆页。Parser 不接收物理路径；Infrastructure 实现通过 `FileStore` 把 `StorageKey` 解析为受限路径或已安全打开的文件句柄。
 
 ### 5.4 Knowledge Ports
 
@@ -485,8 +485,7 @@ diandianreading/
 ├── uv.lock
 ├── apps/
 │   └── web/
-├── packages/
-│   └── notebooklm-py/
+├── source/                    # 迁移期只读参考，不进入 uv workspace/构建产物
 ├── src/
 │   └── diandianreading/
 │       ├── domain/
@@ -510,7 +509,7 @@ diandianreading/
     └── e2e/
 ```
 
-`source/` 在迁移期作为只读参考；切换完成后，Z-Library 旧项目归档，NotebookLM 包移动到 `packages/` 或改为固定版本的外部依赖。
+`source/` 在迁移期作为只读参考并被排除在 uv workspace 外。Phase 2 已采用固定外部依赖 `notebooklm-py==0.8.0rc1`，未复制 1,244 个 SDK 文件，也未安装浏览器 extra；只有出现可复现、必须且上游尚未发布的补丁时，才另行 ADR 评估受控 Fork。切换完成后归档 Z-Library 旧项目。
 
 ## 12. 分阶段迁移
 
@@ -553,15 +552,22 @@ diandianreading/
 
 ### Phase 2 / PR 3：NotebookLM Python Adapter
 
-交付：
+> 实现状态：Active。可执行边界与验证命令见 [Phase 2 NotebookLM Adapter E2E](../development/phase-2-e2e.md)。
 
-- Workspace package/固定依赖。
-- 创建 Notebook、上传、等待、问答、生成、下载。
-- Infrastructure `CredentialPathResolver`、显式 SDK storage path、Profile 健康检查与类型化错误映射。
-- 每个使用到的 SDK 写操作都有 Intent/reconciliation 与幂等/重试策略。
-- Contract tests。
+已交付：
 
-退出标准：不再出现 `shell=True` 或 `notebooklm use`；公开测试资料端到端通过。
+- 固定生产依赖 `notebooklm-py==0.8.0rc1`，不复制 SDK Fork，也不安装浏览器 extra。
+- 仅通过公开 `notebooklm.NotebookLMClient` 与 `notebooklm.exceptions` 集成；创建 Notebook、上传/等待 Source、带引用问答、生成/等待和下载均显式传入 workspace/notebook ID。
+- 支持 `audio`、`video`、`report`、`study_guide`、`quiz`、`flashcards`、`infographic`、`slide_deck` 与 `data_table`。
+- Infrastructure `CredentialPathResolver` 把不透明 Profile 哈希为私有目录键，校验根目录 confinement、当前用户所有权、`0700/0600` 权限、普通文件、无符号链接和 storage-state JSON；物理凭据路径不进入 Domain、Application、SQLite 或 CLI 输出。
+- `NotebookLMAdapter` 绑定单一 event loop，每个 Adapter/Profile 缓存一个 SDK Client，并提供显式异步关闭生命周期。
+- Schema v3 允许 `generate_content` 与 `download_content` intent；所有 Adapter 远程写都要求匹配输入指纹的 `RemoteOperationRef`，已完成操作可按已持久化外部 ID 协调，而不是无条件重建。
+- 下载先进入私有 staging，再通过 `FileStore.put()` 原子发布并清理 staging。
+- Fake Knowledge Adapter 与真实 NotebookLM Adapter 共用 Contract tests；SDK 层使用确定性进程内 double，不读取真实凭据、不启动浏览器、不访问 Provider。
+
+Phase 2 的本地退出标准已由浏览器无关 E2E 覆盖：不存在生产路径中的 `shell=True`、`notebooklm use` 或 `notebooklm._*` 导入；SQLite reopen 后可恢复 Workspace/Source 映射，问答引用可回溯本地 `DocumentPart`，生成和下载写调用前可观察到 pending intent。
+
+当前不声称真实 NotebookLM 账号 smoke 已执行，也不声称已经具备完整进程崩溃恢复。Phase 2 E2E 暂把生成/下载诊断 intent 关联到已完成的导入 Job；独立可恢复生成 Job、`dispatched` checkpoint、Lease fencing、ambiguous outcome 和断点续传属于 Phase 3。
 
 ### Phase 3 / PR 4：可恢复 Workflow
 
