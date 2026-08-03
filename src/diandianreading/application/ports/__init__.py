@@ -20,6 +20,8 @@ from diandianreading.application.ports.knowledge import (
     download_input_hash,
     generation_input_hash,
     normalize_content_type,
+    source_input_hash,
+    workspace_input_hash,
 )
 from diandianreading.application.ports.progress import (
     BestEffortProgressSink,
@@ -27,9 +29,17 @@ from diandianreading.application.ports.progress import (
     ProgressSink,
     ScopedProgressSink,
 )
+from diandianreading.application.ports.reconciliation import (
+    KnowledgeHealthPort,
+    KnowledgeReconciliationPort,
+    ReconciliationResult,
+    ReconciliationStatus,
+)
 from diandianreading.application.ports.repositories import (
     CatalogRepository,
+    JobPayloadRepository,
     JobRepository,
+    JobStepRepository,
     KnowledgeMappingRepository,
     RemoteOperationRepository,
     UnitOfWork,
@@ -47,16 +57,22 @@ __all__ = [
     "FileStore",
     "GeneratedContent",
     "GenerationHandle",
+    "JobPayloadRepository",
     "JobRepository",
+    "JobStepRepository",
     "KnowledgeAnswer",
     "KnowledgeGenerationPort",
+    "KnowledgeHealthPort",
     "KnowledgeIngestionPort",
     "KnowledgeMappingRepository",
     "KnowledgeQueryPort",
+    "KnowledgeReconciliationPort",
     "KnowledgeReference",
     "NullProgressSink",
     "PreparedDocument",
     "ProgressSink",
+    "ReconciliationResult",
+    "ReconciliationStatus",
     "RemoteOperationRepository",
     "ScopedProgressSink",
     "StoredFile",
@@ -65,4 +81,6 @@ __all__ = [
     "download_input_hash",
     "generation_input_hash",
     "normalize_content_type",
+    "source_input_hash",
+    "workspace_input_hash",
 ]

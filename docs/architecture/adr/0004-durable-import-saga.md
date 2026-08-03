@@ -2,7 +2,7 @@
 
 ## Status
 
-`Proposed`
+`Accepted`
 
 ## Date
 
@@ -201,7 +201,7 @@ Job 完成的必要条件是所有预期 Source ready、每个 Part 映射已持
 
 ## Validation
 
-本 ADR 变为 `Accepted` 前必须通过故障注入：
+本 ADR 的接受条件由 [Phase 3 可恢复 Workflow E2E](../../development/phase-3-e2e.md) 的浏览器无关故障注入实现验证：
 
 - 在 Intent 提交前、`dispatched` 提交后但调用前、Provider commit 后响应丢失、响应返回后 ID checkpoint 前分别终止进程；恢复都不盲目重复创建。
 - Notebook 创建后和第 N 个分块上传后终止，恢复时复用已确认资源，不重复前 N 个 Source。
@@ -214,6 +214,8 @@ Job 完成的必要条件是所有预期 Source ready、每个 Part 映射已持
 - Source processing 超时不会误报完成或新建 Source。
 - 用户取消后临时文件被清理，本地原始资产与已记录远程 ID 保留。
 - 所有预期 Source ready 且没有未决 Intent 前 Job 不进入 `completed`。
+
+当前自动化覆盖 11 个持久化故障边界、到期 Lease takeover、旧 generation 的 Job/Step/operation fencing、认证恢复、authoritative/ambiguous/confirmed-absence reconciliation、部分 Source 断点恢复和取消解歧。真实 NotebookLM Provider 的 live probe 可观测性仍不作未经验证的保证；`probe_strategy=unsupported` 时按本 ADR 要求进入人工解歧。
 
 ## Related
 

@@ -20,12 +20,14 @@ from diandianreading.domain import (
     BookStatus,
     CredentialRef,
     JobStatus,
+    JobStep,
     KnowledgeStatus,
     ProgressEvent,
     RemoteOperation,
     RemoteOperationKind,
     RemoteOperationRef,
     RemoteOperationStatus,
+    RemoteProbeStrategy,
     StorageKey,
     TargetCapabilities,
     UnsafePathError,
@@ -140,7 +142,7 @@ async def run_phase2_demo(
             row = connection.execute(
                 """
                 SELECT COUNT(*) FROM remote_operations
-                WHERE kind = ? AND status = 'pending'
+                WHERE kind = ? AND status = 'dispatched'
                 """,
                 (kind.value,),
             ).fetchone()
@@ -225,15 +227,17 @@ async def run_phase2_demo(
             local_resource_id=result.workspace.id,
             input_hash=generation_input_hash("report", instructions),
         )
+        dispatched_generation = generation_operation.dispatch()
+        operations.save(generation_operation, dispatched_generation)
         handle = await second_adapter.generate(
             result.workspace,
             "report",
             instructions,
-            _operation_ref(generation_operation),
+            _operation_ref(dispatched_generation),
         )
         operations.save(
-            generation_operation,
-            generation_operation.complete(handle.id),
+            dispatched_generation,
+            dispatched_generation.succeed(handle.id),
         )
         content = await second_adapter.wait(handle)
 
@@ -245,14 +249,16 @@ async def run_phase2_demo(
             local_resource_id=content.id,
             input_hash=download_input_hash(content, destination),
         )
+        dispatched_download = download_operation.dispatch()
+        operations.save(download_operation, dispatched_download)
         generated_asset = await second_adapter.download(
             content,
             destination,
-            _operation_ref(download_operation),
+            _operation_ref(dispatched_download),
         )
         operations.save(
-            download_operation,
-            download_operation.complete(content.id),
+            dispatched_download,
+            dispatched_download.succeed(content.id),
         )
 
     generated_object = store.stat(generated_asset.storage_key)
@@ -273,7 +279,7 @@ async def run_phase2_demo(
         }
     expected_operation_count = len(prepared.parts) + 3
     if len(operation_rows) != expected_operation_count or any(
-        str(row["status"]) != RemoteOperationStatus.COMPLETED.value for row in operation_rows
+        str(row["status"]) != RemoteOperationStatus.SUCCEEDED.value for row in operation_rows
     ):
         raise RuntimeError("Phase 2 E2E failed: remote operation intents were incomplete")
     expected_observed_writes = len(prepared.parts) + 3
@@ -322,14 +328,26 @@ def _persist_operation(
     operation = RemoteOperation(
         id=str(uuid5(NAMESPACE_URL, f"phase2-operation:{idempotency_key}")),
         job_id=job_id,
+        step=JobStep.VERIFYING,
+        provider="notebooklm",
+        credential_profile="phase2-e2e",
         kind=kind,
         idempotency_key=idempotency_key,
         local_resource_id=local_resource_id,
         input_hash=input_hash,
-        status=RemoteOperationStatus.PENDING,
+        probe_strategy=RemoteProbeStrategy.UNSUPPORTED,
+        baseline_snapshot_redacted="{}",
+        request_summary_redacted=json.dumps(
+            {"kind": kind.value, "local_resource_id": local_resource_id},
+            sort_keys=True,
+        ),
+        status=RemoteOperationStatus.PREPARED,
+        dispatch_attempt=0,
         external_id=None,
         created_at=timestamp,
         updated_at=timestamp,
+        dispatched_at=None,
+        resolved_at=None,
         version=0,
     )
     repository.add(operation)

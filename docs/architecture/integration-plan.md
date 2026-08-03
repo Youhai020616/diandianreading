@@ -561,25 +561,30 @@ diandianreading/
 - 支持 `audio`、`video`、`report`、`study_guide`、`quiz`、`flashcards`、`infographic`、`slide_deck` 与 `data_table`。
 - Infrastructure `CredentialPathResolver` 把不透明 Profile 哈希为私有目录键，校验根目录 confinement、当前用户所有权、`0700/0600` 权限、普通文件、无符号链接和 storage-state JSON；物理凭据路径不进入 Domain、Application、SQLite 或 CLI 输出。
 - `NotebookLMAdapter` 绑定单一 event loop，每个 Adapter/Profile 缓存一个 SDK Client，并提供显式异步关闭生命周期。
-- Schema v3 允许 `generate_content` 与 `download_content` intent；所有 Adapter 远程写都要求匹配输入指纹的 `RemoteOperationRef`，已完成操作可按已持久化外部 ID 协调，而不是无条件重建。
+- Phase 2 schema v3 引入 `generate_content` 与 `download_content` intent；当前 schema v4 保留这些 kind，并增加完整恢复 lifecycle。所有 Adapter 远程写都要求匹配输入指纹的 `RemoteOperationRef`，已解析操作可按持久化 external ID 协调，而不是无条件重建。
 - 下载先进入私有 staging，再通过 `FileStore.put()` 原子发布并清理 staging。
 - Fake Knowledge Adapter 与真实 NotebookLM Adapter 共用 Contract tests；SDK 层使用确定性进程内 double，不读取真实凭据、不启动浏览器、不访问 Provider。
 
-Phase 2 的本地退出标准已由浏览器无关 E2E 覆盖：不存在生产路径中的 `shell=True`、`notebooklm use` 或 `notebooklm._*` 导入；SQLite reopen 后可恢复 Workspace/Source 映射，问答引用可回溯本地 `DocumentPart`，生成和下载写调用前可观察到 pending intent。
+Phase 2 的本地退出标准已由浏览器无关 E2E 覆盖：不存在生产路径中的 `shell=True`、`notebooklm use` 或 `notebooklm._*` 导入；SQLite reopen 后可恢复 Workspace/Source 映射，问答引用可回溯本地 `DocumentPart`，生成和下载写调用前可观察到 `dispatched` intent。
 
 当前不声称真实 NotebookLM 账号 smoke 已执行，也不声称已经具备完整进程崩溃恢复。Phase 2 E2E 暂把生成/下载诊断 intent 关联到已完成的导入 Job；独立可恢复生成 Job、`dispatched` checkpoint、Lease fencing、ambiguous outcome 和断点续传属于 Phase 3。
 
 ### Phase 3 / PR 4：可恢复 Workflow
 
-交付：
+> 实现状态：Active。可执行边界、故障矩阵和验证命令见 [Phase 3 可恢复 Workflow E2E](../development/phase-3-e2e.md)。
 
-- Step checkpoint 与 operation-intent reconciliation。
-- Job retry/cancel/resume 的穷尽转换、Lease heartbeat/generation fencing。
-- 部分 Source 上传恢复与 ambiguous-result 人工解歧入口。
-- 认证过期进入 `blocked/AUTH_REQUIRED`，验证恢复后从原 Step 继续。
-- 分离的 `status/current_step/blocked_reason/cancel_requested_at` ProgressEvent API。
+已交付：
 
-退出标准：在 Intent 提交后调用前、Notebook 创建后、任意分块上传后或处理等待中终止进程，都能从数据库恢复；旧 Lease Worker 不能写入，任何不确定结果都不会触发 blind recreation。
+- Schema v4：正交 Job lifecycle/current step/blocked reason/cancel request/Lease 字段，以及 `job_steps`、不可变 `job_payloads` 和扩展后的 `remote_operations`。
+- `prepared → dispatched → succeeded/reconciled` operation protocol；恢复 probe 只有证明不存在后才允许再次 dispatch。
+- Step input/output checkpoint、部分 Source 上传恢复与单调 progress replay。
+- Job retry/cancel/resume 的穷尽转换、Lease heartbeat、到期 takeover 与 generation fencing。
+- `blocked/AUTH_REQUIRED` 健康检查恢复，以及 `blocked/REMOTE_OUTCOME_AMBIGUOUS` 的 external ID/confirmed absence 人工解歧。
+- 取消在 prepared safe point 收敛为 `cancelled_before_dispatch`；dispatched/ambiguous 先解歧，不误报取消。
+- Fake 与 NotebookLM Adapter 的 health/reconciliation Port；NotebookLM 无可靠 probe 时保守返回 ambiguous。
+- 浏览器无关 `phase3-e2e`：覆盖 11 个故障边界、认证恢复、人工解歧和安全取消。
+
+退出标准已由本地故障注入验证：在 Intent 提交后调用前、Provider commit 后、本地 Step checkpoint 后、任意分块上传后或处理等待中终止进程，都能从数据库恢复；旧 Lease Worker 的 Job/Step/operation 写入被 fencing，Provider 写入计数不重复，任何不确定结果都不会触发 blind recreation。
 
 ### Phase 4 / PR 5：Z-Library 可选 Adapter
 

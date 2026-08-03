@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Protocol, Self
 
 from diandianreading.domain import (
@@ -13,6 +14,10 @@ from diandianreading.domain import (
     ExternalWorkspace,
     Job,
     JobEvent,
+    JobPayload,
+    JobStep,
+    JobStepRecord,
+    LeaseToken,
     PreparationManifest,
     RemoteOperation,
 )
@@ -43,9 +48,49 @@ class JobRepository(Protocol):
 
     def save_transition(self, previous: Job, current: Job) -> None: ...
 
+    def claim(
+        self,
+        job_id: str,
+        owner: str,
+        *,
+        lease_expires_at: datetime,
+        now: datetime,
+    ) -> Job: ...
+
+    def heartbeat(
+        self,
+        job_id: str,
+        token: LeaseToken,
+        *,
+        lease_expires_at: datetime,
+        now: datetime,
+    ) -> Job: ...
+
+    def request_cancel(self, job_id: str, *, now: datetime) -> Job: ...
+
+    def assert_lease(self, job_id: str, token: LeaseToken) -> None: ...
+
     def get(self, job_id: str) -> Job | None: ...
 
     def list_events(self, job_id: str) -> Sequence[JobEvent]: ...
+
+
+class JobStepRepository(Protocol):
+    def add(self, step: JobStepRecord, token: LeaseToken) -> None: ...
+
+    def save(self, previous: JobStepRecord, current: JobStepRecord, token: LeaseToken) -> None: ...
+
+    def get(self, job_id: str, step: JobStep, attempt: int) -> JobStepRecord | None: ...
+
+    def latest(self, job_id: str, step: JobStep) -> JobStepRecord | None: ...
+
+    def list(self, job_id: str) -> Sequence[JobStepRecord]: ...
+
+
+class JobPayloadRepository(Protocol):
+    def add(self, payload: JobPayload) -> None: ...
+
+    def get(self, job_id: str) -> JobPayload | None: ...
 
 
 class KnowledgeMappingRepository(Protocol):
@@ -53,22 +98,33 @@ class KnowledgeMappingRepository(Protocol):
 
     def get_workspace(self, workspace_id: str) -> ExternalWorkspace | None: ...
 
+    def get_workspace_for_book(self, book_id: str) -> ExternalWorkspace | None: ...
+
     def save_source(self, source: ExternalSource) -> None: ...
 
     def list_sources(self, workspace_id: str) -> Sequence[ExternalSource]: ...
 
 
 class RemoteOperationRepository(Protocol):
-    def add(self, operation: RemoteOperation) -> None: ...
+    def add(self, operation: RemoteOperation, token: LeaseToken | None = None) -> None: ...
 
-    def save(self, previous: RemoteOperation, current: RemoteOperation) -> None: ...
+    def save(
+        self,
+        previous: RemoteOperation,
+        current: RemoteOperation,
+        token: LeaseToken | None = None,
+    ) -> None: ...
 
     def get_by_idempotency_key(self, idempotency_key: str) -> RemoteOperation | None: ...
+
+    def list_for_job(self, job_id: str) -> Sequence[RemoteOperation]: ...
 
 
 class UnitOfWork(Protocol):
     catalog: CatalogRepository
     jobs: JobRepository
+    job_steps: JobStepRepository
+    job_payloads: JobPayloadRepository
     mappings: KnowledgeMappingRepository
     operations: RemoteOperationRepository
 

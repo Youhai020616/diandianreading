@@ -10,7 +10,7 @@ import sqlite3
 import stat
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from importlib.resources import files
 from pathlib import Path
@@ -18,12 +18,15 @@ from typing import Self
 
 from diandianreading.application.ports import (
     CatalogRepository,
+    JobPayloadRepository,
     JobRepository,
+    JobStepRepository,
     KnowledgeMappingRepository,
     RemoteOperationRepository,
     UnitOfWork,
 )
 from diandianreading.domain import (
+    BlockedReason,
     Book,
     BookStatus,
     DocumentAsset,
@@ -34,13 +37,18 @@ from diandianreading.domain import (
     InvalidStateTransition,
     Job,
     JobEvent,
+    JobPayload,
     JobStatus,
     JobStep,
+    JobStepRecord,
+    JobStepStatus,
     KnowledgeStatus,
+    LeaseToken,
     PreparationManifest,
     RemoteOperation,
     RemoteOperationKind,
     RemoteOperationStatus,
+    RemoteProbeStrategy,
     RepositoryConflict,
     SourceOrigin,
     StorageKey,
@@ -415,39 +423,95 @@ class SQLiteJobRepository(_SQLiteRepository, JobRepository):
             _insert_job_event(connection, previous=None, current=job)
 
     def save_transition(self, previous: Job, current: Job) -> None:
-        if previous.id != current.id or current.version != previous.version + 1:
-            raise RepositoryConflict("Job transition must increment one matching aggregate version")
+        if previous.status is not JobStatus.RUNNING and current.status is JobStatus.RUNNING:
+            raise RepositoryConflict("A Job must enter running state through atomic claim")
         with self._connect(write=True) as connection:
-            cursor = connection.execute(
-                """
-                UPDATE jobs
-                SET status = ?, step = ?, attempt = ?, progress_current = ?,
-                    progress_total = ?, error_code = ?, error_message = ?, book_id = ?,
-                    updated_at = ?, started_at = ?, completed_at = ?, version = ?
-                WHERE id = ? AND version = ?
-                """,
-                (
-                    current.status.value,
-                    current.step.value,
-                    current.attempt,
-                    current.progress_current,
-                    current.progress_total,
-                    current.error_code.value if current.error_code else None,
-                    current.error_message,
-                    current.book_id,
-                    current.updated_at.isoformat(),
-                    _optional_datetime(current.started_at),
-                    _optional_datetime(current.completed_at),
-                    current.version,
-                    current.id,
-                    previous.version,
-                ),
+            _save_job_transition(
+                connection,
+                previous,
+                current,
+                require_running_fence=previous.status is JobStatus.RUNNING,
             )
-            if cursor.rowcount != 1:
-                raise RepositoryConflict(
-                    f"Job {current.id} was changed by another writer at version {previous.version}"
+
+    def claim(
+        self,
+        job_id: str,
+        owner: str,
+        *,
+        lease_expires_at: datetime,
+        now: datetime,
+    ) -> Job:
+        with self._connect(write=True) as connection:
+            row = connection.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"Unknown Job: {job_id}")
+            previous = _job_from_row(row)
+            if previous.status is JobStatus.QUEUED:
+                current = previous.claim(owner, lease_expires_at=lease_expires_at, now=now)
+            elif previous.status is JobStatus.RUNNING:
+                current = previous.take_over_expired_lease(
+                    owner,
+                    lease_expires_at=lease_expires_at,
+                    now=now,
                 )
-            _insert_job_event(connection, previous=previous, current=current)
+            else:
+                raise InvalidStateTransition(
+                    f"Job {job_id} cannot be claimed from {previous.status.value}"
+                )
+            _save_job_transition(
+                connection,
+                previous,
+                current,
+                require_running_fence=False,
+            )
+            return current
+
+    def heartbeat(
+        self,
+        job_id: str,
+        token: LeaseToken,
+        *,
+        lease_expires_at: datetime,
+        now: datetime,
+    ) -> Job:
+        with self._connect(write=True) as connection:
+            row = connection.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"Unknown Job: {job_id}")
+            previous = _job_from_row(row)
+            current = previous.heartbeat(
+                token,
+                lease_expires_at=lease_expires_at,
+                now=now,
+            )
+            _save_job_transition(
+                connection,
+                previous,
+                current,
+                require_running_fence=True,
+            )
+            return current
+
+    def request_cancel(self, job_id: str, *, now: datetime) -> Job:
+        with self._connect(write=True) as connection:
+            row = connection.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"Unknown Job: {job_id}")
+            previous = _job_from_row(row)
+            current = previous.request_cancellation(now=now)
+            if current is previous:
+                return previous
+            _save_job_transition(
+                connection,
+                previous,
+                current,
+                require_running_fence=False,
+            )
+            return current
+
+    def assert_lease(self, job_id: str, token: LeaseToken) -> None:
+        with self._connect() as connection:
+            _require_job_lease(connection, job_id, token)
 
     def get(self, job_id: str) -> Job | None:
         with self._connect() as connection:
@@ -461,6 +525,127 @@ class SQLiteJobRepository(_SQLiteRepository, JobRepository):
                 (job_id,),
             ).fetchall()
         return tuple(_job_event_from_row(row) for row in rows)
+
+
+class SQLiteJobStepRepository(_SQLiteRepository, JobStepRepository):
+    def add(self, step: JobStepRecord, token: LeaseToken) -> None:
+        with self._connect(write=True) as connection:
+            _require_job_lease(connection, step.job_id, token)
+            connection.execute(
+                """
+                INSERT INTO job_steps(
+                    job_id, step, attempt, status, input_hash, output_ref,
+                    progress_current, progress_total, error_code, error_detail_redacted,
+                    started_at, completed_at, version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                _step_values(step),
+            )
+
+    def save(
+        self,
+        previous: JobStepRecord,
+        current: JobStepRecord,
+        token: LeaseToken,
+    ) -> None:
+        if (
+            previous.job_id != current.job_id
+            or previous.step is not current.step
+            or previous.attempt != current.attempt
+            or current.version != previous.version + 1
+        ):
+            raise RepositoryConflict("Job Step transition must increment one matching version")
+        with self._connect(write=True) as connection:
+            _require_job_lease(connection, current.job_id, token)
+            cursor = connection.execute(
+                """
+                UPDATE job_steps
+                SET status = ?, input_hash = ?, output_ref = ?, progress_current = ?,
+                    progress_total = ?, error_code = ?, error_detail_redacted = ?,
+                    started_at = ?, completed_at = ?, version = ?
+                WHERE job_id = ? AND step = ? AND attempt = ? AND version = ?
+                """,
+                (
+                    current.status.value,
+                    current.input_hash,
+                    current.output_ref,
+                    current.progress_current,
+                    current.progress_total,
+                    current.error_code.value if current.error_code else None,
+                    current.error_detail_redacted,
+                    _optional_datetime(current.started_at),
+                    _optional_datetime(current.completed_at),
+                    current.version,
+                    current.job_id,
+                    current.step.value,
+                    current.attempt,
+                    previous.version,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise RepositoryConflict("Job Step was changed by another worker")
+
+    def get(self, job_id: str, step: JobStep, attempt: int) -> JobStepRecord | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM job_steps WHERE job_id = ? AND step = ? AND attempt = ?",
+                (job_id, step.value, attempt),
+            ).fetchone()
+        return _step_from_row(row) if row is not None else None
+
+    def latest(self, job_id: str, step: JobStep) -> JobStepRecord | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM job_steps
+                WHERE job_id = ? AND step = ?
+                ORDER BY attempt DESC LIMIT 1
+                """,
+                (job_id, step.value),
+            ).fetchone()
+        return _step_from_row(row) if row is not None else None
+
+    def list(self, job_id: str) -> Sequence[JobStepRecord]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM job_steps WHERE job_id = ? ORDER BY attempt, rowid",
+                (job_id,),
+            ).fetchall()
+        return tuple(_step_from_row(row) for row in rows)
+
+
+class SQLiteJobPayloadRepository(_SQLiteRepository, JobPayloadRepository):
+    def add(self, payload: JobPayload) -> None:
+        with self._connect(write=True) as connection:
+            row = connection.execute(
+                "SELECT * FROM job_payloads WHERE job_id = ?",
+                (payload.job_id,),
+            ).fetchone()
+            if row is not None:
+                if _payload_from_row(row) != payload:
+                    raise RepositoryConflict(f"Job payload collision: {payload.job_id}")
+                return
+            connection.execute(
+                """
+                INSERT INTO job_payloads(job_id, payload_type, payload_json, input_hash, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    payload.job_id,
+                    payload.payload_type,
+                    payload.payload_json,
+                    payload.input_hash,
+                    payload.created_at.isoformat(),
+                ),
+            )
+
+    def get(self, job_id: str) -> JobPayload | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM job_payloads WHERE job_id = ?",
+                (job_id,),
+            ).fetchone()
+        return _payload_from_row(row) if row is not None else None
 
 
 class SQLiteKnowledgeMappingRepository(_SQLiteRepository, KnowledgeMappingRepository):
@@ -515,6 +700,16 @@ class SQLiteKnowledgeMappingRepository(_SQLiteRepository, KnowledgeMappingReposi
             ).fetchone()
         return _workspace_from_row(row) if row is not None else None
 
+    def get_workspace_for_book(self, book_id: str) -> ExternalWorkspace | None:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM external_workspaces WHERE book_id = ? ORDER BY created_at",
+                (book_id,),
+            ).fetchall()
+        if len(rows) > 1:
+            raise RepositoryConflict("Import Job has multiple external workspace mappings")
+        return _workspace_from_row(rows[0]) if rows else None
+
     def save_source(self, source: ExternalSource) -> None:
         with self._connect(write=True) as connection:
             row = connection.execute(
@@ -563,9 +758,11 @@ class SQLiteKnowledgeMappingRepository(_SQLiteRepository, KnowledgeMappingReposi
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT * FROM external_sources
-                WHERE workspace_id = ?
-                ORDER BY document_part_id
+                SELECT source.*
+                FROM external_sources AS source
+                JOIN document_parts AS part ON part.id = source.document_part_id
+                WHERE source.workspace_id = ?
+                ORDER BY part.sequence, source.id
                 """,
                 (workspace_id,),
             ).fetchall()
@@ -573,8 +770,9 @@ class SQLiteKnowledgeMappingRepository(_SQLiteRepository, KnowledgeMappingReposi
 
 
 class SQLiteRemoteOperationRepository(_SQLiteRepository, RemoteOperationRepository):
-    def add(self, operation: RemoteOperation) -> None:
+    def add(self, operation: RemoteOperation, token: LeaseToken | None = None) -> None:
         with self._connect(write=True) as connection:
+            _authorize_operation_write(connection, operation.job_id, token)
             existing_row = connection.execute(
                 "SELECT * FROM remote_operations WHERE idempotency_key = ?",
                 (operation.idempotency_key,),
@@ -589,41 +787,54 @@ class SQLiteRemoteOperationRepository(_SQLiteRepository, RemoteOperationReposito
             connection.execute(
                 """
                 INSERT INTO remote_operations(
-                    id, job_id, kind, idempotency_key, local_resource_id, input_hash,
-                    status, external_id, created_at, updated_at, version
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    id, job_id, step, provider, credential_profile, kind,
+                    idempotency_key, local_resource_id, input_hash, probe_strategy,
+                    baseline_snapshot_redacted, request_summary_redacted, status,
+                    dispatch_attempt, external_id, created_at, updated_at,
+                    dispatched_at, resolved_at, version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    operation.id,
-                    operation.job_id,
-                    operation.kind.value,
-                    operation.idempotency_key,
-                    operation.local_resource_id,
-                    operation.input_hash,
-                    operation.status.value,
-                    operation.external_id,
-                    operation.created_at.isoformat(),
-                    operation.updated_at.isoformat(),
-                    operation.version,
-                ),
+                _operation_values(operation),
             )
 
-    def save(self, previous: RemoteOperation, current: RemoteOperation) -> None:
+    def save(
+        self,
+        previous: RemoteOperation,
+        current: RemoteOperation,
+        token: LeaseToken | None = None,
+    ) -> None:
         if previous.id != current.id or current.version != previous.version + 1:
             raise RepositoryConflict(
                 "Remote operation transition must increment one matching version"
             )
+        immutable_previous = replace(
+            previous,
+            status=current.status,
+            dispatch_attempt=current.dispatch_attempt,
+            external_id=current.external_id,
+            updated_at=current.updated_at,
+            dispatched_at=current.dispatched_at,
+            resolved_at=current.resolved_at,
+            version=current.version,
+        )
+        if immutable_previous != current:
+            raise RepositoryConflict("Remote operation immutable inputs cannot change")
         with self._connect(write=True) as connection:
+            _authorize_operation_write(connection, current.job_id, token)
             cursor = connection.execute(
                 """
                 UPDATE remote_operations
-                SET status = ?, external_id = ?, updated_at = ?, version = ?
+                SET status = ?, dispatch_attempt = ?, external_id = ?, updated_at = ?,
+                    dispatched_at = ?, resolved_at = ?, version = ?
                 WHERE id = ? AND version = ?
                 """,
                 (
                     current.status.value,
+                    current.dispatch_attempt,
                     current.external_id,
                     current.updated_at.isoformat(),
+                    _optional_datetime(current.dispatched_at),
+                    _optional_datetime(current.resolved_at),
                     current.version,
                     current.id,
                     previous.version,
@@ -642,6 +853,14 @@ class SQLiteRemoteOperationRepository(_SQLiteRepository, RemoteOperationReposito
             ).fetchone()
         return _operation_from_row(row) if row is not None else None
 
+    def list_for_job(self, job_id: str) -> Sequence[RemoteOperation]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM remote_operations WHERE job_id = ? ORDER BY created_at, id",
+                (job_id,),
+            ).fetchall()
+        return tuple(_operation_from_row(row) for row in rows)
+
 
 class SQLiteUnitOfWork(UnitOfWork):
     """One explicit SQLite transaction shared by all import repositories."""
@@ -651,6 +870,8 @@ class SQLiteUnitOfWork(UnitOfWork):
         self._committed = False
         self.catalog = SQLiteCatalogRepository(self._connection)
         self.jobs = SQLiteJobRepository(self._connection)
+        self.job_steps = SQLiteJobStepRepository(self._connection)
+        self.job_payloads = SQLiteJobPayloadRepository(self._connection)
         self.mappings = SQLiteKnowledgeMappingRepository(self._connection)
         self.operations = SQLiteRemoteOperationRepository(self._connection)
 
@@ -731,33 +952,134 @@ def _validate_knowledge_transition(previous: KnowledgeStatus, current: Knowledge
         )
 
 
+def _job_values(job: Job) -> tuple[object, ...]:
+    return (
+        job.id,
+        job.job_type,
+        job.input_hash,
+        job.status.value,
+        job.current_step.value if job.current_step else None,
+        job.attempt,
+        job.progress_current,
+        job.progress_total,
+        job.last_error_code.value if job.last_error_code else None,
+        job.last_error_detail_redacted,
+        _optional_bool(job.retriable),
+        job.blocked_reason.value if job.blocked_reason else None,
+        _optional_datetime(job.cancel_requested_at),
+        job.lease_owner,
+        _optional_datetime(job.lease_expires_at),
+        job.lease_generation,
+        _optional_datetime(job.not_before),
+        job.book_id,
+        job.created_at.isoformat(),
+        job.updated_at.isoformat(),
+        _optional_datetime(job.started_at),
+        _optional_datetime(job.completed_at),
+        job.version,
+    )
+
+
+def _save_job_transition(
+    connection: sqlite3.Connection,
+    previous: Job,
+    current: Job,
+    *,
+    require_running_fence: bool,
+) -> None:
+    if previous.id != current.id or current.version != previous.version + 1:
+        raise RepositoryConflict("Job transition must increment one matching aggregate version")
+    where = "id = ? AND version = ?"
+    parameters: list[object] = [
+        current.status.value,
+        current.current_step.value if current.current_step else None,
+        current.attempt,
+        current.progress_current,
+        current.progress_total,
+        current.last_error_code.value if current.last_error_code else None,
+        current.last_error_detail_redacted,
+        _optional_bool(current.retriable),
+        current.blocked_reason.value if current.blocked_reason else None,
+        _optional_datetime(current.cancel_requested_at),
+        current.lease_owner,
+        _optional_datetime(current.lease_expires_at),
+        current.lease_generation,
+        _optional_datetime(current.not_before),
+        current.book_id,
+        current.updated_at.isoformat(),
+        _optional_datetime(current.started_at),
+        _optional_datetime(current.completed_at),
+        current.version,
+        current.id,
+        previous.version,
+    ]
+    if require_running_fence:
+        if previous.lease_owner is None or previous.lease_generation <= 0:
+            raise RepositoryConflict("Running Job transition requires a valid Lease fence")
+        where += " AND status = 'running' AND lease_owner = ? AND lease_generation = ?"
+        parameters.extend((previous.lease_owner, previous.lease_generation))
+    cursor = connection.execute(
+        f"""
+        UPDATE jobs
+        SET status = ?, current_step = ?, attempt = ?, progress_current = ?,
+            progress_total = ?, last_error_code = ?, last_error_detail_redacted = ?,
+            retriable = ?, blocked_reason = ?, cancel_requested_at = ?,
+            lease_owner = ?, lease_expires_at = ?, lease_generation = ?,
+            not_before = ?, book_id = ?, updated_at = ?, started_at = ?,
+            completed_at = ?, version = ?
+        WHERE {where}
+        """,
+        tuple(parameters),
+    )
+    if cursor.rowcount != 1:
+        raise RepositoryConflict(
+            f"Job {current.id} was changed or fenced at version {previous.version}"
+        )
+    _insert_job_event(connection, previous=previous, current=current)
+
+
+def _require_job_lease(
+    connection: sqlite3.Connection,
+    job_id: str,
+    token: LeaseToken,
+) -> None:
+    row = connection.execute(
+        """
+        SELECT 1 FROM jobs
+        WHERE id = ? AND status = 'running' AND lease_owner = ? AND lease_generation = ?
+        """,
+        (job_id, token.owner, token.generation),
+    ).fetchone()
+    if row is None:
+        raise RepositoryConflict("Job Lease owner or generation is stale")
+
+
+def _authorize_operation_write(
+    connection: sqlite3.Connection,
+    job_id: str,
+    token: LeaseToken | None,
+) -> None:
+    row = connection.execute("SELECT status FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if row is None:
+        raise KeyError(f"Unknown Job: {job_id}")
+    if str(row["status"]) == JobStatus.RUNNING.value:
+        if token is None:
+            raise RepositoryConflict("Running Job remote operation write requires a Lease")
+        _require_job_lease(connection, job_id, token)
+
+
 def _insert_job(connection: sqlite3.Connection, job: Job) -> None:
     connection.execute(
         """
         INSERT INTO jobs(
-            id, job_type, input_hash, status, step, attempt, progress_current,
-            progress_total, error_code, error_message, book_id, created_at,
-            updated_at, started_at, completed_at, version
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            id, job_type, input_hash, status, current_step, attempt,
+            progress_current, progress_total, last_error_code,
+            last_error_detail_redacted, retriable, blocked_reason,
+            cancel_requested_at, lease_owner, lease_expires_at, lease_generation,
+            not_before, book_id, created_at, updated_at, started_at, completed_at, version
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (
-            job.id,
-            job.job_type,
-            job.input_hash,
-            job.status.value,
-            job.step.value,
-            job.attempt,
-            job.progress_current,
-            job.progress_total,
-            job.error_code.value if job.error_code else None,
-            job.error_message,
-            job.book_id,
-            job.created_at.isoformat(),
-            job.updated_at.isoformat(),
-            _optional_datetime(job.started_at),
-            _optional_datetime(job.completed_at),
-            job.version,
-        ),
+        _job_values(job),
     )
 
 
@@ -770,20 +1092,28 @@ def _insert_job_event(
     connection.execute(
         """
         INSERT INTO job_events(
-            job_id, from_status, to_status, step, attempt, progress_current,
-            progress_total, error_code, error_message, version, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            job_id, from_status, to_status, current_step, attempt,
+            progress_current, progress_total, blocked_reason, cancel_requested_at,
+            lease_owner, lease_expires_at, lease_generation, error_code,
+            error_detail_redacted, retriable, version, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             current.id,
             previous.status.value if previous else None,
             current.status.value,
-            current.step.value,
+            current.current_step.value if current.current_step else None,
             current.attempt,
             current.progress_current,
             current.progress_total,
-            current.error_code.value if current.error_code else None,
-            current.error_message,
+            current.blocked_reason.value if current.blocked_reason else None,
+            _optional_datetime(current.cancel_requested_at),
+            current.lease_owner,
+            _optional_datetime(current.lease_expires_at),
+            current.lease_generation,
+            current.last_error_code.value if current.last_error_code else None,
+            current.last_error_detail_redacted,
+            _optional_bool(current.retriable),
             current.version,
             current.updated_at.isoformat(),
         ),
@@ -849,20 +1179,36 @@ def _part_from_row(row: sqlite3.Row) -> DocumentPart:
 
 
 def _job_from_row(row: sqlite3.Row) -> Job:
-    error_code = ErrorCode(str(row["error_code"])) if row["error_code"] else None
     return Job(
         id=str(row["id"]),
         job_type=str(row["job_type"]),
         input_hash=str(row["input_hash"]),
         status=JobStatus(str(row["status"])),
-        step=JobStep(str(row["step"])),
+        current_step=(
+            JobStep(str(row["current_step"])) if row["current_step"] is not None else None
+        ),
         attempt=int(row["attempt"]),
         progress_current=(
             int(row["progress_current"]) if row["progress_current"] is not None else None
         ),
         progress_total=(int(row["progress_total"]) if row["progress_total"] is not None else None),
-        error_code=error_code,
-        error_message=(str(row["error_message"]) if row["error_message"] is not None else None),
+        last_error_code=(
+            ErrorCode(str(row["last_error_code"])) if row["last_error_code"] else None
+        ),
+        last_error_detail_redacted=(
+            str(row["last_error_detail_redacted"])
+            if row["last_error_detail_redacted"] is not None
+            else None
+        ),
+        retriable=_parse_optional_bool(row["retriable"]),
+        blocked_reason=(
+            BlockedReason(str(row["blocked_reason"])) if row["blocked_reason"] else None
+        ),
+        cancel_requested_at=_parse_optional_datetime(row["cancel_requested_at"]),
+        lease_owner=str(row["lease_owner"]) if row["lease_owner"] is not None else None,
+        lease_expires_at=_parse_optional_datetime(row["lease_expires_at"]),
+        lease_generation=int(row["lease_generation"]),
+        not_before=_parse_optional_datetime(row["not_before"]),
         book_id=str(row["book_id"]) if row["book_id"] is not None else None,
         created_at=datetime.fromisoformat(str(row["created_at"])),
         updated_at=datetime.fromisoformat(str(row["updated_at"])),
@@ -877,14 +1223,26 @@ def _job_event_from_row(row: sqlite3.Row) -> JobEvent:
         job_id=str(row["job_id"]),
         from_status=JobStatus(str(row["from_status"])) if row["from_status"] else None,
         to_status=JobStatus(str(row["to_status"])),
-        step=JobStep(str(row["step"])),
+        current_step=(
+            JobStep(str(row["current_step"])) if row["current_step"] is not None else None
+        ),
         attempt=int(row["attempt"]),
         progress_current=(
             int(row["progress_current"]) if row["progress_current"] is not None else None
         ),
         progress_total=(int(row["progress_total"]) if row["progress_total"] is not None else None),
+        blocked_reason=(
+            BlockedReason(str(row["blocked_reason"])) if row["blocked_reason"] else None
+        ),
+        cancel_requested_at=_parse_optional_datetime(row["cancel_requested_at"]),
+        lease_owner=str(row["lease_owner"]) if row["lease_owner"] is not None else None,
+        lease_expires_at=_parse_optional_datetime(row["lease_expires_at"]),
+        lease_generation=int(row["lease_generation"]),
         error_code=ErrorCode(str(row["error_code"])) if row["error_code"] else None,
-        error_message=(str(row["error_message"]) if row["error_message"] is not None else None),
+        error_detail_redacted=(
+            str(row["error_detail_redacted"]) if row["error_detail_redacted"] is not None else None
+        ),
+        retriable=_parse_optional_bool(row["retriable"]),
         version=int(row["version"]),
         created_at=datetime.fromisoformat(str(row["created_at"])),
     )
@@ -916,18 +1274,102 @@ def _source_from_row(row: sqlite3.Row) -> ExternalSource:
     )
 
 
+def _step_values(step: JobStepRecord) -> tuple[object, ...]:
+    return (
+        step.job_id,
+        step.step.value,
+        step.attempt,
+        step.status.value,
+        step.input_hash,
+        step.output_ref,
+        step.progress_current,
+        step.progress_total,
+        step.error_code.value if step.error_code else None,
+        step.error_detail_redacted,
+        _optional_datetime(step.started_at),
+        _optional_datetime(step.completed_at),
+        step.version,
+    )
+
+
+def _step_from_row(row: sqlite3.Row) -> JobStepRecord:
+    return JobStepRecord(
+        job_id=str(row["job_id"]),
+        step=JobStep(str(row["step"])),
+        attempt=int(row["attempt"]),
+        status=JobStepStatus(str(row["status"])),
+        input_hash=str(row["input_hash"]),
+        output_ref=str(row["output_ref"]) if row["output_ref"] is not None else None,
+        progress_current=(
+            int(row["progress_current"]) if row["progress_current"] is not None else None
+        ),
+        progress_total=(int(row["progress_total"]) if row["progress_total"] is not None else None),
+        error_code=ErrorCode(str(row["error_code"])) if row["error_code"] else None,
+        error_detail_redacted=(
+            str(row["error_detail_redacted"]) if row["error_detail_redacted"] is not None else None
+        ),
+        started_at=_parse_optional_datetime(row["started_at"]),
+        completed_at=_parse_optional_datetime(row["completed_at"]),
+        version=int(row["version"]),
+    )
+
+
+def _payload_from_row(row: sqlite3.Row) -> JobPayload:
+    return JobPayload(
+        job_id=str(row["job_id"]),
+        payload_type=str(row["payload_type"]),
+        payload_json=str(row["payload_json"]),
+        input_hash=str(row["input_hash"]),
+        created_at=datetime.fromisoformat(str(row["created_at"])),
+    )
+
+
+def _operation_values(operation: RemoteOperation) -> tuple[object, ...]:
+    return (
+        operation.id,
+        operation.job_id,
+        operation.step.value,
+        operation.provider,
+        operation.credential_profile,
+        operation.kind.value,
+        operation.idempotency_key,
+        operation.local_resource_id,
+        operation.input_hash,
+        operation.probe_strategy.value,
+        operation.baseline_snapshot_redacted,
+        operation.request_summary_redacted,
+        operation.status.value,
+        operation.dispatch_attempt,
+        operation.external_id,
+        operation.created_at.isoformat(),
+        operation.updated_at.isoformat(),
+        _optional_datetime(operation.dispatched_at),
+        _optional_datetime(operation.resolved_at),
+        operation.version,
+    )
+
+
 def _operation_from_row(row: sqlite3.Row) -> RemoteOperation:
     return RemoteOperation(
         id=str(row["id"]),
         job_id=str(row["job_id"]),
+        step=JobStep(str(row["step"])),
+        provider=str(row["provider"]),
+        credential_profile=str(row["credential_profile"]),
         kind=RemoteOperationKind(str(row["kind"])),
         idempotency_key=str(row["idempotency_key"]),
         local_resource_id=str(row["local_resource_id"]),
         input_hash=str(row["input_hash"]),
+        probe_strategy=RemoteProbeStrategy(str(row["probe_strategy"])),
+        baseline_snapshot_redacted=str(row["baseline_snapshot_redacted"]),
+        request_summary_redacted=str(row["request_summary_redacted"]),
         status=RemoteOperationStatus(str(row["status"])),
+        dispatch_attempt=int(row["dispatch_attempt"]),
         external_id=str(row["external_id"]) if row["external_id"] is not None else None,
         created_at=datetime.fromisoformat(str(row["created_at"])),
         updated_at=datetime.fromisoformat(str(row["updated_at"])),
+        dispatched_at=_parse_optional_datetime(row["dispatched_at"]),
+        resolved_at=_parse_optional_datetime(row["resolved_at"]),
         version=int(row["version"]),
     )
 
@@ -938,3 +1380,15 @@ def _optional_datetime(value: datetime | None) -> str | None:
 
 def _parse_optional_datetime(value: object) -> datetime | None:
     return datetime.fromisoformat(str(value)) if value is not None else None
+
+
+def _optional_bool(value: bool | None) -> int | None:
+    return int(value) if value is not None else None
+
+
+def _parse_optional_bool(value: object) -> bool | None:
+    if value is None:
+        return None
+    if value not in (0, 1):
+        raise ValueError("SQLite boolean value must be 0 or 1")
+    return value == 1

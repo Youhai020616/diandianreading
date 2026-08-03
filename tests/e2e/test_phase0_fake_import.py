@@ -31,13 +31,13 @@ def test_phase0_cli_runs_fake_import_reopens_sqlite_and_refuses_overwrite(tmp_pa
 
     payload = json.loads(completed.stdout)
     assert payload["status"] == "ok"
-    assert payload["schema_version"] == 3
+    assert payload["schema_version"] == 4
     assert payload["part_count"] == 2
     assert payload["source_count"] == 2
     assert payload["preparation_manifest_key"].startswith("manifests/")
     assert payload["preparation_manifest_key"].endswith(".json")
     assert payload["remote_operation_count"] == 3
-    assert payload["job_event_count"] == 11
+    assert payload["job_event_count"] == 21
     assert database.is_file()
 
     sentinel = workspace / "phase0-sample.md"

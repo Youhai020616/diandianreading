@@ -102,10 +102,38 @@ def test_cli_runs_phase2_notebooklm_adapter_demo(tmp_path, capsys) -> None:
     assert captured.err == ""
     payload = json.loads(captured.out)
     assert payload["status"] == "ok"
-    assert payload["schema_version"] == 3
+    assert payload["schema_version"] == 4
     assert payload["citation_count"] == payload["source_count"]
     assert payload["provider_write_intent_count"] == payload["remote_operation_count"]
     assert str(credentials_root) not in captured.out
+
+
+def test_cli_runs_phase3_recoverable_workflow_demo(tmp_path, capsys) -> None:
+    database = tmp_path / "state" / "app.sqlite3"
+    workspace = tmp_path / "workspace"
+
+    exit_code = main(
+        [
+            "phase3-e2e",
+            "--database",
+            str(database),
+            "--workspace",
+            str(workspace),
+        ]
+    )
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["status"] == "ok"
+    assert payload["schema_version"] == 4
+    assert payload["crash_boundary_count"] == 11
+    assert payload["completed_job_count"] == 13
+    assert payload["cancelled_job_count"] == 1
+    assert payload["unresolved_operation_count"] == 0
+    assert payload["provider_workspace_write_count"] == 13
+    assert payload["provider_source_write_count"] == 35
 
 
 def test_cli_expands_tilde_before_existing_database_check(tmp_path, monkeypatch, capsys) -> None:

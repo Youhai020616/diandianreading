@@ -6,27 +6,39 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
+from typing import Protocol
 
 import pytest
 
 from diandianreading.application.ports import (
     GeneratedContent,
     KnowledgeGenerationPort,
+    KnowledgeHealthPort,
     KnowledgeIngestionPort,
     KnowledgeQueryPort,
+    KnowledgeReconciliationPort,
     NullProgressSink,
+    ReconciliationResult,
+    ReconciliationStatus,
     download_input_hash,
     generation_input_hash,
+    source_input_hash,
+    workspace_input_hash,
 )
+from diandianreading.application.use_cases import ImportBookCommand
 from diandianreading.domain import (
     Book,
     BookStatus,
     CredentialRef,
     DiandianError,
     ErrorCode,
+    JobStep,
     KnowledgeStatus,
+    RemoteOperation,
     RemoteOperationKind,
     RemoteOperationRef,
+    RemoteOperationStatus,
+    RemoteProbeStrategy,
     StorageKey,
     WorkspaceRef,
 )
@@ -52,6 +64,9 @@ class FullKnowledgeAdapter(
     KnowledgeIngestionPort,
     KnowledgeQueryPort,
     KnowledgeGenerationPort,
+    KnowledgeReconciliationPort,
+    KnowledgeHealthPort,
+    Protocol,
 ):
     pass
 
@@ -87,7 +102,7 @@ def test_download_input_hash_binds_every_generated_content_field_and_destination
 class AdapterHarness:
     adapter: FullKnowledgeAdapter
     credential: CredentialRef
-    command: object
+    command: ImportBookCommand
     service: DeterministicNotebookLMService | None
 
 
@@ -106,6 +121,42 @@ def operation(
         local_resource_id=local_resource_id,
         input_hash=input_hash,
         external_id=external_id,
+    )
+
+
+def persisted_operation(
+    reference: RemoteOperationRef,
+    *,
+    credential: CredentialRef,
+    probe_strategy: RemoteProbeStrategy,
+) -> RemoteOperation:
+    if reference.kind is RemoteOperationKind.ENSURE_WORKSPACE:
+        step = JobStep.CREATING_WORKSPACE
+    elif reference.kind is RemoteOperationKind.ADD_SOURCE:
+        step = JobStep.UPLOADING
+    else:
+        raise ValueError("Reconciliation contracts only cover ingestion operations")
+    return RemoteOperation(
+        id=reference.id,
+        job_id="contract-job",
+        step=step,
+        provider=credential.provider,
+        credential_profile=credential.profile,
+        kind=reference.kind,
+        idempotency_key=reference.idempotency_key,
+        local_resource_id=reference.local_resource_id,
+        input_hash=reference.input_hash,
+        probe_strategy=probe_strategy,
+        baseline_snapshot_redacted="{}",
+        request_summary_redacted="{}",
+        status=RemoteOperationStatus.AMBIGUOUS,
+        dispatch_attempt=1,
+        external_id=reference.external_id,
+        created_at=FIXED_NOW,
+        updated_at=FIXED_NOW,
+        dispatched_at=FIXED_NOW,
+        resolved_at=None,
+        version=2,
     )
 
 
@@ -145,9 +196,25 @@ async def build_harness(kind: str, tmp_path) -> AsyncIterator[AdapterHarness]:
         yield AdapterHarness(adapter, credential, command, service)
 
 
-@pytest.mark.parametrize("adapter_kind", ["fake", "notebooklm"])
+@pytest.mark.parametrize(
+    ("adapter_kind", "probe_strategy", "missing_reconciliation_status"),
+    [
+        (
+            "fake",
+            RemoteProbeStrategy.AUTHORITATIVE_OPERATION_KEY,
+            ReconciliationStatus.PROVEN_ABSENT,
+        ),
+        (
+            "notebooklm",
+            RemoteProbeStrategy.UNSUPPORTED,
+            ReconciliationStatus.AMBIGUOUS,
+        ),
+    ],
+)
 def test_adapters_share_idempotent_ingestion_query_generation_contract(
     adapter_kind,
+    probe_strategy,
+    missing_reconciliation_status,
     tmp_path,
 ) -> None:
     async def scenario() -> DeterministicNotebookLMService | None:
@@ -155,6 +222,8 @@ def test_adapters_share_idempotent_ingestion_query_generation_contract(
             command = harness.command
             adapter = harness.adapter
             sink = NullProgressSink("contract-job")
+            assert adapter.probe_strategy is probe_strategy
+            assert await adapter.credential_is_healthy(harness.credential)
             book = Book(
                 id="book-1",
                 title=command.title,
@@ -167,7 +236,7 @@ def test_adapters_share_idempotent_ingestion_query_generation_contract(
             workspace_operation = operation(
                 RemoteOperationKind.ENSURE_WORKSPACE,
                 book.id,
-                book.source_hash,
+                workspace_input_hash(book, harness.credential),
                 key="workspace",
             )
             workspace = await adapter.ensure_workspace(
@@ -179,6 +248,35 @@ def test_adapters_share_idempotent_ingestion_query_generation_contract(
             )
             assert workspace.provider == harness.credential.provider
             assert workspace.status is KnowledgeStatus.READY
+            workspace_reconciliation = await adapter.reconcile_workspace(
+                book,
+                harness.credential,
+                persisted_operation(
+                    replace(workspace_operation, external_id=workspace.external_id),
+                    credential=harness.credential,
+                    probe_strategy=adapter.probe_strategy,
+                ),
+            )
+            assert workspace_reconciliation == ReconciliationResult(
+                ReconciliationStatus.RECOVERED,
+                workspace.external_id,
+            )
+            missing_workspace_operation = operation(
+                RemoteOperationKind.ENSURE_WORKSPACE,
+                book.id,
+                workspace_input_hash(book, harness.credential),
+                key="workspace-missing-reconciliation",
+            )
+            assert await adapter.reconcile_workspace(
+                book,
+                harness.credential,
+                persisted_operation(
+                    missing_workspace_operation,
+                    credential=harness.credential,
+                    probe_strategy=adapter.probe_strategy,
+                ),
+            ) == ReconciliationResult(missing_reconciliation_status)
+
             other_book = replace(book, id="book-2", title="Other book")
             with pytest.raises(ValueError, match="Idempotency key"):
                 await adapter.ensure_workspace(
@@ -187,7 +285,7 @@ def test_adapters_share_idempotent_ingestion_query_generation_contract(
                     operation(
                         RemoteOperationKind.ENSURE_WORKSPACE,
                         other_book.id,
-                        other_book.source_hash,
+                        workspace_input_hash(other_book, harness.credential),
                         key="workspace",
                     ),
                     sink,
@@ -198,12 +296,42 @@ def test_adapters_share_idempotent_ingestion_query_generation_contract(
                 source_operation = operation(
                     RemoteOperationKind.ADD_SOURCE,
                     part.id,
-                    part.sha256,
+                    source_input_hash(workspace, part),
                     key=f"source-{part.id}",
                 )
                 source = await adapter.add_part(workspace, part, source_operation, sink)
                 assert await adapter.add_part(workspace, part, source_operation, sink) == source
+                source_reconciliation = await adapter.reconcile_source(
+                    workspace,
+                    part,
+                    persisted_operation(
+                        replace(source_operation, external_id=source.external_id),
+                        credential=harness.credential,
+                        probe_strategy=adapter.probe_strategy,
+                    ),
+                )
+                assert source_reconciliation == ReconciliationResult(
+                    ReconciliationStatus.RECOVERED,
+                    source.external_id,
+                )
                 uploaded.append(source)
+            missing_part = command.parts[0]
+            missing_source_operation = operation(
+                RemoteOperationKind.ADD_SOURCE,
+                missing_part.id,
+                source_input_hash(workspace, missing_part),
+                key="source-missing-reconciliation",
+            )
+            assert await adapter.reconcile_source(
+                workspace,
+                missing_part,
+                persisted_operation(
+                    missing_source_operation,
+                    credential=harness.credential,
+                    probe_strategy=adapter.probe_strategy,
+                ),
+            ) == ReconciliationResult(missing_reconciliation_status)
+
             ready = tuple(await adapter.wait_sources(workspace, uploaded, sink))
             assert all(source.status is KnowledgeStatus.READY for source in ready)
 
@@ -305,6 +433,7 @@ def test_adapters_share_idempotent_ingestion_query_generation_contract(
 
     service = asyncio.run(scenario())
     if service is not None:
+        assert service.calls.count("notebooks.list") == 1
         assert service.calls.count("notebooks.create") == 1
         assert service.calls.count("sources.add_file") == 2
         assert service.calls.count("artifacts.generate_report") == 1
@@ -382,7 +511,7 @@ def test_notebooklm_adapter_supports_declared_generation_and_download_formats(
             workspace_operation = operation(
                 RemoteOperationKind.ENSURE_WORKSPACE,
                 book.id,
-                book.source_hash,
+                workspace_input_hash(book, harness.credential),
                 key=f"workspace-{content_type}",
             )
             workspace = await adapter.ensure_workspace(
@@ -467,7 +596,7 @@ def test_notebooklm_adapter_reconciles_completed_workspace_and_source_operations
             initial_operation = operation(
                 RemoteOperationKind.ENSURE_WORKSPACE,
                 book.id,
-                book.source_hash,
+                workspace_input_hash(book, harness.credential),
                 key="workspace-initial",
             )
             initial_workspace = await adapter.ensure_workspace(
@@ -479,7 +608,7 @@ def test_notebooklm_adapter_reconciles_completed_workspace_and_source_operations
                 operation(
                     RemoteOperationKind.ENSURE_WORKSPACE,
                     book.id,
-                    book.source_hash,
+                    workspace_input_hash(book, harness.credential),
                     key="workspace-reconciled",
                     external_id=initial_workspace.external_id,
                 ),
@@ -494,7 +623,7 @@ def test_notebooklm_adapter_reconciles_completed_workspace_and_source_operations
                 operation(
                     RemoteOperationKind.ADD_SOURCE,
                     part.id,
-                    part.sha256,
+                    source_input_hash(initial_workspace, part),
                     key="source-initial",
                 ),
                 sink,
@@ -508,7 +637,7 @@ def test_notebooklm_adapter_reconciles_completed_workspace_and_source_operations
                 operation(
                     RemoteOperationKind.ADD_SOURCE,
                     part.id,
-                    part.sha256,
+                    source_input_hash(initial_workspace, part),
                     key="source-reconciled",
                     external_id=source.external_id,
                 ),
@@ -524,7 +653,7 @@ def test_notebooklm_adapter_reconciles_completed_workspace_and_source_operations
                     operation(
                         RemoteOperationKind.ADD_SOURCE,
                         part.id,
-                        part.sha256,
+                        source_input_hash(initial_workspace, part),
                         key="source-initial",
                         external_id="different-source",
                     ),
@@ -538,7 +667,7 @@ def test_notebooklm_adapter_reconciles_completed_workspace_and_source_operations
                     operation(
                         RemoteOperationKind.ADD_SOURCE,
                         other_part.id,
-                        other_part.sha256,
+                        source_input_hash(initial_workspace, other_part),
                         key="source-initial",
                     ),
                     sink,
@@ -551,7 +680,7 @@ def test_notebooklm_adapter_reconciles_completed_workspace_and_source_operations
                     operation(
                         RemoteOperationKind.ENSURE_WORKSPACE,
                         book.id,
-                        book.source_hash,
+                        workspace_input_hash(book, harness.credential),
                         key="workspace-missing",
                         external_id="missing-workspace",
                     ),
@@ -566,7 +695,7 @@ def test_notebooklm_adapter_reconciles_completed_workspace_and_source_operations
                     operation(
                         RemoteOperationKind.ADD_SOURCE,
                         command.parts[1].id,
-                        command.parts[1].sha256,
+                        source_input_hash(initial_workspace, command.parts[1]),
                         key="source-missing",
                         external_id="missing-source",
                     ),
@@ -588,6 +717,7 @@ def test_notebooklm_adapter_keeps_cached_citation_mappings_workspace_scoped(tmp_
             command = harness.command
             adapter = harness.adapter
             service = harness.service
+            assert isinstance(adapter, NotebookLMAdapter)
             assert service is not None
             sink = NullProgressSink("workspace-isolation-job")
             first_book = Book(
@@ -606,7 +736,7 @@ def test_notebooklm_adapter_keeps_cached_citation_mappings_workspace_scoped(tmp_
                 operation(
                     RemoteOperationKind.ENSURE_WORKSPACE,
                     first_book.id,
-                    first_book.source_hash,
+                    workspace_input_hash(first_book, harness.credential),
                     key="workspace-first",
                 ),
                 sink,
@@ -617,7 +747,7 @@ def test_notebooklm_adapter_keeps_cached_citation_mappings_workspace_scoped(tmp_
                 operation(
                     RemoteOperationKind.ENSURE_WORKSPACE,
                     second_book.id,
-                    second_book.source_hash,
+                    workspace_input_hash(second_book, harness.credential),
                     key="workspace-second",
                 ),
                 sink,
@@ -629,7 +759,7 @@ def test_notebooklm_adapter_keeps_cached_citation_mappings_workspace_scoped(tmp_
                 operation(
                     RemoteOperationKind.ADD_SOURCE,
                     first_part.id,
-                    first_part.sha256,
+                    source_input_hash(first_workspace, first_part),
                     key="source-first",
                 ),
                 sink,
@@ -640,7 +770,7 @@ def test_notebooklm_adapter_keeps_cached_citation_mappings_workspace_scoped(tmp_
                 operation(
                     RemoteOperationKind.ADD_SOURCE,
                     second_part.id,
-                    second_part.sha256,
+                    source_input_hash(second_workspace, second_part),
                     key="source-second",
                 ),
                 sink,
@@ -683,7 +813,7 @@ def test_notebooklm_adapter_rejects_mismatched_inputs_and_invalid_queries(tmp_pa
             workspace_operation = operation(
                 RemoteOperationKind.ENSURE_WORKSPACE,
                 book.id,
-                book.source_hash,
+                workspace_input_hash(book, harness.credential),
                 key="workspace-invalid",
             )
             workspace = await adapter.ensure_workspace(
@@ -712,10 +842,16 @@ def test_notebooklm_adapter_rejects_mismatched_inputs_and_invalid_queries(tmp_pa
                     sink,
                 )
             with pytest.raises(ValueError, match="provider"):
+                other_credential = CredentialRef("other", "profile")
                 await adapter.ensure_workspace(
                     book,
-                    CredentialRef("other", "profile"),
-                    workspace_operation,
+                    other_credential,
+                    operation(
+                        RemoteOperationKind.ENSURE_WORKSPACE,
+                        book.id,
+                        workspace_input_hash(book, other_credential),
+                        key="workspace-other-provider",
+                    ),
                     sink,
                 )
             with pytest.raises(ValueError, match="valid NotebookLM"):
@@ -737,7 +873,7 @@ def test_notebooklm_adapter_rejects_mismatched_inputs_and_invalid_queries(tmp_pa
                     operation(
                         RemoteOperationKind.ADD_SOURCE,
                         command.parts[0].id,
-                        command.parts[0].sha256,
+                        source_input_hash(workspace, command.parts[0]),
                         key="source-valid",
                     ),
                     sink,
@@ -765,7 +901,7 @@ def test_notebooklm_adapter_rejects_mismatched_inputs_and_invalid_queries(tmp_pa
                     operation(
                         RemoteOperationKind.ADD_SOURCE,
                         mismatched_part.id,
-                        mismatched_part.sha256,
+                        source_input_hash(workspace, mismatched_part),
                         key="source-mismatched",
                     ),
                     sink,
@@ -798,7 +934,7 @@ def test_notebooklm_adapter_maps_source_and_generation_terminal_states(tmp_path)
                 operation(
                     RemoteOperationKind.ENSURE_WORKSPACE,
                     book.id,
-                    book.source_hash,
+                    workspace_input_hash(book, harness.credential),
                     key="workspace-terminal",
                 ),
                 sink,
@@ -819,7 +955,7 @@ def test_notebooklm_adapter_maps_source_and_generation_terminal_states(tmp_path)
                     operation(
                         RemoteOperationKind.ADD_SOURCE,
                         part.id,
-                        part.sha256,
+                        source_input_hash(workspace, part),
                         key="failed-source-replay",
                         external_id=failed_source.id,
                     ),

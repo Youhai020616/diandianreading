@@ -5,7 +5,11 @@ from dataclasses import replace
 
 import pytest
 
-from diandianreading.application.ports import NullProgressSink
+from diandianreading.application.ports import (
+    NullProgressSink,
+    source_input_hash,
+    workspace_input_hash,
+)
 from diandianreading.domain import (
     Book,
     BookStatus,
@@ -54,7 +58,7 @@ def test_fake_adapter_satisfies_idempotent_ingestion_contract(tmp_path) -> None:
         workspace_operation = operation(
             RemoteOperationKind.ENSURE_WORKSPACE,
             book.id,
-            book.source_hash,
+            workspace_input_hash(book, command.credential),
             key="workspace-key",
         )
         workspace = await adapter.ensure_workspace(
@@ -71,7 +75,7 @@ def test_fake_adapter_satisfies_idempotent_ingestion_contract(tmp_path) -> None:
             source_operation = operation(
                 RemoteOperationKind.ADD_SOURCE,
                 part.id,
-                part.sha256,
+                source_input_hash(workspace, part),
                 key=f"source-{part.id}",
             )
             source = await adapter.add_part(workspace, part, source_operation, sink)
@@ -93,16 +97,23 @@ def test_fake_adapter_rejects_invalid_provider_workspace_and_sources(tmp_path) -
     unknown = WorkspaceRef("missing", "fake", "missing", KnowledgeStatus.READY)
     sink = NullProgressSink("job-1")
     part = command.parts[0]
-    source_operation = operation(
+    unknown_source_operation = operation(
         RemoteOperationKind.ADD_SOURCE,
         part.id,
-        part.sha256,
-        key="source-key",
+        source_input_hash(unknown, part),
+        key="unknown-source-key",
     )
 
     async def scenario() -> None:
+        assert await adapter.credential_is_healthy(command.credential)
+        other_credential = CredentialRef(provider="other", profile="test")
+        assert not await adapter.credential_is_healthy(other_credential)
+        adapter.service.healthy = False
+        assert not await adapter.credential_is_healthy(command.credential)
+        adapter.service.healthy = True
+
         with pytest.raises(ValueError, match="Unknown fake workspace"):
-            await adapter.add_part(unknown, part, source_operation, sink)
+            await adapter.add_part(unknown, part, unknown_source_operation, sink)
         with pytest.raises(ValueError, match="Unknown fake workspace"):
             await adapter.wait_sources(unknown, (), sink)
 
@@ -115,22 +126,34 @@ def test_fake_adapter_rejects_invalid_provider_workspace_and_sources(tmp_path) -
             FIXED_NOW,
             FIXED_NOW,
         )
-        workspace_operation = operation(
+        other_workspace_operation = operation(
             RemoteOperationKind.ENSURE_WORKSPACE,
             book.id,
-            book.source_hash,
-            key="workspace-key",
+            workspace_input_hash(book, other_credential),
+            key="other-workspace-key",
         )
         with pytest.raises(ValueError, match="cannot use provider"):
             await adapter.ensure_workspace(
                 book,
-                CredentialRef(provider="other", profile="test"),
-                workspace_operation,
+                other_credential,
+                other_workspace_operation,
                 sink,
             )
 
+        workspace_operation = operation(
+            RemoteOperationKind.ENSURE_WORKSPACE,
+            book.id,
+            workspace_input_hash(book, command.credential),
+            key="workspace-key",
+        )
         workspace = await adapter.ensure_workspace(
             book, command.credential, workspace_operation, sink
+        )
+        source_operation = operation(
+            RemoteOperationKind.ADD_SOURCE,
+            part.id,
+            source_input_hash(workspace, part),
+            key="source-key",
         )
         source = await adapter.add_part(workspace, part, source_operation, sink)
         with pytest.raises(ValueError, match="Duplicate"):
