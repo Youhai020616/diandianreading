@@ -34,6 +34,7 @@ from diandianreading.interfaces.phase4_demo import run_phase4_demo
 from diandianreading.interfaces.phase5_demo import run_phase5_demo
 from diandianreading.interfaces.r1_demo import run_r1_demo
 from diandianreading.interfaces.r2_demo import run_r2_demo
+from diandianreading.interfaces.r4_demo import run_r4_demo
 from diandianreading.interfaces.runtime import (
     ApplicationPaths,
     RuntimeConfig,
@@ -167,6 +168,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     r2.add_argument("--app-home", type=Path, required=True)
     r2.add_argument("--workspace", type=Path, required=True)
+
+    r4 = subparsers.add_parser(
+        "r4-e2e",
+        help="run selection and notes chat scopes over the secured local API",
+    )
+    r4.add_argument("--app-home", type=Path, required=True)
+    r4.add_argument("--workspace", type=Path, required=True)
     return parser
 
 
@@ -183,6 +191,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.command == "r2-e2e":
             _print_result(run_r2_demo(args.app_home, args.workspace))
+            return 0
+        if args.command == "r4-e2e":
+            _print_result(run_r4_demo(args.app_home, args.workspace))
             return 0
         if args.command in {"auth", "import", "jobs", "worker"}:
             result = asyncio.run(_run_product_command(args))

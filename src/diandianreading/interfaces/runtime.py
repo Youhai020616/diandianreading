@@ -31,6 +31,7 @@ from diandianreading.infrastructure.documents import (
     LocalDocumentPreparationAdapter,
     PolicyReadingDocumentProcessor,
 )
+from diandianreading.infrastructure.documents.reading_bridge import ReadingChatBridge
 from diandianreading.infrastructure.local_api import (
     InstallTokenStore,
     LocalApiSecurityService,
@@ -243,10 +244,18 @@ def create_runtime(
         repository=SQLiteAnnotationRepository(database),
         reading=reading,
     )
+    reading_bridge = ReadingChatBridge(
+        reading=reading,
+        unit_of_work=unit_of_work,
+        file_store=file_store,
+    )
     chat = ChatUseCase(
         repository=SQLiteChatRepository(database),
         knowledge_query=notebooklm_adapter,
         knowledge_health=notebooklm_adapter,
+        selection_verifier=reading_bridge,
+        annotations=SQLiteAnnotationRepository(database),
+        document_text=reading_bridge,
     )
 
     install_tokens = InstallTokenStore(effective_paths.credentials_root / "local-api")

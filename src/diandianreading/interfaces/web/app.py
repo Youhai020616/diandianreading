@@ -70,6 +70,7 @@ from diandianreading.domain.chat import (
     ChatRunStatus,
     QueryScope,
     QueryScopeType,
+    SelectionLocator,
 )
 from diandianreading.infrastructure.local_api import (
     AuthenticatedSession,
@@ -707,7 +708,7 @@ def create_web_app(
             required={"title", "default_query_scope"},
         )
         title = _required_text(payload, "title", max_length=180)
-        scope = _query_scope(payload["default_query_scope"])
+        scope, _ = _query_scope(payload["default_query_scope"])
         scope.require_whole_book()
         result = runtime.chat.ensure_conversation(book_id, title=title)
         return JSONResponse(
@@ -747,12 +748,14 @@ def create_web_app(
         )
         client_message_id = _required_text(payload, "client_message_id", max_length=512)
         idempotency_key = _required_header(request, "idempotency-key", max_length=512)
+        scope, selection_text = _query_scope(payload["query_scope"])
         result = runtime.chat.submit(
             SubmitChatCommand(
                 conversation_id=conversation_id,
                 client_message_id=client_message_id,
                 question=_required_text(payload, "question", max_length=8_000),
-                query_scope=_query_scope(payload["query_scope"]),
+                query_scope=scope,
+                selection_text=selection_text,
                 idempotency_key=idempotency_key,
             )
         )
@@ -1412,14 +1415,60 @@ def _reject_evidence_required_basis(value: RightsBasis) -> None:
         )
 
 
-def _query_scope(value: object) -> QueryScope:
-    if not isinstance(value, dict) or set(value) != {"type"}:
+def _query_scope(value: object) -> tuple[QueryScope, str | None]:
+    """Parse a §4.1 query scope; returns the scope and any raw selection body."""
+
+    if not isinstance(value, Mapping):
         raise ApiProblem(422, "VALIDATION", "Query scope is invalid")
-    scope_type = value.get("type")
+    payload = cast(Mapping[str, object], value)
+    scope_type = payload.get("type")
     if not isinstance(scope_type, str):
         raise ApiProblem(422, "VALIDATION", "Query scope is invalid")
+    if scope_type == "selection":
+        _require_exact_fields(
+            payload,
+            required={"type", "document_part_id", "locator", "selected_text"},
+        )
+        part_id = _required_text(payload, "document_part_id", max_length=512)
+        locator_raw = payload.get("locator")
+        if not isinstance(locator_raw, Mapping):
+            raise ApiProblem(422, "VALIDATION", "Selection locator is invalid")
+        locator_payload = cast(Mapping[str, object], locator_raw)
+        _require_exact_fields(locator_payload, required={"type", "value"})
+        locator_type = locator_payload.get("type")
+        locator_value = locator_payload.get("value")
+        if not isinstance(locator_type, str) or not isinstance(locator_value, str):
+            raise ApiProblem(422, "VALIDATION", "Selection locator is invalid")
+        selected_text = payload.get("selected_text")
+        if not isinstance(selected_text, str) or not selected_text.strip():
+            raise ApiProblem(422, "VALIDATION", "selected_text must be non-empty text")
+        try:
+            scope = QueryScope.selection(
+                document_part_id=part_id,
+                locator=SelectionLocator(
+                    type=ChatReferenceLocationType(locator_type),
+                    value=locator_value,
+                ),
+                selected_text=selected_text,
+            )
+        except ValueError:
+            raise ApiProblem(422, "VALIDATION", "Query scope is invalid") from None
+        return scope, selected_text
+    if scope_type == "notes":
+        _require_exact_fields(payload, required={"type", "note_ids"})
+        raw_ids = payload.get("note_ids")
+        if not isinstance(raw_ids, list) or not all(
+            isinstance(item, str) and item.strip() for item in raw_ids
+        ):
+            raise ApiProblem(422, "VALIDATION", "note_ids must be non-empty text values")
+        try:
+            return QueryScope.notes(tuple(raw_ids)), None
+        except ValueError:
+            raise ApiProblem(422, "VALIDATION", "Query scope is invalid") from None
+    if set(payload) != {"type"}:
+        raise ApiProblem(422, "VALIDATION", "Query scope is invalid")
     try:
-        return QueryScope(QueryScopeType(scope_type))
+        return QueryScope(QueryScopeType(scope_type)), None
     except ValueError:
         raise ApiProblem(422, "VALIDATION", "Query scope is invalid") from None
 
