@@ -10,6 +10,7 @@
 
 - [两项目集成计划](integration-plan.md)
 - [Tauri 2 桌面应用实施计划](desktop-application-plan.md)
+- [阅读器与标注实施计划](reader-annotation-plan.md)
 - [AI 对话功能设计](../features/ai-chat.md)
 - [完整 API 参考](../api.md)
 
@@ -23,6 +24,7 @@
 | [ADR-0004](adr/0004-durable-import-saga.md) | Accepted | 资料导入使用可恢复的持久化 Saga/Job 状态机 |
 | [ADR-0005](adr/0005-local-api-security.md) | Proposed | 回环 API 仍执行每安装实例认证与浏览器安全边界 |
 | [ADR-0006](adr/0006-desktop-first-tauri-python-sidecar.md) | Proposed | 桌面优先采用 Tauri 2 壳、React/Vite UI 与 Python Sidecar |
+| [ADR-0007](adr/0007-reader-annotation-anchor-model.md) | Proposed | 阅读器以派生 Markdown 为正文源,标注采用本地可再锚定位置模型 |
 
 新增 ADR 时从 [模板](adr/0000-template.md) 开始。
 

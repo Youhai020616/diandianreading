@@ -16,6 +16,8 @@
 | [架构文档索引](architecture/README.md) | 架构阅读顺序、ADR 状态和规则 | Active |
 | [两项目集成计划](architecture/integration-plan.md) | 目标架构、抽象边界、重构路径和分阶段迁移 | Active |
 | [Tauri 2 桌面应用实施计划](architecture/desktop-application-plan.md) | React/Vite UI、Python Sidecar、生命周期、安全、打包、签名、更新与 D0–D6 验收 | Proposed |
+| [阅读器与标注实施计划](architecture/reader-annotation-plan.md) | 阅读正文服务、划线/笔记、锚点与再锚定、Chat 缝合与 R1–R4 验收 | Proposed |
+| [阅读器与标注 ADR](architecture/adr/0007-reader-annotation-anchor-model.md) | 派生 Markdown 正文源、单一 locator 契约与本地标注的强制边界 | Proposed |
 | [本地 API 安全 ADR](architecture/adr/0005-local-api-security.md) | 每安装实例认证、同源浏览器边界、SSE/WS 与资源限制 | Proposed |
 | [桌面架构 ADR](architecture/adr/0006-desktop-first-tauri-python-sidecar.md) | 桌面优先、Tauri 2 壳、React/Vite UI 与 Python Sidecar 的强制边界 | Proposed |
 | [AI 对话功能设计](features/ai-chat.md) | 已实现整本书对话切片，以及后续章节/笔记/选区目标设计 | Active / Proposed |
@@ -35,13 +37,14 @@
 5. [架构决策记录](architecture/README.md)：了解关键选择及其代价；实现本地 API 前阅读 [ADR-0005](architecture/adr/0005-local-api-security.md)。
 6. [Tauri 2 桌面应用实施计划](architecture/desktop-application-plan.md)：了解桌面产品目标、Sidecar、安全、打包、更新与分阶段验收。
 7. [ADR-0006](architecture/adr/0006-desktop-first-tauri-python-sidecar.md)：了解桌面壳、WebView、Python 核心与数据兼容的强制边界。
-8. [AI 对话功能设计](features/ai-chat.md)：了解第一个 NotebookLM 用户界面。
-9. [Phase 0 本地 E2E](development/phase-0-e2e.md)：验证架构地基的可执行链路。
-10. [Phase 1 文档处理 E2E](development/phase-1-e2e.md)：验证真实本地文档处理、对象存储和持久化链路。
-11. [Phase 2 NotebookLM Adapter E2E](development/phase-2-e2e.md)：验证公开 SDK Adapter、凭据路径隔离、引用恢复和内容资产发布。
-12. [Phase 3 可恢复 Workflow E2E](development/phase-3-e2e.md)：验证进程崩溃边界、Lease 接管、远程结果协调、恢复控制与安全取消。
-13. [Phase 4 Z-Library 可选 Adapter E2E](development/phase-4-e2e.md)：验证强制权利来源、Provider 会话隔离、浏览器网络策略、受限下载和 Legacy migration。
-14. [Phase 5 统一产品 E2E](development/phase-5-e2e.md)：验证安装后仍可执行的安全 Web/API、持久导入、Job、整本书 Chat、引用与 SSE 链路。
+8. [阅读器与标注实施计划](architecture/reader-annotation-plan.md) 与 [ADR-0007](architecture/adr/0007-reader-annotation-anchor-model.md)：了解阅读、划线与 Chat 缝合的交付轨与锚点边界。
+9. [AI 对话功能设计](features/ai-chat.md)：了解第一个 NotebookLM 用户界面。
+10. [Phase 0 本地 E2E](development/phase-0-e2e.md)：验证架构地基的可执行链路。
+11. [Phase 1 文档处理 E2E](development/phase-1-e2e.md)：验证真实本地文档处理、对象存储和持久化链路。
+12. [Phase 2 NotebookLM Adapter E2E](development/phase-2-e2e.md)：验证公开 SDK Adapter、凭据路径隔离、引用恢复和内容资产发布。
+13. [Phase 3 可恢复 Workflow E2E](development/phase-3-e2e.md)：验证进程崩溃边界、Lease 接管、远程结果协调、恢复控制与安全取消。
+14. [Phase 4 Z-Library 可选 Adapter E2E](development/phase-4-e2e.md)：验证强制权利来源、Provider 会话隔离、浏览器网络策略、受限下载和 Legacy migration。
+15. [Phase 5 统一产品 E2E](development/phase-5-e2e.md)：验证安装后仍可执行的安全 Web/API、持久导入、Job、整本书 Chat、引用与 SSE 链路。
 
 ## 状态词
 
