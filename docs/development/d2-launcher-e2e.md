@@ -58,8 +58,12 @@ uv run --locked --extra desktop-sidecar python packaging/sidecar/build.py \
 mkdir -p apps/desktop/src-tauri/resources
 mv .tmp/shell-artifact/diandian-desktop-sidecar apps/desktop/src-tauri/resources/sidecar
 cargo install tauri-cli --version 2.11.4 --locked
-cd apps/desktop && cargo tauri build --bundles app
+(cd apps/desktop && cargo tauri build)
+uv run --locked python packaging/sidecar/smoke_artifact.py \
+  --artifact apps/desktop/target/release/bundle/macos/diandianreading.app/Contents/Resources/sidecar
 ```
+
+`smoke_artifact.py` 接收 onedir **目录**（内部再定位可执行文件与 `sidecar-manifest.json`），不是可执行文件路径。
 
 ## CI 覆盖
 
