@@ -49,7 +49,7 @@ P5 交付 Roadmap 的**知识沉淀与创作 Beta**。本计划把它拆成四�
 
 - ADR-0008;
 - 本计划;
-- `domain/content.py`:`Note`、`NoteSource`、`ContentAsset`、`ContentType`、`ContentStatus`、`ContentRevision`、`RevisionAuthor`、`ExportTarget`、`ExportOutcome`;
+- `domain/content.py`:`KnowledgeNote`、`KnowledgeNoteSource`、`ContentAsset`、`ContentType`、`ContentStatus`、`ContentRevision`、`RevisionAuthor`、`ExportTarget`、`ExportOutcome`;
 - migration `0009`:`notes`、`generated_contents`、`content_sources`、`content_revisions`、`obsidian_vaults`、`obsidian_export_state`;
 - `schema_version` 推进到 `9`,unit/integration/e2e 三层断言同步;
 - 领域不变量单元测试(状态机越界拒绝、作者归属、来源判别式)。

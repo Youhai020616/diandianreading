@@ -5,8 +5,8 @@ import pytest
 from diandianreading.domain import InvalidStateTransition
 from diandianreading.domain.content import (
     CONTENT_BODY_MAX_CODEPOINTS,
+    KNOWLEDGE_NOTE_BODY_MAX_CODEPOINTS,
     MAX_CONTENT_SOURCES,
-    NOTE_BODY_MAX_CODEPOINTS,
     PUBLISHING_STATUSES,
     ContentAsset,
     ContentLength,
@@ -17,8 +17,8 @@ from diandianreading.domain.content import (
     ContentTone,
     ContentType,
     GenerationRequest,
-    Note,
-    NoteSourceKind,
+    KnowledgeNote,
+    KnowledgeNoteSource,
     RevisionAuthor,
     ensure_supported_in_p5,
 )
@@ -57,11 +57,11 @@ def make_content(
     )
 
 
-def make_note(**overrides: object) -> Note:
+def make_note(**overrides: object) -> KnowledgeNote:
     payload: dict[str, object] = {
         "id": "note-1",
         "book_id": "book-1",
-        "source_kind": NoteSourceKind.CHAT_MESSAGE,
+        "source_kind": KnowledgeNoteSource.CHAT_MESSAGE,
         "source_id": "message-1",
         "title": "为什么设计要可见",
         "body": "作者认为可见性决定了用户能否形成正确的心智模型。",
@@ -70,33 +70,35 @@ def make_note(**overrides: object) -> Note:
         "version": 0,
     }
     payload.update(overrides)
-    return Note(**payload)  # type: ignore[arg-type]
+    return KnowledgeNote(**payload)  # type: ignore[arg-type]
 
 
 class TestNote:
     def test_accepts_a_derived_note(self) -> None:
         note = make_note()
-        assert note.source_kind is NoteSourceKind.CHAT_MESSAGE
+        assert note.source_kind is KnowledgeNoteSource.CHAT_MESSAGE
         assert note.source_id == "message-1"
 
     def test_manual_notes_carry_no_source_id(self) -> None:
-        note = make_note(source_kind=NoteSourceKind.MANUAL, source_id=None)
+        note = make_note(source_kind=KnowledgeNoteSource.MANUAL, source_id=None)
         assert note.source_id is None
 
     def test_manual_notes_reject_a_source_id(self) -> None:
         with pytest.raises(ValueError, match="cannot carry a source_id"):
-            make_note(source_kind=NoteSourceKind.MANUAL, source_id="message-1")
+            make_note(source_kind=KnowledgeNoteSource.MANUAL, source_id="message-1")
 
-    @pytest.mark.parametrize("kind", [NoteSourceKind.CHAT_MESSAGE, NoteSourceKind.ANNOTATION])
-    def test_derived_notes_require_a_source_id(self, kind: NoteSourceKind) -> None:
+    @pytest.mark.parametrize(
+        "kind", [KnowledgeNoteSource.CHAT_MESSAGE, KnowledgeNoteSource.ANNOTATION]
+    )
+    def test_derived_notes_require_a_source_id(self, kind: KnowledgeNoteSource) -> None:
         with pytest.raises(ValueError, match="require a source_id"):
             make_note(source_kind=kind, source_id=None)
 
     def test_rejects_empty_and_oversized_body(self) -> None:
-        with pytest.raises(ValueError, match="Note body cannot be empty"):
+        with pytest.raises(ValueError, match="KnowledgeNote body cannot be empty"):
             make_note(body="")
         with pytest.raises(ValueError, match="cannot exceed"):
-            make_note(body="a" * (NOTE_BODY_MAX_CODEPOINTS + 1))
+            make_note(body="a" * (KNOWLEDGE_NOTE_BODY_MAX_CODEPOINTS + 1))
 
     def test_rejects_nul_in_text(self) -> None:
         with pytest.raises(ValueError, match="cannot contain NUL"):

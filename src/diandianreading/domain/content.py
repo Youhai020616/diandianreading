@@ -1,11 +1,17 @@
 """Content asset domain models for the knowledge and creation workbench.
 
-Frozen by ADR-0008. Two invariants carry most of the weight here:
+Frozen by ADR-0008. Three things carry most of the weight here:
 
-* A :class:`Note` is independent of :class:`~diandianreading.domain.annotations.Annotation`.
-  Annotations must always be locatable in the body text; an AI answer has no
-  anchor, so reusing that table would have forced the anchor to become optional
-  and broken the re-anchoring guarantee from ADR-0007.
+* A :class:`KnowledgeNote` is independent of
+  :class:`~diandianreading.domain.annotations.Annotation`. Annotations must
+  always be locatable in the body text; an AI answer has no anchor, so reusing
+  that table would have forced the anchor to become optional and broken the
+  re-anchoring guarantee from ADR-0007.
+* The product therefore has two things a user may call a "note", and the API
+  surface exposes both. ``query_scope.note_ids`` in ai-chat.md means *annotation*
+  identifiers (an anchored thought on a passage, R4). A ``KnowledgeNote`` is the
+  standalone knowledge item that ``save-as-note`` produces. The class name says
+  which one is meant so that the two never have to be told apart by context.
 * Every :class:`ContentRevision` records who wrote it. Without that, a draft
   months later cannot answer "was this paragraph written by a model or by me",
   which is the AI-content risk the PRD calls out.
@@ -25,8 +31,8 @@ from enum import StrEnum
 from diandianreading.domain.errors import InvalidStateTransition
 from diandianreading.domain.models import utc_now
 
-NOTE_TITLE_MAX_CODEPOINTS = 200
-NOTE_BODY_MAX_CODEPOINTS = 20_000
+KNOWLEDGE_NOTE_TITLE_MAX_CODEPOINTS = 200
+KNOWLEDGE_NOTE_BODY_MAX_CODEPOINTS = 20_000
 CONTENT_TITLE_MAX_CODEPOINTS = 200
 CONTENT_BODY_MAX_CODEPOINTS = 100_000
 TOPIC_MAX_CODEPOINTS = 200
@@ -34,7 +40,7 @@ TARGET_PLATFORM_MAX_CODEPOINTS = 64
 MAX_CONTENT_SOURCES = 50
 
 
-class NoteSourceKind(StrEnum):
+class KnowledgeNoteSource(StrEnum):
     """Where a note came from; part of its idempotency identity."""
 
     CHAT_MESSAGE = "chat_message"
@@ -157,12 +163,12 @@ def ensure_supported_in_p5(status: ContentStatus) -> None:
 
 
 @dataclass(frozen=True, slots=True)
-class Note:
+class KnowledgeNote:
     """A local knowledge item; never uploaded implicitly."""
 
     id: str
     book_id: str
-    source_kind: NoteSourceKind
+    source_kind: KnowledgeNoteSource
     source_id: str | None
     title: str
     body: str
@@ -172,12 +178,14 @@ class Note:
 
     def __post_init__(self) -> None:
         if not self.id or not self.book_id:
-            raise ValueError("Note id and book_id are required")
+            raise ValueError("KnowledgeNote id and book_id are required")
         if self.version < 0:
-            raise ValueError("Note version cannot be negative")
-        _require_bounded_text(self.title, "Note title", NOTE_TITLE_MAX_CODEPOINTS)
-        _require_bounded_text(self.body, "Note body", NOTE_BODY_MAX_CODEPOINTS)
-        if self.source_kind is NoteSourceKind.MANUAL:
+            raise ValueError("KnowledgeNote version cannot be negative")
+        _require_bounded_text(
+            self.title, "KnowledgeNote title", KNOWLEDGE_NOTE_TITLE_MAX_CODEPOINTS
+        )
+        _require_bounded_text(self.body, "KnowledgeNote body", KNOWLEDGE_NOTE_BODY_MAX_CODEPOINTS)
+        if self.source_kind is KnowledgeNoteSource.MANUAL:
             if self.source_id is not None:
                 raise ValueError("Manual notes cannot carry a source_id")
         elif not self.source_id:
@@ -195,7 +203,7 @@ class ContentSource:
         limit = (
             TOPIC_MAX_CODEPOINTS
             if self.kind is ContentSourceKind.TOPIC
-            else NOTE_TITLE_MAX_CODEPOINTS
+            else KNOWLEDGE_NOTE_TITLE_MAX_CODEPOINTS
         )
         _require_bounded_text(self.reference, f"{self.kind.value} source reference", limit)
 
