@@ -61,22 +61,40 @@ P5 交付 Roadmap 的**知识沉淀与创作 Beta**。本计划把它拆成四�
 - `schema_version` 断言三层一致;
 - PR CI 绿色。
 
-### C1:Note 与内容生成(Python)
+### C1:KnowledgeNote 与 `save-as-note`(Python)
+
+> 原计划把内容生成一并放在 C1。实施中发现两者是**两个独立交付物**:`save-as-note` 只依赖既有 chat 消息与新表,而生成需要新增 Job 类型、Worker 处理器与领域内容类型到 Provider 生成能力的映射。合并在一个 PR 里同时引入两条 HTTP 表面与一个 Job 类型,与"单一交付物对应单一 PR"的约定冲突,故拆为 C1 与 C1b。
 
 交付:
 
-- `POST /api/messages/{message_id}/save-as-note`,以 `(chat_message, message_id)` 唯一约束保证幂等;
-- `POST /api/messages/{message_id}/generate-content` 返回 `202` + `job_id` + 状态 URL;
-- `content_generation` Job 类型与 Worker 处理器,复用 Lease/fencing 与取消/模糊结果协议;
-- 生成请求字段(来源、格式、语言、目标平台、语气、长度、是否保留引用、是否第一人称)的校验与规范化;
-- `docs/development/c1-e2e.md`:Fake Provider 下 保存笔记 → 生成内容 → 修订历史 全链路 offline E2E。
+- `application/ports/content.py`:`KnowledgeNoteRepository` 契约;
+- `infrastructure/persistence/content.py`:SQLite 实现,幂等由 `(source_kind, source_id)` 唯一索引保证,冲突后在同一 immediate 事务内回读;
+- `application/use_cases/content.py`:`KnowledgeNoteService`、标题派生与正文规范化;
+- `POST /api/messages/{message_id}/save-as-note` 与笔记列表读取;
+- `docs/development/c1-e2e.md`:Fake Provider 下 提问 → 回答 → 保存为笔记 → 重复保存返回同一条 的 offline E2E。
 
 退出标准:
 
-- 同一 message 重复 `save-as-note` 返回同一 Note;
+- 同一 message 重复 `save-as-note` 返回同一 KnowledgeNote,且不覆盖已存正文;
+- 空内容被拒绝,超长正文截断而非报错;
+- 列表按 `(created_at, id)` 确定性分页;
+- 未知 Book 被拒绝。
+
+### C1b:内容生成(Python)
+
+交付:
+
+- `POST /api/messages/{message_id}/generate-content` 返回 `202` + `job_id` + 状态 URL;
+- `content_generation` Job 类型与 Worker 处理器,复用既有 Lease/fencing 与取消/模糊结果协议;
+- 领域 `ContentType` 到 Provider 生成能力(`generate_report`/`generate_study_guide`/`generate_quiz`/`generate_flashcards` 等)的映射与指令模板;
+- 生成请求字段(来源、格式、语言、目标平台、语气、长度、是否保留引用、是否第一人称)的校验与规范化;
+- `docs/development/c1b-e2e.md`:生成 → 修订历史 → 编辑追加 human 修订 的 offline E2E。
+
+退出标准:
+
 - 生成 Job 的取消竞态、过期 Lease、模糊结果不重复创建远程资源;
 - 首个修订 `author_kind='ai'`,用户编辑追加 `human` 修订且原始稿不可变;
-- 越界状态转移返回 `422`。
+- 越界状态转移(`scheduled`/`published`)返回 `422`。
 
 ### C2:Obsidian 导出(Python)
 
@@ -118,7 +136,7 @@ P5 交付 Roadmap 的**知识沉淀与创作 Beta**。本计划把它拆成四�
 
 | 层 | C0 | C1 | C2 | C3 |
 | --- | --- | --- | --- | --- |
-| unit | 领域不变量、状态机 | 请求规范化 | 路径消毒、frontmatter 转义 | — |
+| unit | 领域不变量、状态机 | 标题派生与规范化 | 路径消毒、frontmatter 转义 | — |
 | contract | — | 幂等与错误码 | 导出响应形状 | — |
 | integration | migration 与 schema 版本 | Job 恢复与取消 | 对账与冲突 | — |
 | e2e | 既有链路不回归 | c1-e2e | c2-e2e | — |
@@ -126,7 +144,7 @@ P5 交付 Roadmap 的**知识沉淀与创作 Beta**。本计划把它拆成四�
 
 ## 6. Definition of Done
 
-- C0–C3 全部退出标准通过,`schema_version` 三层一致;
+- C0–C3(含 C1b)全部退出标准通过,`schema_version` 三层一致;
 - Roadmap P5 的四条退出标准有对应证据;
 - `ai-chat.md` §3.3 中 `save-as-note`、`generate-content` 移出 Proposed;
 - 覆盖率不低于 90% 门槛。
