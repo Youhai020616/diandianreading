@@ -25,6 +25,7 @@
 | [ADR-0005](adr/0005-local-api-security.md) | Proposed | 回环 API 仍执行每安装实例认证与浏览器安全边界 |
 | [ADR-0006](adr/0006-desktop-first-tauri-python-sidecar.md) | Proposed | 桌面优先采用 Tauri 2 壳、React/Vite UI 与 Python Sidecar |
 | [ADR-0007](adr/0007-reader-annotation-anchor-model.md) | Proposed | 阅读器以派生 Markdown 为正文源,标注采用本地可再锚定位置模型 |
+| [ADR-0008](adr/0008-content-and-obsidian-export-model.md) | Proposed | 内容资产以本地版本化草稿为事实源,Obsidian 导出按稳定 ID 增量对账 |
 
 新增 ADR 时从 [模板](adr/0000-template.md) 开始。
 

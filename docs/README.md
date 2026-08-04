@@ -17,6 +17,7 @@
 | [两项目集成计划](architecture/integration-plan.md) | 目标架构、抽象边界、重构路径和分阶段迁移 | Active |
 | [Tauri 2 桌面应用实施计划](architecture/desktop-application-plan.md) | React/Vite UI、Python Sidecar、生命周期、安全、打包、签名、更新与 D0–D6 验收 | Proposed |
 | [阅读器与标注实施计划](architecture/reader-annotation-plan.md) | 阅读正文服务、划线/笔记、锚点与再锚定、Chat 缝合与 R1–R4 验收 | Proposed |
+| [内容与创作工作台实施计划](architecture/content-workbench-plan.md) | Note、内容资产与修订、Obsidian 增量导出、创作工作台与 C0–C3 验收 | Proposed |
 | [阅读器与标注 ADR](architecture/adr/0007-reader-annotation-anchor-model.md) | 派生 Markdown 正文源、单一 locator 契约与本地标注的强制边界 | Proposed |
 | [并行交付策略](development/parallel-delivery-strategy.md) | 契约冻结、串行区保护、波次模型与对抗评审的多单元并行纪律 | Proposed |
 | [Vendored 源码移除记录](development/removed-vendored-sources.md) | vendored 第三方副本的移除原因、历史修复取回方式与上游化待办 | Active |

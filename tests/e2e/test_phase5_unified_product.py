@@ -39,7 +39,7 @@ def test_phase5_installed_entrypoint_runs_secured_api_worker_and_chat_offline(tm
         "job_sse_verified": True,
         "job_status": "completed",
         "provider_status_verified": True,
-        "schema_version": 8,
+        "schema_version": 9,
         "session_bootstrap_verified": True,
         "status": "ok",
     }

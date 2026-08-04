@@ -81,8 +81,8 @@ def make_operation(job_id: str) -> RemoteOperation:
 
 def test_migrations_are_idempotent_verified_and_database_is_private(tmp_path) -> None:
     database = make_database(tmp_path)
-    assert database.migrate() == 8
-    assert database.schema_version() == 8
+    assert database.migrate() == 9
+    assert database.schema_version() == 9
     assert database.integrity_check()
     if os.name != "nt":
         assert stat.S_IMODE(database.path.stat().st_mode) == 0o600
@@ -103,6 +103,12 @@ def test_migrations_are_idempotent_verified_and_database_is_private(tmp_path) ->
         "remote_operations",
         "rights_provenance",
         "rights_provenance_events",
+        "notes",
+        "generated_contents",
+        "content_sources",
+        "content_revisions",
+        "obsidian_vaults",
+        "obsidian_export_state",
     } <= tables
 
     with database.connect(immediate=True) as connection:
@@ -226,7 +232,7 @@ def test_schema_v3_data_migrates_to_recoverable_v4_states(tmp_path) -> None:
             )
 
     assert database.schema_version() == 3
-    assert database.migrate() == 8
+    assert database.migrate() == 9
     migrated_job = SQLiteJobRepository(database).get("job-v3")
     assert migrated_job is not None
     assert migrated_job.status is JobStatus.FAILED
@@ -671,7 +677,7 @@ def test_schema_v4_migrates_to_v5_rights_audit_tables(tmp_path) -> None:
             )
 
     assert database.schema_version() == 4
-    assert database.migrate() == 8
+    assert database.migrate() == 9
     with database.connect() as connection:
         tables = {
             str(row[0])
