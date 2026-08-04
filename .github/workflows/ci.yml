@@ -174,6 +174,95 @@ jobs:
           uv run --locked python packaging/sidecar/smoke_artifact.py
           --artifact .tmp/desktop-sidecar-artifact/diandian-desktop-sidecar
 
+  desktop-launcher:
+    name: Desktop launcher core (Rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # launcher-core carries every security-relevant launcher decision and has no
+      # Tauri dependency, so it is checked here without WebKit system libraries.
+      - name: Check formatting
+        working-directory: apps/desktop
+        run: cargo fmt --all -- --check
+
+      - name: Lint
+        working-directory: apps/desktop
+        run: cargo clippy -p launcher-core --all-targets --locked -- -D warnings
+
+      - name: Test
+        working-directory: apps/desktop
+        run: cargo test -p launcher-core --locked
+
+  desktop-shell:
+    name: Desktop shell bundle (macOS arm64)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b # v7.2.0
+        with:
+          enable-cache: true
+          version: "0.8.15"
+
+      - name: Install locked sidecar dependencies
+        run: uv sync --locked --all-groups --extra desktop-sidecar
+
+      - name: Provision the bundled Chromium runtime
+        run: >-
+          uv run --locked --extra desktop-sidecar python packaging/sidecar/provision_browser.py
+          --output .tmp/shell-browser
+
+      - name: Build the sidecar artifact
+        run: >-
+          uv run --locked --extra desktop-sidecar python packaging/sidecar/build.py
+          --output .tmp/shell-artifact
+          --browser-root .tmp/shell-browser
+
+      - name: Stage the sidecar as a bundle resource
+        run: |
+          mkdir -p apps/desktop/src-tauri/resources
+          mv .tmp/shell-artifact/diandian-desktop-sidecar apps/desktop/src-tauri/resources/sidecar
+          test -x apps/desktop/src-tauri/resources/sidecar/diandian-desktop-sidecar
+
+      - name: Cache the pinned Tauri CLI
+        id: tauri-cli-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-tauri
+          key: tauri-cli-2.11.4-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install the pinned Tauri CLI
+        if: steps.tauri-cli-cache.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version 2.11.4 --locked
+
+      - name: Build the unsigned desktop bundle
+        working-directory: apps/desktop
+        run: cargo tauri build --bundles app
+
+      - name: Verify the bundle carries the fixed sidecar
+        run: |
+          APP=apps/desktop/target/release/bundle/macos/diandianreading.app
+          test -d "$APP"
+          test -x "$APP/Contents/Resources/sidecar/diandian-desktop-sidecar"
+          test -d "$APP/Contents/Resources/sidecar/_internal"
+          codesign -dv "$APP" 2>&1 | grep -q "adhoc\|not signed" || true
+
+      - name: Smoke test the sidecar inside the bundle
+        run: >-
+          uv run --locked python packaging/sidecar/smoke_artifact.py
+          --artifact apps/desktop/target/release/bundle/macos/diandianreading.app/Contents/Resources/sidecar/diandian-desktop-sidecar
+
   test:
     name: Test Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest

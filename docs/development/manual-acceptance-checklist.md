@@ -64,6 +64,19 @@ uv run diandian serve          # 浏览器打开 http://localhost:3000
 - [ ] 默认状态:UI 中 Z-Library 入口显示"未启用";`DIANDIAN_ZLIBRARY_ENABLED=1` 后才可用。
 - [ ] 仅用你有权获取的资料走一次完整获取 → 导入;权利声明步骤不可跳过。
 
+## 3.5 D2 桌面壳(需要 macOS 桌面会话;CI 无法提供证据)
+
+> 背景:`launcher-core` 的端口拒绝、控制帧解析与子进程回收已有单元测试,macOS CI 也验证了未签名 `.app` 可构建且 Bundle 内 Sidecar 可启动。但"进程表里真的没有残留""第二次启动只聚焦窗口"必须在真实桌面会话观察。详见 [D2 Launcher E2E](d2-launcher-e2e.md)。
+
+- [ ] 冷启动 `.app`:窗口打开并加载产品 UI;`pgrep -f diandian-desktop-sidecar` 只有一个进程。
+- [ ] 正常退出应用后:`pgrep -f diandian-desktop-sidecar` 无输出(无孤儿)。
+- [ ] 重复启动:第二次打开只聚焦既有窗口,不出现第二个窗口,Sidecar 进程数仍为 1。
+- [ ] 强杀 Sidecar(`kill -9`):壳不静默挂起,退出后无残留进程。
+- [ ] 强杀 Tauri 壳(`kill -9`):Sidecar 不长期存活;再次启动不会附着到旧进程。
+- [ ] 3000 端口被无关进程占用(如 `python3 -m http.server 3000`)时启动:显示诊断并退出;占用进程**未被结束**,端口**未被改用**其他值。
+- [ ] 打包 App 内完成一次 local import → Job → Chat → Citation 跳转的离线全链路。
+- [ ] WebView 内无 Tauri IPC:开发者工具中 `window.__TAURI__` 为 `undefined`。
+
 ## 4. 结果记录
 
 在本文件同目录建 `manual-acceptance-YYYYMMDD.md`,逐条记录:通过/失败、环境(macOS 版本/浏览器)、失败截图或错误码。失败项回流为 issue,由后续开发处理;不阻塞记录其余项。

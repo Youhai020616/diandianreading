@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The product UI is served from http://localhost:3000, which is a remote origin from the shell's point of view. Desktop-application-plan section 9.1 forbids granting it any Tauri command, the shell plugin, arbitrary arguments, arbitrary sidecars or wildcard URLs, so this capability intentionally grants nothing. Any future native need must arrive as its own narrow capability with an input schema, a user-gesture requirement and rejection tests.",
+  "windows": ["main"],
+  "permissions": []
+}
