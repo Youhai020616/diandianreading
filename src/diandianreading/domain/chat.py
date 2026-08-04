@@ -26,8 +26,10 @@ MAX_SELECTION_LOCATOR_CHARS = 1_024
 class QueryScopeType(StrEnum):
     """Known product scope discriminators.
 
-    Phase 5 core intentionally supports only ``book``. Keeping the other discriminators in the
-    domain makes unsupported requests explicit instead of silently widening them to a whole book.
+    ``book``, ``selection`` and ``notes`` are supported after R4. ``chapters`` is still rejected
+    because the chapter-to-Part mapping vocabulary is not unified. Keeping the unsupported
+    discriminator in the domain makes such requests explicit instead of silently widening them to
+    a whole book.
     """
 
     BOOK = "book"
