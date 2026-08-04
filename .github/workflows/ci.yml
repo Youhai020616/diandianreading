@@ -132,6 +132,12 @@ jobs:
           --app-home .tmp/ci-wheel/r4/app-home
           --workspace .tmp/ci-wheel/r4/workspace
 
+      - name: Run installed-wheel C1 knowledge-note smoke
+        run: >-
+          .tmp/ci-wheel-venv/bin/diandian c1-e2e
+          --app-home .tmp/ci-wheel/c1/app-home
+          --workspace .tmp/ci-wheel/c1/workspace
+
   desktop-sidecar:
     name: Desktop sidecar artifact (macOS arm64)
     runs-on: macos-latest

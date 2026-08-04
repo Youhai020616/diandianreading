@@ -301,6 +301,13 @@ class SQLiteChatRepository(ChatRepository):
                 "Chat submission collided with an existing local record"
             ) from error
 
+    def get_message(self, message_id: str) -> ChatMessage | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM chat_messages WHERE id = ?", (message_id,)
+            ).fetchone()
+        return None if row is None else _message_from_row(row)
+
     def list_messages(
         self,
         conversation_id: str,

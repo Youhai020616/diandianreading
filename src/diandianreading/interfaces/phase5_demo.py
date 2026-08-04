@@ -20,6 +20,7 @@ from diandianreading.application.ports import (
 from diandianreading.application.use_cases.annotations import AnnotationService
 from diandianreading.application.use_cases.catalog import CatalogService
 from diandianreading.application.use_cases.chat import ChatUseCase
+from diandianreading.application.use_cases.content import KnowledgeNoteService
 from diandianreading.application.use_cases.import_book import ImportBookUseCase
 from diandianreading.application.use_cases.import_source import (
     DurableImportSourceMaterializer,
@@ -47,6 +48,9 @@ from diandianreading.infrastructure.persistence.annotations import (
     SQLiteAnnotationRepository,
 )
 from diandianreading.infrastructure.persistence.chat import SQLiteChatRepository
+from diandianreading.infrastructure.persistence.content import (
+    SQLiteKnowledgeNoteRepository,
+)
 from diandianreading.infrastructure.persistence.reading import (
     SQLiteReadingProgressRepository,
 )
@@ -115,6 +119,7 @@ class Phase5DemoRuntime:
     catalog: CatalogService
     reading: ReadingService
     annotations: AnnotationService
+    notes: KnowledgeNoteService
     chat: ChatUseCase
     security: LocalApiSecurityService
     notebooklm_session: ProviderSessionPort
@@ -165,6 +170,7 @@ def create_phase5_demo_runtime(home: Path) -> tuple[Phase5DemoRuntime, SQLiteDat
         processor=PolicyReadingDocumentProcessor(),
         progress=SQLiteReadingProgressRepository(database),
     )
+    notes = KnowledgeNoteService(SQLiteKnowledgeNoteRepository(database))
     reading_bridge = ReadingChatBridge(
         reading=reading,
         unit_of_work=unit_of_work,
@@ -196,6 +202,7 @@ def create_phase5_demo_runtime(home: Path) -> tuple[Phase5DemoRuntime, SQLiteDat
             repository=SQLiteAnnotationRepository(database),
             reading=reading,
         ),
+        notes=notes,
         chat=chat,
         security=security,
         notebooklm_session=_DemoSessionManager("notebooklm"),
