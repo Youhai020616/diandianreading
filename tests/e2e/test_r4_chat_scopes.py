@@ -32,7 +32,7 @@ def test_r4_installed_entrypoint_runs_scoped_chat_offline(tmp_path) -> None:
     assert completed.stderr == ""
     assert json.loads(completed.stdout) == {
         "status": "ok",
-        "schema_version": 9,
+        "schema_version": 10,
         "selection_verified": True,
         "notes_scope_note_count": 1,
         "invalid_scope_rejected": True,

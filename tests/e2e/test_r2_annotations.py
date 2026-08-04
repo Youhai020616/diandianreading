@@ -32,7 +32,7 @@ def test_r2_installed_entrypoint_runs_annotation_lifecycle_offline(tmp_path) -> 
     assert completed.stderr == ""
     assert json.loads(completed.stdout) == {
         "status": "ok",
-        "schema_version": 9,
+        "schema_version": 10,
         "annotation_count": 2,
         "highlight_verified_against_content": True,
         "stale_anchor_rejected": True,

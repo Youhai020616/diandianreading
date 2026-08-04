@@ -17,7 +17,14 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 
-from diandianreading.domain.content import KnowledgeNote, KnowledgeNoteSource
+from diandianreading.domain.content import (
+    ContentAsset,
+    ContentFailureCode,
+    ContentLeaseToken,
+    ContentRevision,
+    KnowledgeNote,
+    KnowledgeNoteSource,
+)
 
 
 class KnowledgeNoteRepository(Protocol):
@@ -44,3 +51,53 @@ class KnowledgeNoteRepository(Protocol):
     ) -> Sequence[KnowledgeNote]: ...
 
     def count_for_book(self, book_id: str) -> int: ...
+
+
+class ContentAssetRepository(Protocol):
+    """Persistence for content assets treated as recoverable task units.
+
+    ADR-0008 section 2b: the same row is both the draft and the durable task, so
+    the lease and provider-operation columns live here rather than in a separate
+    jobs table whose step vocabulary belongs to document import.
+    """
+
+    def create(self, asset: ContentAsset) -> None: ...
+
+    def get(self, content_id: str) -> ContentAsset | None: ...
+
+    def claim_next(
+        self, *, worker_id: str, now: datetime, lease_seconds: int
+    ) -> tuple[ContentAsset, ContentLeaseToken] | None:
+        """Take one claimable asset, fencing out any stale owner."""
+        ...
+
+    def cancel_requested(self, content_id: str) -> bool: ...
+
+    def request_cancel(self, content_id: str, *, now: datetime) -> bool: ...
+
+    def bind_provider_operation(
+        self, content_id: str, token: ContentLeaseToken, *, operation_id: str, now: datetime
+    ) -> None:
+        """Record the dispatched remote operation before awaiting its result."""
+        ...
+
+    def complete_with_revision(
+        self, content_id: str, token: ContentLeaseToken, revision: ContentRevision, *, now: datetime
+    ) -> ContentAsset: ...
+
+    def fail(
+        self,
+        content_id: str,
+        token: ContentLeaseToken,
+        *,
+        code: ContentFailureCode,
+        now: datetime,
+    ) -> ContentAsset: ...
+
+    def append_human_revision(
+        self, content_id: str, revision: ContentRevision, *, now: datetime
+    ) -> ContentAsset: ...
+
+    def list_revisions(self, content_id: str) -> Sequence[ContentRevision]: ...
+
+    def list_for_book(self, book_id: str, *, limit: int) -> Sequence[ContentAsset]: ...

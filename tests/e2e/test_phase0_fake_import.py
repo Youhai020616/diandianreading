@@ -31,7 +31,7 @@ def test_phase0_cli_runs_fake_import_reopens_sqlite_and_refuses_overwrite(tmp_pa
 
     payload = json.loads(completed.stdout)
     assert payload["status"] == "ok"
-    assert payload["schema_version"] == 9
+    assert payload["schema_version"] == 10
     assert payload["part_count"] == 2
     assert payload["source_count"] == 2
     assert payload["preparation_manifest_key"].startswith("manifests/")

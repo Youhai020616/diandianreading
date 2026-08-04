@@ -303,3 +303,46 @@ class ContentAsset:
             updated_at=moment,
             version=self.version + 1,
         )
+
+
+class ContentFailureCode(StrEnum):
+    """Why a generation attempt ended without a draft."""
+
+    PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
+    PROVIDER_OUTCOME_AMBIGUOUS = "PROVIDER_OUTCOME_AMBIGUOUS"
+    EMPTY_PROVIDER_RESULT = "EMPTY_PROVIDER_RESULT"
+    CANCELLED = "CANCELLED"
+    UNEXPECTED = "UNEXPECTED"
+
+
+@dataclass(frozen=True, slots=True)
+class ContentLeaseToken:
+    """Proof that one worker owns one content asset for one attempt.
+
+    Fencing is by generation rather than by owner name alone: a worker that
+    stalls past its lease and wakes up later still holds the old generation, so
+    its writes are rejected instead of overwriting the worker that took over.
+    """
+
+    owner: str
+    generation: int
+
+    def __post_init__(self) -> None:
+        if not self.owner.strip() or len(self.owner) > 512:
+            raise ValueError("Content lease owner must be a non-empty bounded string")
+        if self.generation < 1:
+            raise ValueError("Content lease generation starts at 1")
+
+
+def provider_content_type(content_type: ContentType) -> str:
+    """Map a product content type onto a provider generation capability.
+
+    Only ``quiz`` has a direct provider counterpart. The remaining six are
+    produced from the provider's briefing report and differentiated by the
+    instruction template, because a podcast script and a share card are editorial
+    shapes of the same underlying summary rather than distinct provider features.
+    """
+
+    if content_type is ContentType.QUIZ:
+        return "quiz"
+    return "report"
