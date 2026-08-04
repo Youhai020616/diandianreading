@@ -4,7 +4,7 @@ diandianreading:个人优先的 AI 阅读、知识沉淀与内容发布工作台
 
 ## 身份(必须遵守)
 
-
+- 本仓库所有 gh/git 远程操作前先 `source ~/.gh-Youhai.env`(gh 走 `GH_CONFIG_DIR=~/.config/gh-Youhai`,账号 Youhai020616)。
 - 仓库 local git config 已固定 Youhai 署名与专用 SSH key;不要改动全局 gh 账号与 `~/.gitconfig`。
 
 ## 协作原则:独立判断

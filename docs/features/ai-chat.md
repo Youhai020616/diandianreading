@@ -54,17 +54,27 @@ MVP 不包含：
 - `book` QueryScope 的整本书范围解析、实际 `effective_scope` 和 NotebookLM 引用到本地 Book/DocumentPart/chapter refs 的映射；
 - 连接状态、书籍列表、消息历史、提问、取消/重试、Job/Chat SSE 的同源 Web UI；
 - 每安装实例 Token、浏览器 Session、单次 Bootstrap Nonce、CSRF、Peer/Host/Origin、CORS/Preflight、请求大小、速率和 SSE 连接限制；
-- 无 inline JS/CSS、无 CDN、无 `innerHTML` 的静态 HTML/CSS/JS；Provider 回答按文本节点渲染；
+- 无 inline JS/CSS、无 CDN、无 `innerHTML` 的同源前端资源；Provider 回答按文本节点渲染；
 - 浏览器无关 `phase5-e2e`，验证导入 → Worker → Book ready → Conversation → whole-book Chat → local citation → SSE。
 
 Phase 5 的 SSE 只传输持久状态事件，不提供逐 Token Streaming。WebSocket 没有路由，Uvicorn 明确配置 `ws="none"`。
 
-### 3.2 仍为 Proposed
+### 3.2 R 轨与 D3 已实现
+
+Phase 5 之后，阅读器交付轨（R1–R4）与桌面轨 D3 追加提供：
+
+- R1/R2：正文、章节与阅读进度服务，标注 SQLite 存储、CRUD API 与再锚定引擎；
+- R3：React 阅读器 UI（正文渲染、章节导航、划线与笔记交互、PDF 视图），以及 Chat 面板的响应式 Drawer/移动页（三档断点、`aria-modal`，见 `apps/web/src/components/ChatPanel.tsx`）；
+- R4：ChatReference 本地位置生产者（excerpt 唯一命中才写入，失败保持 `None`）、引用 → 阅读器跳转，以及 `selection` 与 `notes` QueryScope 及其越权、跨书、空范围与注入定界契约测试；
+- D3：前端由 React/Vite 构建产物提供，原 vanilla bundle 已退役。
+
+R3/R4 的浏览器 UI 功能、视觉与可访问性仍待按 `docs/development/manual-acceptance-checklist.md` 人工验收，代码交付不替代该证据。
+
+### 3.3 仍为 Proposed
 
 以下设计尚未实现，本文后续章节描述的是目标契约而非当前能力：
 
-- `conversation_default`、`chapters`、`notes`、`selection` QueryScope；当前 API 只接受 `{"type":"book"}`，其他范围返回 `422`；
-- 阅读器正文、划线/笔记上下文、引用精确定位和完整响应式 Drawer/移动页；
+- `conversation_default` 与 `chapters` QueryScope；`chapters` 当前被显式拒绝（章节与 Part 的映射词汇尚未统一），`selection`/`notes` 已由 R4 交付；
 - 保存回答为 Note、生成内容 Job、Conversation archive、删除本地历史和重置 Provider Context；
 - 上下文/事件保留清理任务、真实 Provider History reconciliation 的 live smoke、回答质量人工验收；
 - 真实 NotebookLM/Z-Library 浏览器交互测试。本阶段只完成离线 Fake/contract/API/installed-wheel E2E，用户将另行手工测试。
@@ -480,7 +490,7 @@ POST /api/chat-runs/{run_id}/retry
 GET  /api/chat-runs/{run_id}/events
 ```
 
-所有状态变更接口执行同源 Session + CSRF，或在没有 Cookie 时执行每安装实例 Bearer；SSE 只接受浏览器 Session。Phase 5 的 Conversation 默认范围和 Message `query_scope` 只允许 `book`。本节后续包含 `chapters`/`selection`、save-as-note、generate-content、archive/delete/reset 等示例时，它们仍是 Proposed 目标，不是已部署路由。
+所有状态变更接口执行同源 Session + CSRF，或在没有 Cookie 时执行每安装实例 Bearer；SSE 只接受浏览器 Session。Conversation 默认范围仍是 `book`；Message `query_scope` 在 R4 之后接受 `book`、`selection` 与 `notes`，`chapters` 被显式拒绝。本节后续包含 `chapters`、save-as-note、generate-content、archive/delete/reset 等示例时，它们仍是 Proposed 目标，不是已部署路由。
 
 ### 8.1 获取或建立唯一活跃 Conversation
 
