@@ -9,7 +9,11 @@ from datetime import datetime, timedelta
 
 from diandianreading.application.ports.content import (
     ContentAssetRepository,
+    ExportRecord,
     KnowledgeNoteRepository,
+    ObsidianExportStateRepository,
+    VaultConfig,
+    VaultRepository,
 )
 from diandianreading.domain.content import (
     ContentAsset,
@@ -22,6 +26,7 @@ from diandianreading.domain.content import (
     ContentStatus,
     ContentTone,
     ContentType,
+    ExportTargetKind,
     GenerationRequest,
     KnowledgeNote,
     KnowledgeNoteSource,
@@ -499,3 +504,138 @@ class SQLiteContentAssetRepository(ContentAssetRepository):
                 _row_to_asset(row, self._load_sources(connection, str(row["id"]))) for row in rows
             ]
         return tuple(assets)
+
+
+class SQLiteVaultRepository(VaultRepository):
+    """Persist the single active Obsidian vault."""
+
+    def __init__(self, target: SQLiteDatabase | sqlite3.Connection) -> None:
+        self._target = target
+
+    @contextmanager
+    def _connect(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
+        if isinstance(self._target, sqlite3.Connection):
+            yield self._target
+            return
+        with self._target.connect(immediate=write) as connection:
+            yield connection
+
+    def set_active(self, *, vault_id: str, name: str, root_path: str, now: datetime) -> VaultConfig:
+        moment = now.isoformat()
+        with self._connect(write=True) as connection:
+            # Deactivate first: the partial unique index allows only one active
+            # row, so an insert before the demotion would be rejected.
+            connection.execute(
+                "UPDATE obsidian_vaults SET is_active = 0, updated_at = ? WHERE is_active = 1",
+                (moment,),
+            )
+            connection.execute(
+                """
+                INSERT INTO obsidian_vaults(
+                    id, name, root_path, is_active, created_at, updated_at, version
+                ) VALUES (?, ?, ?, 1, ?, ?, 0)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    root_path = excluded.root_path,
+                    is_active = 1,
+                    updated_at = excluded.updated_at,
+                    version = obsidian_vaults.version + 1
+                """,
+                (vault_id, name, root_path, moment, moment),
+            )
+            row = connection.execute(
+                "SELECT * FROM obsidian_vaults WHERE id = ?", (vault_id,)
+            ).fetchone()
+        return VaultConfig(
+            id=str(row["id"]),
+            name=str(row["name"]),
+            root_path=str(row["root_path"]),
+            version=int(row["version"]),
+        )
+
+    def get_active(self) -> VaultConfig | None:
+        with self._connect() as connection:
+            row = connection.execute("SELECT * FROM obsidian_vaults WHERE is_active = 1").fetchone()
+        if row is None:
+            return None
+        return VaultConfig(
+            id=str(row["id"]),
+            name=str(row["name"]),
+            root_path=str(row["root_path"]),
+            version=int(row["version"]),
+        )
+
+
+class SQLiteObsidianExportStateRepository(ObsidianExportStateRepository):
+    """Track what the exporter last wrote, keyed by content identity."""
+
+    def __init__(self, target: SQLiteDatabase | sqlite3.Connection) -> None:
+        self._target = target
+
+    @contextmanager
+    def _connect(self, *, write: bool = False) -> Iterator[sqlite3.Connection]:
+        if isinstance(self._target, sqlite3.Connection):
+            yield self._target
+            return
+        with self._target.connect(immediate=write) as connection:
+            yield connection
+
+    def get(
+        self, *, vault_id: str, target_kind: ExportTargetKind, target_id: str
+    ) -> ExportRecord | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM obsidian_export_state
+                WHERE vault_id = ? AND target_kind = ? AND target_id = ?
+                """,
+                (vault_id, target_kind.value, target_id),
+            ).fetchone()
+        return None if row is None else _row_to_export_record(row)
+
+    def upsert(self, record: ExportRecord) -> None:
+        with self._connect(write=True) as connection:
+            connection.execute(
+                """
+                INSERT INTO obsidian_export_state(
+                    id, vault_id, target_kind, target_id, vault_relpath,
+                    exported_sha256, exported_at, version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(vault_id, target_kind, target_id) DO UPDATE SET
+                    vault_relpath = excluded.vault_relpath,
+                    exported_sha256 = excluded.exported_sha256,
+                    exported_at = excluded.exported_at,
+                    version = obsidian_export_state.version + 1
+                """,
+                (
+                    record.id,
+                    record.vault_id,
+                    record.target_kind.value,
+                    record.target_id,
+                    record.vault_relpath,
+                    record.exported_sha256,
+                    record.exported_at.isoformat(),
+                    record.version,
+                ),
+            )
+
+    def list_for_vault(self, vault_id: str) -> Sequence[ExportRecord]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM obsidian_export_state WHERE vault_id = ? ORDER BY target_kind",
+                (vault_id,),
+            ).fetchall()
+        return tuple(_row_to_export_record(row) for row in rows)
+
+
+def _row_to_export_record(row: sqlite3.Row) -> ExportRecord:
+    return ExportRecord(
+        id=str(row["id"]),
+        vault_id=str(row["vault_id"]),
+        target_kind=ExportTargetKind(str(row["target_kind"])),
+        target_id=str(row["target_id"]),
+        vault_relpath=str(row["vault_relpath"]),
+        exported_sha256=str(row["exported_sha256"]),
+        exported_at=datetime.fromisoformat(str(row["exported_at"])),
+        version=int(row["version"]),
+    )

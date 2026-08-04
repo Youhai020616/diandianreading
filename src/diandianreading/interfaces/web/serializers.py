@@ -14,6 +14,7 @@ from diandianreading.application.ports.chat import (
 from diandianreading.application.ports.reading import ChapterSpanView
 from diandianreading.application.use_cases.catalog import BookPage, BookView
 from diandianreading.application.use_cases.jobs import JobPage, JobView
+from diandianreading.application.use_cases.obsidian_export import ExportResult
 from diandianreading.application.use_cases.reading import (
     BookDetailView,
     ReadingDocumentView,
@@ -424,4 +425,21 @@ def content_revision(value: ContentRevision) -> dict[str, object]:
         "title": value.title,
         "body": value.body,
         "created_at": iso(value.created_at),
+    }
+
+
+def export_result(value: ExportResult) -> dict[str, object]:
+    """Serialise one reconciled export target.
+
+    ``conflict_path`` is part of the payload rather than a log line: a silent
+    conflict would leave the user believing the vault is in sync when it is not.
+    """
+
+    return {
+        "target_kind": value.kind.value,
+        "target_id": value.target_id,
+        "outcome": value.outcome.value,
+        "relative_path": value.relative_path,
+        "deep_link": value.deep_link,
+        "conflict_path": value.conflict_path,
     }

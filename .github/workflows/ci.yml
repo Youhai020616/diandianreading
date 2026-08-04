@@ -144,6 +144,12 @@ jobs:
           --app-home .tmp/ci-wheel/c1b/app-home
           --workspace .tmp/ci-wheel/c1b/workspace
 
+      - name: Run installed-wheel C2 obsidian-export smoke
+        run: >-
+          .tmp/ci-wheel-venv/bin/diandian c2-e2e
+          --app-home .tmp/ci-wheel/c2/app-home
+          --workspace .tmp/ci-wheel/c2/workspace
+
   desktop-sidecar:
     name: Desktop sidecar artifact (macOS arm64)
     runs-on: macos-latest

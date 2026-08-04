@@ -17,6 +17,7 @@ from diandianreading.application.use_cases.import_source import (
     ImportSubmissionUseCase,
 )
 from diandianreading.application.use_cases.jobs import JobService
+from diandianreading.application.use_cases.obsidian_export import ObsidianExportService
 from diandianreading.application.use_cases.reading import ReadingService
 from diandianreading.domain import CredentialRef, TargetCapabilities
 from diandianreading.infrastructure.acquisition.local import LocalFileAcquirer
@@ -55,6 +56,8 @@ from diandianreading.infrastructure.persistence.chat import SQLiteChatRepository
 from diandianreading.infrastructure.persistence.content import (
     SQLiteContentAssetRepository,
     SQLiteKnowledgeNoteRepository,
+    SQLiteObsidianExportStateRepository,
+    SQLiteVaultRepository,
 )
 from diandianreading.infrastructure.persistence.reading import (
     SQLiteReadingProgressRepository,
@@ -142,6 +145,7 @@ class ApplicationRuntime:
     annotations: AnnotationService
     notes: KnowledgeNoteService
     content_generation: ContentGenerationUseCase
+    obsidian_export: ObsidianExportService
     chat: ChatUseCase
     security: LocalApiSecurityService
     install_tokens: InstallTokenStore
@@ -253,6 +257,10 @@ def create_runtime(
         reading=reading,
     )
     notes = KnowledgeNoteService(SQLiteKnowledgeNoteRepository(database))
+    obsidian_export = ObsidianExportService(
+        vaults=SQLiteVaultRepository(database),
+        state=SQLiteObsidianExportStateRepository(database),
+    )
     content_generation = ContentGenerationUseCase(
         assets=SQLiteContentAssetRepository(database),
         knowledge_generation=notebooklm_adapter,
@@ -297,6 +305,7 @@ def create_runtime(
         annotations=annotations,
         notes=notes,
         content_generation=content_generation,
+        obsidian_export=obsidian_export,
         chat=chat,
         security=security,
         install_tokens=install_tokens,

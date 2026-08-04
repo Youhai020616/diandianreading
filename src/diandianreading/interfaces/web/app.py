@@ -54,6 +54,10 @@ from diandianreading.application.use_cases.jobs import (
     JobService,
     JobServiceError,
 )
+from diandianreading.application.use_cases.obsidian_export import (
+    ExportTarget,
+    ObsidianExportService,
+)
 from diandianreading.application.use_cases.reading import ReadingService
 from diandianreading.domain import (
     CredentialRef,
@@ -66,6 +70,7 @@ from diandianreading.domain import (
 )
 from diandianreading.domain.annotations import (
     AnnotationColor,
+    AnnotationKind,
     AnnotationStatus,
     ContentAnchor,
     TextQuote,
@@ -86,6 +91,7 @@ from diandianreading.domain.content import (
     ContentSourceKind,
     ContentTone,
     ContentType,
+    ExportTargetKind,
     GenerationRequest,
     KnowledgeNoteSource,
 )
@@ -162,6 +168,7 @@ class WebRuntime(Protocol):
     annotations: AnnotationService
     notes: KnowledgeNoteService
     content_generation: ContentGenerationUseCase
+    obsidian_export: ObsidianExportService
     chat: ChatUseCase
     security: LocalApiSecurityService
     worker: WorkerRunner
@@ -882,6 +889,48 @@ def create_web_app(
             raise ApiProblem(404, "NOT_FOUND", "Content asset was not found")
         accepted = runtime.content_generation.request_cancel(content_id)
         return JSONResponse(serializers.envelope({"cancel_requested": accepted}), status_code=202)
+
+    @app.put("/api/obsidian/vault")
+    async def configure_vault(request: Request) -> dict[str, object]:
+        _ = authorize(request, mutate=True, limiter=reader_limiter)
+        payload = await _read_json_object(request, http_config.max_json_bytes)
+        _require_exact_fields(payload, required={"name", "root_path"}, optional=set())
+        name = payload["name"]
+        root_path = payload["root_path"]
+        if not isinstance(name, str) or not isinstance(root_path, str):
+            raise ApiProblem(422, "VALIDATION", "name and root_path must be strings")
+        try:
+            vault = runtime.obsidian_export.configure_vault(name=name, root_path=root_path)
+        except DiandianError as error:
+            raise ApiProblem(422, "VALIDATION", str(error)) from error
+        return serializers.envelope(
+            {"vault": {"id": vault.id, "name": vault.name, "root_path": vault.root_path}}
+        )
+
+    @app.post("/api/books/{book_id}/obsidian-export", status_code=200)
+    async def export_book_to_obsidian(book_id: str, request: Request) -> dict[str, object]:
+        _ = authorize(request, mutate=True, limiter=reader_limiter)
+        try:
+            book = runtime.catalog.get(book_id)
+        except DiandianError as error:
+            raise ApiProblem(404, "NOT_FOUND", "Book was not found") from error
+        targets = _obsidian_targets(runtime, book_id, book.title)
+        try:
+            results = runtime.obsidian_export.export_book(
+                book_id=book_id, book_title=book.title, targets=targets
+            )
+        except DiandianError as error:
+            raise ApiProblem(422, "VALIDATION", str(error)) from error
+        return serializers.envelope(
+            {
+                "exports": [serializers.export_result(item) for item in results],
+                "conflicts": [
+                    serializers.export_result(item)
+                    for item in results
+                    if item.conflict_path is not None
+                ],
+            }
+        )
 
     @app.get("/api/conversations/{conversation_id}/messages")
     async def list_messages(conversation_id: str, request: Request) -> dict[str, object]:
@@ -1785,6 +1834,58 @@ def _domain_error_status(code: ErrorCode) -> int:
 
 def _public_error_code(code: ErrorCode) -> str:
     return "PAYLOAD_TOO_LARGE" if code is ErrorCode.SOURCE_LIMIT_EXCEEDED else code.value
+
+
+def _obsidian_targets(runtime: WebRuntime, book_id: str, title: str) -> tuple[ExportTarget, ...]:
+    """Assemble the five export files from what the product already stores.
+
+    Target identifiers are derived from the book identifier rather than from a
+    file name, because the reconciler matches on identity: a user who renames
+    ``Highlights.md`` must still get an update, not a duplicate.
+    """
+
+    # 100 is the annotation page cap; the exporter takes one page rather than
+    # paging, and says so in the file instead of silently truncating.
+    page = runtime.annotations.list_for_book(book_id, limit=100)
+    annotations = page.items
+    highlights = [item for item in annotations if item.kind is AnnotationKind.HIGHLIGHT]
+    anchored_notes = [item for item in annotations if item.kind is AnnotationKind.NOTE]
+    knowledge_notes = runtime.notes.list_for_book(book_id, limit=100)
+    contents = runtime.content_generation.list_drafts(book_id, limit=100)
+
+    highlight_body = "\n".join(f"- {item.selected_text}" for item in highlights) or "（暂无划线）"
+    note_lines = [f"- {item.body}" for item in anchored_notes]
+    note_lines += [f"- **{item.title}**\n\n  {item.body}" for item in knowledge_notes]
+    summary_lines = [f"## {item.title}\n\n{item.body}" for item in contents if item.body]
+    return (
+        ExportTarget(
+            kind=ExportTargetKind.BOOK,
+            target_id=book_id,
+            title=title,
+            body=(
+                f"# {title}\n\n划线 {len(highlights)} 条，笔记 {len(note_lines)} 条。"
+                + ("\n\n本次导出只包含最近 100 条标注。" if page.next_cursor else "")
+            ),
+        ),
+        ExportTarget(
+            kind=ExportTargetKind.HIGHLIGHTS,
+            target_id=f"highlights:{book_id}",
+            title=f"{title} · 划线",
+            body=highlight_body,
+        ),
+        ExportTarget(
+            kind=ExportTargetKind.NOTES,
+            target_id=f"notes:{book_id}",
+            title=f"{title} · 笔记",
+            body="\n".join(note_lines) or "（暂无笔记）",
+        ),
+        ExportTarget(
+            kind=ExportTargetKind.SUMMARY,
+            target_id=f"summary:{book_id}",
+            title=f"{title} · 摘要",
+            body="\n\n".join(summary_lines) or "（暂无生成内容）",
+        ),
+    )
 
 
 def _generation_request(payload: dict[str, object], *, book_id: str) -> GenerationRequest:

@@ -28,6 +28,7 @@ from diandianreading.application.use_cases.import_source import (
     ImportSubmissionUseCase,
 )
 from diandianreading.application.use_cases.jobs import JobService
+from diandianreading.application.use_cases.obsidian_export import ObsidianExportService
 from diandianreading.application.use_cases.reading import ReadingService
 from diandianreading.domain import (
     CredentialRef,
@@ -52,6 +53,8 @@ from diandianreading.infrastructure.persistence.chat import SQLiteChatRepository
 from diandianreading.infrastructure.persistence.content import (
     SQLiteContentAssetRepository,
     SQLiteKnowledgeNoteRepository,
+    SQLiteObsidianExportStateRepository,
+    SQLiteVaultRepository,
 )
 from diandianreading.infrastructure.persistence.reading import (
     SQLiteReadingProgressRepository,
@@ -126,6 +129,7 @@ class Phase5DemoRuntime:
     annotations: AnnotationService
     notes: KnowledgeNoteService
     content_generation: ContentGenerationUseCase
+    obsidian_export: ObsidianExportService
     chat: ChatUseCase
     security: LocalApiSecurityService
     notebooklm_session: ProviderSessionPort
@@ -177,6 +181,10 @@ def create_phase5_demo_runtime(home: Path) -> tuple[Phase5DemoRuntime, SQLiteDat
         progress=SQLiteReadingProgressRepository(database),
     )
     notes = KnowledgeNoteService(SQLiteKnowledgeNoteRepository(database))
+    obsidian_export = ObsidianExportService(
+        vaults=SQLiteVaultRepository(database),
+        state=SQLiteObsidianExportStateRepository(database),
+    )
     content_generation = ContentGenerationUseCase(
         assets=SQLiteContentAssetRepository(database),
         knowledge_generation=knowledge,
@@ -215,6 +223,7 @@ def create_phase5_demo_runtime(home: Path) -> tuple[Phase5DemoRuntime, SQLiteDat
         ),
         notes=notes,
         content_generation=content_generation,
+        obsidian_export=obsidian_export,
         chat=chat,
         security=security,
         notebooklm_session=_DemoSessionManager("notebooklm"),
