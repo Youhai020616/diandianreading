@@ -155,6 +155,9 @@ class ContentGenerationUseCase:
     def list_revisions(self, content_id: str) -> Sequence[ContentRevision]:
         return self._assets.list_revisions(content_id)
 
+    def list_for_book(self, book_id: str, *, limit: int = 100) -> tuple[ContentAsset, ...]:
+        return tuple(self._assets.list_for_book(book_id, limit=limit))
+
     def list_drafts(self, book_id: str, *, limit: int = 100) -> tuple[ContentRevision, ...]:
         """Latest revision of every settled asset for one book.
 

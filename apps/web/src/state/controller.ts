@@ -56,6 +56,7 @@ const VIEW_NAMES: ReadonlySet<string> = new Set([
   "jobs",
   "library",
   "reader",
+  "workbench",
 ]);
 
 function validRightsBasis(value: string): string | null {
@@ -210,7 +211,7 @@ export class AppController {
     if (viewName === "jobs") {
       void this.refreshJobs();
     }
-    if (viewName === "library") {
+    if (viewName === "library" || viewName === "workbench") {
       void this.refreshBooks();
     }
   }

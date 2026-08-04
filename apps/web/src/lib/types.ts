@@ -1,4 +1,10 @@
-export type ViewName = "connections" | "import" | "jobs" | "library" | "reader";
+export type ViewName =
+  | "connections"
+  | "import"
+  | "jobs"
+  | "library"
+  | "reader"
+  | "workbench";
 export type ImportTabName = "local" | "zlibrary";
 export type PanelMode = "desktop" | "drawer" | "mobile";
 

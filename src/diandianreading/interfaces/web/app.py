@@ -890,6 +890,59 @@ def create_web_app(
         accepted = runtime.content_generation.request_cancel(content_id)
         return JSONResponse(serializers.envelope({"cancel_requested": accepted}), status_code=202)
 
+    @app.post("/api/books/{book_id}/generate-content", status_code=202)
+    async def generate_book_content(book_id: str, request: Request) -> JSONResponse:
+        """Workbench entry point.
+
+        ai-chat.md scopes generation to a message because that is where the Chat
+        UI offers it. The workbench starts from a book, a topic, or a set of
+        notes (PRD 6.5), so it needs its own entry rather than a synthetic
+        message identifier.
+        """
+
+        _ = authorize(request, mutate=True, limiter=reader_limiter)
+        payload = await _read_json_object(request, http_config.max_json_bytes)
+        _require_exact_fields(
+            payload,
+            required={"content_type"},
+            optional={
+                "sources",
+                "language",
+                "tone",
+                "length",
+                "target_platform",
+                "require_citations",
+                "first_person",
+            },
+        )
+        try:
+            runtime.catalog.get(book_id)
+        except DiandianError as error:
+            raise ApiProblem(404, "NOT_FOUND", "Book was not found") from error
+        try:
+            generation_request = _generation_request(payload, book_id=book_id)
+        except (ValueError, KeyError) as error:
+            raise ApiProblem(422, "VALIDATION", "Generation request is invalid") from error
+        asset = runtime.content_generation.submit(book_id=book_id, request=generation_request)
+        return JSONResponse(
+            serializers.envelope(
+                {
+                    "job_id": asset.id,
+                    "content": serializers.content_asset(asset),
+                    "status_url": f"/api/contents/{asset.id}",
+                }
+            ),
+            status_code=202,
+        )
+
+    @app.get("/api/books/{book_id}/contents")
+    async def list_book_contents(book_id: str, request: Request) -> dict[str, object]:
+        _ = authorize(request)
+        assets = runtime.content_generation.list_for_book(book_id, limit=100)
+        return serializers.envelope(
+            {"contents": [serializers.content_asset(item) for item in assets]}
+        )
+
     @app.put("/api/obsidian/vault")
     async def configure_vault(request: Request) -> dict[str, object]:
         _ = authorize(request, mutate=True, limiter=reader_limiter)
