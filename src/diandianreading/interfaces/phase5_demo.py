@@ -21,6 +21,7 @@ from diandianreading.application.use_cases.annotations import AnnotationService
 from diandianreading.application.use_cases.catalog import CatalogService
 from diandianreading.application.use_cases.chat import ChatUseCase
 from diandianreading.application.use_cases.content import KnowledgeNoteService
+from diandianreading.application.use_cases.content_generation import ContentGenerationUseCase
 from diandianreading.application.use_cases.import_book import ImportBookUseCase
 from diandianreading.application.use_cases.import_source import (
     DurableImportSourceMaterializer,
@@ -49,10 +50,14 @@ from diandianreading.infrastructure.persistence.annotations import (
 )
 from diandianreading.infrastructure.persistence.chat import SQLiteChatRepository
 from diandianreading.infrastructure.persistence.content import (
+    SQLiteContentAssetRepository,
     SQLiteKnowledgeNoteRepository,
 )
 from diandianreading.infrastructure.persistence.reading import (
     SQLiteReadingProgressRepository,
+)
+from diandianreading.infrastructure.persistence.sqlite import (
+    SQLiteKnowledgeMappingRepository,
 )
 from diandianreading.infrastructure.storage import LocalFileStore
 from diandianreading.interfaces.runtime import ApplicationPaths
@@ -120,6 +125,7 @@ class Phase5DemoRuntime:
     reading: ReadingService
     annotations: AnnotationService
     notes: KnowledgeNoteService
+    content_generation: ContentGenerationUseCase
     chat: ChatUseCase
     security: LocalApiSecurityService
     notebooklm_session: ProviderSessionPort
@@ -171,6 +177,11 @@ def create_phase5_demo_runtime(home: Path) -> tuple[Phase5DemoRuntime, SQLiteDat
         progress=SQLiteReadingProgressRepository(database),
     )
     notes = KnowledgeNoteService(SQLiteKnowledgeNoteRepository(database))
+    content_generation = ContentGenerationUseCase(
+        assets=SQLiteContentAssetRepository(database),
+        knowledge_generation=knowledge,
+        mappings=SQLiteKnowledgeMappingRepository(database),
+    )
     reading_bridge = ReadingChatBridge(
         reading=reading,
         unit_of_work=unit_of_work,
@@ -203,11 +214,17 @@ def create_phase5_demo_runtime(home: Path) -> tuple[Phase5DemoRuntime, SQLiteDat
             reading=reading,
         ),
         notes=notes,
+        content_generation=content_generation,
         chat=chat,
         security=security,
         notebooklm_session=_DemoSessionManager("notebooklm"),
         zlibrary_session=_DemoSessionManager("zlibrary"),
-        worker=WorkerRunner(imports=imports, chat=chat, worker_id="phase5-worker"),
+        worker=WorkerRunner(
+            imports=imports,
+            chat=chat,
+            content=content_generation,
+            worker_id="phase5-worker",
+        ),
         target_capabilities=capabilities,
     )
     return runtime, database

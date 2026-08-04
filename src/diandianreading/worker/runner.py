@@ -20,6 +20,10 @@ class ChatRunWorkerPort(Protocol):
     async def run_next(self, *, worker_id: str) -> object | None: ...
 
 
+class ContentGenerationWorkerPort(Protocol):
+    async def run_next(self, *, worker_id: str) -> object | None: ...
+
+
 class StopEventPort(Protocol):
     def is_set(self) -> bool: ...
 
@@ -33,6 +37,7 @@ class WorkerRunner:
         *,
         imports: ImportJobWorkerPort,
         chat: ChatRunWorkerPort | None = None,
+        content: ContentGenerationWorkerPort | None = None,
         worker_id: str = "worker",
         poll_interval: float = 1.0,
     ) -> None:
@@ -41,6 +46,7 @@ class WorkerRunner:
         _validate_poll_interval(poll_interval)
         self._imports = imports
         self._chat = chat
+        self._content = content
         self._worker_id = worker_id
         self._poll_interval = poll_interval
 
@@ -48,6 +54,8 @@ class WorkerRunner:
         handled = await self._run_import_once()
         if self._chat is not None:
             handled = await self._run_chat_once() or handled
+        if self._content is not None:
+            handled = await self._run_content_once() or handled
         return handled
 
     async def run_forever(
@@ -73,6 +81,16 @@ class WorkerRunner:
             if _is_projected_import_error(error):
                 return True
             raise
+        return result is not None
+
+    async def _run_content_once(self) -> bool:
+        assert self._content is not None
+        # Generation projects its own failures onto the content asset row, so a
+        # typed domain error here is a completed turn, not a worker crash.
+        try:
+            result = await self._content.run_next(worker_id=self._worker_id)
+        except DiandianError:
+            return True
         return result is not None
 
     async def _run_chat_once(self) -> bool:
