@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import tempfile
 import time
@@ -24,7 +25,10 @@ def main() -> int:
     manifest = args.artifact / "sidecar-manifest.json"
     if not executable.is_file() or not manifest.is_file():
         raise ValueError("Sidecar artifact is incomplete")
-    with tempfile.TemporaryDirectory(prefix="diandian-sidecar-smoke-") as temporary:
+    smoke_root = Path.cwd() / ".tmp"
+    smoke_root.mkdir(exist_ok=True)
+    temporary = tempfile.mkdtemp(prefix="diandian-sidecar-smoke-", dir=smoke_root)
+    try:
         process = subprocess.Popen(
             [str(executable), "--home", temporary],
             stdout=subprocess.PIPE,
@@ -60,6 +64,8 @@ def main() -> int:
             diagnostics = process.stderr.read() if process.stderr is not None else ""
             if diagnostics:
                 raise ValueError(f"Sidecar startup diagnostics: {diagnostics.strip()}")
+    finally:
+        shutil.rmtree(temporary, ignore_errors=True)
     return 0
 
 
