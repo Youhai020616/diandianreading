@@ -112,8 +112,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (ControlFrameError, OSError, ValueError) as error:
         _emit_startup_failure(sys.stderr, _safe_startup_error_code(error))
         return 2
-    except Exception:
-        _emit_startup_failure(sys.stderr, "SIDECAR_START_FAILED")
+    except Exception as error:
+        _emit_startup_failure(sys.stderr, _unexpected_startup_error_code(error))
         return 1
 
 
@@ -198,6 +198,13 @@ def _safe_startup_error_code(error: BaseException) -> str:
     if "port" in message.casefold():
         return "SIDECAR_PORT_UNAVAILABLE"
     return "SIDECAR_START_FAILED"
+
+
+def _unexpected_startup_error_code(error: BaseException) -> str:
+    """Expose only the exception class as a diagnostic category, never its value."""
+
+    category = type(error).__name__.upper()
+    return f"SIDECAR_UNEXPECTED_{category}"
 
 
 def _emit_startup_failure(stream: TextIO, code: str) -> None:
