@@ -1,0 +1,22 @@
+[package]
+name = "diandianreading-desktop"
+description = "Tauri shell that owns the window, the single instance, and the Python sidecar lifecycle."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+launcher-core = { workspace = true }
+tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
+
+[features]
+# Enabled by `tauri dev`/`tauri build`; keeps devtools out of release bundles.
+custom-protocol = ["tauri/custom-protocol"]

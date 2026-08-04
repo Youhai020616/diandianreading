@@ -1,0 +1,18 @@
+[package]
+name = "launcher-core"
+description = "Platform-independent launcher logic for the diandianreading desktop shell."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+
+[dependencies]
+serde_json = { workspace = true }
