@@ -31,11 +31,20 @@ Obsidian 导出是本产品**第一个向用户文件系统写入的功能**,风
 
 ## Decision
 
-### 1. `Note` 是独立实体,不复用 `Annotation`
+### 1. `KnowledgeNote` 是独立实体,不复用 `Annotation`
 
-新建 `notes` 表。`Note` 有 `source_kind`(`chat_message` / `annotation` / `manual`)与 `source_id`,不要求锚点。`save-as-note` 以 `source_kind='chat_message'` + `source_id=message_id` 作为**唯一约束**,因此"重复请求返回同一 Note"由数据库保证,而不是靠应用层查重。
+新建 `notes` 表,领域类型为 `KnowledgeNote`。它有 `source_kind`(`chat_message` / `annotation` / `manual`)与 `source_id`,不要求锚点。`save-as-note` 以 `source_kind='chat_message'` + `source_id=message_id` 作为**唯一约束**,因此"重复请求返回同一 Note"由数据库保证,而不是靠应用层查重。
 
-锚定在正文的想法仍然是 `Annotation`;由 Annotation 派生 Note 时保留 `source_id` 指回,两者不互相替代。
+锚定在正文的想法仍然是 `Annotation`;由 Annotation 派生 KnowledgeNote 时保留 `source_id` 指回,两者不互相替代。
+
+**由此产品里存在两种"笔记",且两者都出现在 API 表面**,必须在词汇上分开:
+
+| 概念 | 领域类型 | 存储 | 出现位置 |
+| --- | --- | --- | --- |
+| 锚定在正文某处的想法 | `Annotation`(`kind='note'`) | `annotations` | ai-chat.md `query_scope.note_ids`(R4) |
+| 独立的知识条目 | `KnowledgeNote` | `notes` | `save-as-note` 的产物 |
+
+R4 的 `query_scope.note_ids` 解析的是**标注 ID**,不是 `notes` 表的行。领域类型命名为 `KnowledgeNote` 而非 `Note`,是为了让两者不必靠上下文区分——只叫 `Note` 会让维护者拿着 `note_ids` 去 `notes` 表里查,然后一无所获。路由名 `save-as-note` 沿用 ai-chat.md 已冻结的契约,不单方面改动。
 
 ### 2. `ContentAsset` 冻结全状态机,P5 只实现到 `approved`
 
