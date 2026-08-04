@@ -104,6 +104,9 @@ def test_startup_failure_codes_are_safe_and_actionable() -> None:
     assert sidecar_module._safe_startup_error_code(ValueError("/private/user-data")) == (
         "SIDECAR_START_FAILED"
     )
+    assert sidecar_module._unexpected_startup_error_code(RuntimeError("sensitive detail")) == (
+        "SIDECAR_UNEXPECTED_RUNTIMEERROR"
+    )
 
 
 def test_emit_ready_control_frame_writes_only_one_newline_delimited_frame() -> None:
