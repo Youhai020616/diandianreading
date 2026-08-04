@@ -32,6 +32,7 @@
 | [R1 正文与章节服务 E2E](development/r1-e2e.md) | 书籍详情、规范化正文、章节索引、ETag 再验证与阅读进度链路验证 | Active |
 | [R2 标注核心 E2E](development/r2-e2e.md) | 划线/笔记生命周期、服务端切片校验、软删除与再锚定引擎验证 | Active |
 | [R4 Chat 缝合 E2E](development/r4-e2e.md) | 选区/笔记范围、补充上下文定界与引用本地定位验证 | Active |
+| [D1 Sidecar E2E](development/d1-sidecar-e2e.md) | Sidecar 控制帧、PyInstaller Artifact 与 Playwright Provisioning 可行性验证 | Active |
 | [手动验收清单](development/manual-acceptance-checklist.md) | 维护者在 Mac 上执行的浏览器 UI 与真实 Provider 冒烟清单 | Draft |
 
 ## 推荐阅读顺序

@@ -132,6 +132,48 @@ jobs:
           --app-home .tmp/ci-wheel/r4/app-home
           --workspace .tmp/ci-wheel/r4/workspace
 
+  desktop-sidecar:
+    name: Desktop sidecar artifact (macOS arm64)
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b # v7.2.0
+        with:
+          enable-cache: true
+          version: "0.8.15"
+
+      - name: Install locked sidecar dependencies
+        run: uv sync --locked --all-groups --extra desktop-sidecar
+
+      - name: Check sidecar build tooling
+        run: |
+          uv run --locked ruff format --check packaging/sidecar
+          uv run --locked ruff check packaging/sidecar
+
+      - name: Provision the bundled Chromium runtime
+        run: >-
+          uv run --locked --extra desktop-sidecar python packaging/sidecar/provision_browser.py
+          --output .tmp/desktop-sidecar-browser
+
+      - name: Build the arm64 sidecar artifact
+        run: >-
+          uv run --locked --extra desktop-sidecar python packaging/sidecar/build.py
+          --output .tmp/desktop-sidecar-artifact
+          --browser-root .tmp/desktop-sidecar-browser
+
+      - name: Smoke test the artifact without a system Python runtime
+        run: >-
+          uv run --locked python packaging/sidecar/smoke_artifact.py
+          --artifact .tmp/desktop-sidecar-artifact/diandian-desktop-sidecar
+
   test:
     name: Test Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
