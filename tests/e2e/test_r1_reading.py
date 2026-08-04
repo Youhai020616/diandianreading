@@ -32,7 +32,7 @@ def test_r1_installed_entrypoint_serves_reading_surface_offline(tmp_path) -> Non
     assert completed.stderr == ""
     assert json.loads(completed.stdout) == {
         "status": "ok",
-        "schema_version": 8,
+        "schema_version": 9,
         "book_count": 1,
         "chapter_refs": [
             "markdown-preamble",

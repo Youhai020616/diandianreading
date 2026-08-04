@@ -181,7 +181,7 @@ class ScopeRuntime:
 
 def make_runtime(tmp_path: Path) -> ScopeRuntime:
     database = SQLiteDatabase(tmp_path / "state" / "app.sqlite3")
-    assert database.migrate() == 8
+    assert database.migrate() == 9
     catalog = SQLiteCatalogRepository(database)
     mappings = SQLiteKnowledgeMappingRepository(database)
     command = make_import_command(tmp_path, part_count=2)

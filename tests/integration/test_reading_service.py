@@ -42,7 +42,7 @@ PDF_RAW = b"%PDF-1.7 fixture body\n%%EOF\n"
 class Env:
     def __init__(self, tmp_path: Path) -> None:
         self.database = SQLiteDatabase(tmp_path / "state" / "app.sqlite3")
-        assert self.database.migrate() == 8
+        assert self.database.migrate() == 9
         self.unit_of_work = SQLiteUnitOfWorkFactory(self.database)
         self.store = LocalFileStore(tmp_path / "objects")
         self.progress = SQLiteReadingProgressRepository(self.database)
