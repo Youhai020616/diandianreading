@@ -75,7 +75,7 @@ R3/R4 的浏览器 UI 功能、视觉与可访问性仍待按 `docs/development/
 以下设计尚未实现，本文后续章节描述的是目标契约而非当前能力：
 
 - `conversation_default` 与 `chapters` QueryScope；`chapters` 当前被显式拒绝（章节与 Part 的映射词汇尚未统一），`selection`/`notes` 已由 R4 交付；
-- 保存回答为 Note、生成内容 Job、Conversation archive、删除本地历史和重置 Provider Context；
+- 生成内容 Job、Conversation archive、删除本地历史和重置 Provider Context；（保存回答为 KnowledgeNote 已由 C1 交付，见 `docs/development/c1-e2e.md`）
 - 上下文/事件保留清理任务、真实 Provider History reconciliation 的 live smoke、回答质量人工验收；
 - 真实 NotebookLM/Z-Library 浏览器交互测试。本阶段只完成离线 Fake/contract/API/installed-wheel E2E，用户将另行手工测试。
 
@@ -490,7 +490,7 @@ POST /api/chat-runs/{run_id}/retry
 GET  /api/chat-runs/{run_id}/events
 ```
 
-所有状态变更接口执行同源 Session + CSRF，或在没有 Cookie 时执行每安装实例 Bearer；SSE 只接受浏览器 Session。Conversation 默认范围仍是 `book`；Message `query_scope` 在 R4 之后接受 `book`、`selection` 与 `notes`，`chapters` 被显式拒绝。本节后续包含 `chapters`、save-as-note、generate-content、archive/delete/reset 等示例时，它们仍是 Proposed 目标，不是已部署路由。
+所有状态变更接口执行同源 Session + CSRF，或在没有 Cookie 时执行每安装实例 Bearer；SSE 只接受浏览器 Session。Conversation 默认范围仍是 `book`；Message `query_scope` 在 R4 之后接受 `book`、`selection` 与 `notes`，`chapters` 被显式拒绝。本节后续包含 `chapters`、generate-content、archive/delete/reset 等示例时，它们仍是 Proposed 目标，不是已部署路由；`save-as-note` 已由 C1 部署。
 
 ### 8.1 获取或建立唯一活跃 Conversation
 

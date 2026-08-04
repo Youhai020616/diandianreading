@@ -26,6 +26,7 @@ from diandianreading.domain import (
     RightsBasis,
     UnsafePathError,
 )
+from diandianreading.interfaces.c1_demo import run_c1_demo
 from diandianreading.interfaces.phase0_demo import run_phase0_demo
 from diandianreading.interfaces.phase1_demo import run_phase1_demo
 from diandianreading.interfaces.phase2_demo import run_phase2_demo
@@ -175,6 +176,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     r4.add_argument("--app-home", type=Path, required=True)
     r4.add_argument("--workspace", type=Path, required=True)
+
+    c1 = subparsers.add_parser(
+        "c1-e2e",
+        help="save an AI answer as a knowledge note over the secured local API",
+    )
+    c1.add_argument("--app-home", type=Path, required=True)
+    c1.add_argument("--workspace", type=Path, required=True)
     return parser
 
 
@@ -194,6 +202,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.command == "r4-e2e":
             _print_result(run_r4_demo(args.app_home, args.workspace))
+            return 0
+        if args.command == "c1-e2e":
+            _print_result(run_c1_demo(args.app_home, args.workspace))
             return 0
         if args.command in {"auth", "import", "jobs", "worker"}:
             result = asyncio.run(_run_product_command(args))

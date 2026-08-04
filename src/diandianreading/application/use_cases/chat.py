@@ -496,6 +496,9 @@ class ChatUseCase:
         _require_local_id(client_retry_id, "Client retry ID")
         return self._repository.retry(run_id, client_retry_id, now=self._clock())
 
+    def get_message(self, message_id: str) -> ChatMessage | None:
+        return self._repository.get_message(message_id)
+
     def list_messages(
         self,
         conversation_id: str,

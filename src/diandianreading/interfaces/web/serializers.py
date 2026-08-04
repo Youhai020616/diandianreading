@@ -32,6 +32,7 @@ from diandianreading.domain.chat import (
     Conversation,
     EffectiveBookScope,
 )
+from diandianreading.domain.content import KnowledgeNote
 from diandianreading.domain.jobs import JobEvent
 
 
@@ -362,4 +363,24 @@ def chat_run_event(value: ChatRunEvent) -> dict[str, object]:
         "phase": value.phase.value if value.phase is not None else None,
         "error": chat_error(value.error),
         "created_at": iso(value.created_at),
+    }
+
+
+def knowledge_note(value: KnowledgeNote) -> dict[str, object]:
+    """Serialise a standalone knowledge item.
+
+    Distinct from ``annotation``: ai-chat.md's ``query_scope.note_ids`` refers to
+    annotation identifiers, so the payload names this entity explicitly.
+    """
+
+    return {
+        "id": value.id,
+        "book_id": value.book_id,
+        "source_kind": value.source_kind.value,
+        "source_id": value.source_id,
+        "title": value.title,
+        "body": value.body,
+        "created_at": iso(value.created_at),
+        "updated_at": iso(value.updated_at),
+        "version": value.version,
     }

@@ -37,6 +37,10 @@ from diandianreading.application.use_cases.chat import (
     ChatUseCaseError,
     SubmitChatCommand,
 )
+from diandianreading.application.use_cases.content import (
+    EmptyNoteBodyError,
+    KnowledgeNoteService,
+)
 from diandianreading.application.use_cases.import_book import ImportBookUseCase
 from diandianreading.application.use_cases.import_source import ImportSubmissionUseCase
 from diandianreading.application.use_cases.jobs import (
@@ -72,6 +76,7 @@ from diandianreading.domain.chat import (
     QueryScopeType,
     SelectionLocator,
 )
+from diandianreading.domain.content import KnowledgeNoteSource
 from diandianreading.infrastructure.local_api import (
     AuthenticatedSession,
     BootstrapAuthenticationError,
@@ -143,6 +148,7 @@ class WebRuntime(Protocol):
     catalog: CatalogService
     reading: ReadingService
     annotations: AnnotationService
+    notes: KnowledgeNoteService
     chat: ChatUseCase
     security: LocalApiSecurityService
     worker: WorkerRunner
@@ -714,6 +720,71 @@ def create_web_app(
         return JSONResponse(
             serializers.envelope(serializers.conversation_result(result)),
             status_code=201 if result.created else 200,
+        )
+
+    @app.post("/api/messages/{message_id}/save-as-note", status_code=201)
+    async def save_message_as_note(message_id: str, request: Request) -> JSONResponse:
+        _ = authorize(request, mutate=True, limiter=reader_limiter)
+        payload = await _read_json_object(request, http_config.max_json_bytes)
+        _require_exact_fields(payload, required=set(), optional={"title"})
+        message = runtime.chat.get_message(message_id)
+        if message is None:
+            raise ApiProblem(404, "NOT_FOUND", "Message was not found")
+        if message.role is not ChatMessageRole.ASSISTANT:
+            raise ApiProblem(422, "VALIDATION", "Only an assistant answer can be saved as a note")
+        conversation = runtime.chat.get_conversation(message.conversation_id)
+        if conversation is None:
+            raise ApiProblem(404, "NOT_FOUND", "Conversation was not found")
+        title = payload.get("title")
+        if title is not None and not isinstance(title, str):
+            raise ApiProblem(422, "VALIDATION", "title must be a string")
+        try:
+            saved = runtime.notes.save_from_source(
+                note_id=f"note-{uuid4()}",
+                book_id=conversation.book_id,
+                source_kind=KnowledgeNoteSource.CHAT_MESSAGE,
+                source_id=message.id,
+                body=message.content,
+                title=title,
+            )
+        except EmptyNoteBodyError as error:
+            raise ApiProblem(422, "VALIDATION", str(error)) from error
+        # A repeat resolves to the stored note, so the second call is a 200 on an
+        # existing resource rather than a 201 that claims a creation it did not do.
+        return JSONResponse(
+            serializers.envelope(
+                {
+                    "knowledge_note": serializers.knowledge_note(saved.note),
+                    "created": saved.created,
+                }
+            ),
+            status_code=201 if saved.created else 200,
+        )
+
+    @app.get("/api/books/{book_id}/knowledge-notes")
+    async def list_knowledge_notes(book_id: str, request: Request) -> dict[str, object]:
+        _ = authorize(request)
+        limit = _annotation_limit(request)
+        cursor = _annotation_cursor(request)
+        notes = runtime.notes.list_for_book(
+            book_id,
+            limit=limit,
+            before_created_at=None if cursor is None else cursor.created_at,
+            before_id=None if cursor is None else cursor.id,
+        )
+        next_cursor = notes[-1] if len(notes) == limit else None
+        return serializers.envelope(
+            {
+                "knowledge_notes": [serializers.knowledge_note(item) for item in notes],
+                "next_cursor": (
+                    {
+                        "created_at": serializers.iso(next_cursor.created_at),
+                        "id": next_cursor.id,
+                    }
+                    if next_cursor is not None
+                    else None
+                ),
+            }
         )
 
     @app.get("/api/conversations/{conversation_id}/messages")

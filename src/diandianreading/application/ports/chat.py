@@ -245,6 +245,8 @@ class ChatRepository(Protocol):
         """Atomically insert the pair and Run, replay, or reject conflict/busy."""
         ...
 
+    def get_message(self, message_id: str) -> ChatMessage | None: ...
+
     def list_messages(
         self,
         conversation_id: str,

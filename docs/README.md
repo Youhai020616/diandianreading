@@ -35,6 +35,7 @@
 | [R4 Chat 缝合 E2E](development/r4-e2e.md) | 选区/笔记范围、补充上下文定界与引用本地定位验证 | Active |
 | [D1 Sidecar E2E](development/d1-sidecar-e2e.md) | Sidecar 控制帧、PyInstaller Artifact 与 Playwright Provisioning 可行性验证 | Active |
 | [D2 Launcher E2E](development/d2-launcher-e2e.md) | Tauri 壳、单实例、端口与附着拒绝、无孤儿进程与未签名 `.app` 验证 | Active |
+| [C1 KnowledgeNote E2E](development/c1-e2e.md) | 知识笔记存储、`save-as-note` 幂等与两种"笔记"的边界验证 | Active |
 | [手动验收清单](development/manual-acceptance-checklist.md) | 维护者在 Mac 上执行的浏览器 UI 与真实 Provider 冒烟清单 | Draft |
 
 ## 推荐阅读顺序

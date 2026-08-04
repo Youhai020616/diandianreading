@@ -9,6 +9,7 @@ from pathlib import Path
 from diandianreading.application.use_cases.annotations import AnnotationService
 from diandianreading.application.use_cases.catalog import CatalogService
 from diandianreading.application.use_cases.chat import ChatUseCase
+from diandianreading.application.use_cases.content import KnowledgeNoteService
 from diandianreading.application.use_cases.import_book import ImportBookUseCase
 from diandianreading.application.use_cases.import_source import (
     DurableImportSourceMaterializer,
@@ -50,6 +51,9 @@ from diandianreading.infrastructure.persistence.annotations import (
     SQLiteAnnotationRepository,
 )
 from diandianreading.infrastructure.persistence.chat import SQLiteChatRepository
+from diandianreading.infrastructure.persistence.content import (
+    SQLiteKnowledgeNoteRepository,
+)
 from diandianreading.infrastructure.persistence.reading import (
     SQLiteReadingProgressRepository,
 )
@@ -134,6 +138,7 @@ class ApplicationRuntime:
     catalog: CatalogService
     reading: ReadingService
     annotations: AnnotationService
+    notes: KnowledgeNoteService
     chat: ChatUseCase
     security: LocalApiSecurityService
     install_tokens: InstallTokenStore
@@ -244,6 +249,7 @@ def create_runtime(
         repository=SQLiteAnnotationRepository(database),
         reading=reading,
     )
+    notes = KnowledgeNoteService(SQLiteKnowledgeNoteRepository(database))
     reading_bridge = ReadingChatBridge(
         reading=reading,
         unit_of_work=unit_of_work,
@@ -279,6 +285,7 @@ def create_runtime(
         catalog=catalog,
         reading=reading,
         annotations=annotations,
+        notes=notes,
         chat=chat,
         security=security,
         install_tokens=install_tokens,
