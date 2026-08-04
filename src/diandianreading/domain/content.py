@@ -249,7 +249,7 @@ class ContentRevision:
 
 
 @dataclass(frozen=True, slots=True)
-class GeneratedContent:
+class ContentAsset:
     """A content asset and its lifecycle position."""
 
     id: str
@@ -263,17 +263,17 @@ class GeneratedContent:
 
     def __post_init__(self) -> None:
         if not self.id or not self.book_id:
-            raise ValueError("GeneratedContent id and book_id are required")
+            raise ValueError("ContentAsset id and book_id are required")
         if self.version < 0:
-            raise ValueError("GeneratedContent version cannot be negative")
+            raise ValueError("ContentAsset version cannot be negative")
         if self.latest_revision_number < 0:
-            raise ValueError("GeneratedContent latest_revision_number cannot be negative")
+            raise ValueError("ContentAsset latest_revision_number cannot be negative")
         if self.status in {ContentStatus.QUEUED, ContentStatus.GENERATING}:
             return
         if self.latest_revision_number < 1:
             raise ValueError(f"{self.status.value} content requires at least one revision")
 
-    def transition(self, to: ContentStatus, *, now: datetime | None = None) -> GeneratedContent:
+    def transition(self, to: ContentStatus, *, now: datetime | None = None) -> ContentAsset:
         """Move to ``to`` when the lifecycle graph allows it.
 
         Raises:
@@ -285,7 +285,7 @@ class GeneratedContent:
                 f"Content cannot move from {self.status.value} to {to.value}"
             )
         moment = now or utc_now()
-        return GeneratedContent(
+        return ContentAsset(
             id=self.id,
             book_id=self.book_id,
             request=self.request,

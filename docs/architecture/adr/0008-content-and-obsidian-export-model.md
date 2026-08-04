@@ -37,7 +37,7 @@ Obsidian 导出是本产品**第一个向用户文件系统写入的功能**,风
 
 锚定在正文的想法仍然是 `Annotation`;由 Annotation 派生 Note 时保留 `source_id` 指回,两者不互相替代。
 
-### 2. `GeneratedContent` 冻结全状态机,P5 只实现到 `approved`
+### 2. `ContentAsset` 冻结全状态机,P5 只实现到 `approved`
 
 状态机按 PRD §6.5 冻结为 `queued → generating → draft → editing → approved → scheduled → published`。P5 实现到 `approved`;`scheduled` 与 `published` 属于 P6 发布轨,**在 domain 中保留判别式但由用例显式拒绝**,与 `QueryScopeType.CHAPTERS` 的处理方式一致——保留判别式让越界请求成为显式错误,而不是被静默放宽。
 

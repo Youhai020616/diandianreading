@@ -8,6 +8,7 @@ from diandianreading.domain.content import (
     MAX_CONTENT_SOURCES,
     NOTE_BODY_MAX_CODEPOINTS,
     PUBLISHING_STATUSES,
+    ContentAsset,
     ContentLength,
     ContentRevision,
     ContentSource,
@@ -15,7 +16,6 @@ from diandianreading.domain.content import (
     ContentStatus,
     ContentTone,
     ContentType,
-    GeneratedContent,
     GenerationRequest,
     Note,
     NoteSourceKind,
@@ -44,8 +44,8 @@ def make_content(
     *,
     status: ContentStatus = ContentStatus.DRAFT,
     latest_revision_number: int = 1,
-) -> GeneratedContent:
-    return GeneratedContent(
+) -> ContentAsset:
+    return ContentAsset(
         id="content-1",
         book_id="book-1",
         request=make_request(),
@@ -169,7 +169,7 @@ class TestGeneratedContentLifecycle:
         content = make_content(status=ContentStatus.QUEUED, latest_revision_number=0)
         content = content.transition(ContentStatus.GENERATING)
         assert content.status is ContentStatus.GENERATING
-        content = GeneratedContent(
+        content = ContentAsset(
             id=content.id,
             book_id=content.book_id,
             request=content.request,
@@ -215,7 +215,7 @@ class TestGeneratedContentLifecycle:
 
     def test_rejects_missing_identifiers_and_negative_counters(self) -> None:
         with pytest.raises(ValueError, match="id and book_id are required"):
-            GeneratedContent(
+            ContentAsset(
                 id="",
                 book_id="book-1",
                 request=make_request(),
