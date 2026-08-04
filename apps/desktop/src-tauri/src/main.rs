@@ -27,6 +27,9 @@ const WINDOW_LABEL: &str = "main";
 /// How long the launcher waits for the sidecar to authenticate itself.
 const READY_TIMEOUT: Duration = Duration::from_secs(90);
 
+/// How long a failed startup waits for the child's own diagnostic line.
+const DIAGNOSTIC_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// Shared launcher lifecycle state.
 struct Launcher {
     machine: Mutex<LauncherStateMachine>,
@@ -76,18 +79,49 @@ fn is_product_origin(url: &Url) -> bool {
     url.scheme() == "http" && url.host_str() == Some("localhost") && url.port() == Some(3000)
 }
 
-/// Read at most one bounded stderr line and reduce it to a typed category.
-fn classify_stderr(stderr: ChildStderr) -> StartupErrorCode {
-    let mut line = String::new();
-    let mut limited = BufReader::new(stderr).take(MAX_DIAGNOSTIC_BYTES as u64 + 1);
-    if limited.read_line(&mut line).is_err() {
-        return StartupErrorCode::Unrecognised;
-    }
-    classify(line.trim_end())
+/// Classify the sidecar's first stderr line, then keep the pipe drained.
+///
+/// Draining matters as much as classifying. A piped stderr that nobody reads
+/// fills at roughly one buffer's worth of output and then blocks the child
+/// forever, which would strand a long-running session behind a write that never
+/// completes. The reader therefore keeps consuming for the life of the child and
+/// discards everything after the one line it reports.
+fn spawn_stderr_reader(stderr: ChildStderr) -> mpsc::Receiver<StartupErrorCode> {
+    let (sender, receiver) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(stderr);
+        let mut first = String::new();
+        let code = {
+            let mut limited = Read::take(&mut reader, MAX_DIAGNOSTIC_BYTES as u64 + 1);
+            match limited.read_line(&mut first) {
+                Ok(0) | Err(_) => StartupErrorCode::Unrecognised,
+                Ok(_) => classify(first.trim_end()),
+            }
+        };
+        let _ = sender.send(code);
+        let _ = std::io::copy(&mut reader, &mut std::io::sink());
+    });
+    receiver
+}
+
+/// Open the single product window on the verified origin.
+fn open_product_window(handle: &AppHandle, url: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let target: Url = url.parse()?;
+    WebviewWindowBuilder::new(handle, WINDOW_LABEL, WebviewUrl::External(target))
+        .title("diandianreading")
+        .inner_size(1280.0, 860.0)
+        .min_inner_size(960.0, 640.0)
+        .on_navigation(is_product_origin)
+        .build()?;
+    Ok(())
 }
 
 /// Start the bundled sidecar and return the one-time product URL.
 fn start_sidecar(app: &AppHandle, launcher: &Launcher) -> Result<String, StartupErrorCode> {
+    // Probing releases the port before the child binds it, so this check is an
+    // early, friendly refusal rather than a reservation. The sidecar performs the
+    // authoritative bind and fails closed with SIDECAR_PORT_UNAVAILABLE if it
+    // loses the race; neither side ever falls back to another port.
     if probe_fixed_port() == PortAvailability::Occupied {
         return Err(StartupErrorCode::PortUnavailable);
     }
@@ -114,7 +148,7 @@ fn start_sidecar(app: &AppHandle, launcher: &Launcher) -> Result<String, Startup
     launcher.advance(LauncherState::SidecarStarting);
 
     let stdout = child.stdout.take().ok_or(StartupErrorCode::StartFailed)?;
-    let stderr = child.stderr.take();
+    let diagnostics = child.stderr.take().map(spawn_stderr_reader);
     let mut supervised = SupervisedChild::new(child);
 
     // The reader runs off-thread so a child that never speaks cannot hang the
@@ -127,7 +161,9 @@ fn start_sidecar(app: &AppHandle, launcher: &Launcher) -> Result<String, Startup
     let url = match receiver.recv_timeout(READY_TIMEOUT) {
         Ok(Ok(url)) => url,
         Ok(Err(_)) | Err(_) => {
-            let code = stderr.map_or(StartupErrorCode::StartFailed, classify_stderr);
+            let code = diagnostics
+                .and_then(|codes| codes.recv_timeout(DIAGNOSTIC_TIMEOUT).ok())
+                .unwrap_or(StartupErrorCode::StartFailed);
             let _ = supervised.shutdown();
             return Err(code);
         }
@@ -160,14 +196,17 @@ fn main() {
             match start_sidecar(&handle, &launcher) {
                 Ok(url) => {
                     launcher.advance(LauncherState::SidecarReady);
-                    let target: Url = url.parse()?;
-                    WebviewWindowBuilder::new(&handle, WINDOW_LABEL, WebviewUrl::External(target))
-                        .title("diandianreading")
-                        .inner_size(1280.0, 860.0)
-                        .min_inner_size(960.0, 640.0)
-                        .on_navigation(is_product_origin)
-                        .build()?;
-                    launcher.advance(LauncherState::WindowReady);
+                    // A window failure must reap the child here rather than rely
+                    // on teardown order: the sidecar is already running and
+                    // already owns port 3000.
+                    match open_product_window(&handle, &url) {
+                        Ok(()) => launcher.advance(LauncherState::WindowReady),
+                        Err(error) => {
+                            launcher.advance(LauncherState::Failed);
+                            launcher.shutdown();
+                            return Err(error);
+                        }
+                    }
                 }
                 Err(code) => {
                     // Only the category reaches the terminal; child text is untrusted.
