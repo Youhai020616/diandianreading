@@ -109,11 +109,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return run(ApplicationPaths(args.home))
-    except (ControlFrameError, OSError, ValueError):
-        _emit_startup_failure(sys.stderr)
+    except (ControlFrameError, OSError, ValueError) as error:
+        _emit_startup_failure(sys.stderr, _safe_startup_error_code(error))
         return 2
     except Exception:
-        _emit_startup_failure(sys.stderr)
+        _emit_startup_failure(sys.stderr, "SIDECAR_START_FAILED")
         return 1
 
 
@@ -189,9 +189,21 @@ def _require_port_3000_available() -> None:
             raise ValueError("The required localhost:3000 port is unavailable") from error
 
 
-def _emit_startup_failure(stream: TextIO) -> None:
+def _safe_startup_error_code(error: BaseException) -> str:
+    """Classify expected local startup failures without exposing values or paths."""
+
+    message = str(error)
+    if "browser" in message.casefold():
+        return "SIDECAR_BROWSER_UNAVAILABLE"
+    if "port" in message.casefold():
+        return "SIDECAR_PORT_UNAVAILABLE"
+    return "SIDECAR_START_FAILED"
+
+
+def _emit_startup_failure(stream: TextIO, code: str) -> None:
     stream.write(
-        '{"status":"error","error":{"code":"SIDECAR_START_FAILED",'
-        '"message":"Desktop sidecar could not start","retryable":false}}\n'
+        '{"status":"error","error":{"code":"'
+        + code
+        + '","message":"Desktop sidecar could not start","retryable":false}}\n'
     )
     stream.flush()
