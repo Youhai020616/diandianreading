@@ -94,6 +94,18 @@ def test_frozen_sidecar_fails_closed_without_a_valid_browser_manifest(
         sidecar_module._configure_bundled_browser_runtime()
 
 
+def test_startup_failure_codes_are_safe_and_actionable() -> None:
+    assert sidecar_module._safe_startup_error_code(
+        ValueError("Bundled browser is unavailable")
+    ) == ("SIDECAR_BROWSER_UNAVAILABLE")
+    assert sidecar_module._safe_startup_error_code(
+        ValueError("The required port is unavailable")
+    ) == ("SIDECAR_PORT_UNAVAILABLE")
+    assert sidecar_module._safe_startup_error_code(ValueError("/private/user-data")) == (
+        "SIDECAR_START_FAILED"
+    )
+
+
 def test_emit_ready_control_frame_writes_only_one_newline_delimited_frame() -> None:
     stream = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
 
