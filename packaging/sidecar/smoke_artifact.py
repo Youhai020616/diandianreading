@@ -57,8 +57,9 @@ def main() -> int:
         finally:
             process.terminate()
             process.wait(timeout=20)
-            if process.stderr is not None and process.stderr.read():
-                raise ValueError("Sidecar wrote unexpected startup diagnostics")
+            diagnostics = process.stderr.read() if process.stderr is not None else ""
+            if diagnostics:
+                raise ValueError(f"Sidecar startup diagnostics: {diagnostics.strip()}")
     return 0
 
 
