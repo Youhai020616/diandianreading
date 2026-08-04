@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from diandianreading.infrastructure.vault.obsidian import (
+from diandianreading.domain.vault import (
     DIANDIAN_HASH_KEY,
     DIANDIAN_ID_KEY,
     MAX_SEGMENT_CODEPOINTS,

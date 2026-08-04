@@ -1,4 +1,8 @@
-"""Path, frontmatter, and deep-link primitives for Obsidian export.
+"""Path, frontmatter, and deep-link rules for Obsidian export.
+
+These live in the domain rather than beside the file writer because they are
+contract rules, not I/O: what a safe path segment is, what identifies an exported
+file, and what body text may never be allowed to forge.
 
 This module is the security boundary of C2. Everything it handles is untrusted:
 directory names come from book metadata, body text comes from the provider, and

@@ -28,6 +28,7 @@ from diandianreading.domain import (
 )
 from diandianreading.interfaces.c1_demo import run_c1_demo
 from diandianreading.interfaces.c1b_demo import run_c1b_demo
+from diandianreading.interfaces.c2_demo import run_c2_demo
 from diandianreading.interfaces.phase0_demo import run_phase0_demo
 from diandianreading.interfaces.phase1_demo import run_phase1_demo
 from diandianreading.interfaces.phase2_demo import run_phase2_demo
@@ -191,6 +192,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     c1b.add_argument("--app-home", type=Path, required=True)
     c1b.add_argument("--workspace", type=Path, required=True)
+
+    c2 = subparsers.add_parser(
+        "c2-e2e",
+        help="export a book to an Obsidian vault and reconcile repeats, renames, and edits",
+    )
+    c2.add_argument("--app-home", type=Path, required=True)
+    c2.add_argument("--workspace", type=Path, required=True)
     return parser
 
 
@@ -216,6 +224,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.command == "c1b-e2e":
             _print_result(run_c1b_demo(args.app_home, args.workspace))
+            return 0
+        if args.command == "c2-e2e":
+            _print_result(run_c2_demo(args.app_home, args.workspace))
             return 0
         if args.command in {"auth", "import", "jobs", "worker"}:
             result = asyncio.run(_run_product_command(args))

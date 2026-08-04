@@ -155,6 +155,22 @@ class ContentGenerationUseCase:
     def list_revisions(self, content_id: str) -> Sequence[ContentRevision]:
         return self._assets.list_revisions(content_id)
 
+    def list_drafts(self, book_id: str, *, limit: int = 100) -> tuple[ContentRevision, ...]:
+        """Latest revision of every settled asset for one book.
+
+        Export consumes drafts, not tasks: an asset still queued or generating
+        has no revision to write, so it is skipped rather than exported empty.
+        """
+
+        drafts = []
+        for asset in self._assets.list_for_book(book_id, limit=limit):
+            if asset.latest_revision_number < 1:
+                continue
+            revisions = self._assets.list_revisions(asset.id)
+            if revisions:
+                drafts.append(revisions[-1])
+        return tuple(drafts)
+
     def request_cancel(self, content_id: str, *, now: datetime | None = None) -> bool:
         return self._assets.request_cancel(content_id, now=now or utc_now())
 

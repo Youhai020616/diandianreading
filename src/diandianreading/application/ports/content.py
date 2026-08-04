@@ -14,6 +14,7 @@ index is what guarantees it rather than a read-then-write check that could race.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
@@ -22,6 +23,7 @@ from diandianreading.domain.content import (
     ContentFailureCode,
     ContentLeaseToken,
     ContentRevision,
+    ExportTargetKind,
     KnowledgeNote,
     KnowledgeNoteSource,
 )
@@ -101,3 +103,45 @@ class ContentAssetRepository(Protocol):
     def list_revisions(self, content_id: str) -> Sequence[ContentRevision]: ...
 
     def list_for_book(self, book_id: str, *, limit: int) -> Sequence[ContentAsset]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class VaultConfig:
+    """The single active Obsidian vault."""
+
+    id: str
+    name: str
+    root_path: str
+    version: int
+
+
+@dataclass(frozen=True, slots=True)
+class ExportRecord:
+    """What the exporter last wrote for one target."""
+
+    id: str
+    vault_id: str
+    target_kind: ExportTargetKind
+    target_id: str
+    vault_relpath: str
+    exported_sha256: str
+    exported_at: datetime
+    version: int
+
+
+class VaultRepository(Protocol):
+    def set_active(self, *, vault_id: str, name: str, root_path: str, now: datetime) -> VaultConfig:
+        """Configure the active vault, replacing any previous one."""
+        ...
+
+    def get_active(self) -> VaultConfig | None: ...
+
+
+class ObsidianExportStateRepository(Protocol):
+    def get(
+        self, *, vault_id: str, target_kind: ExportTargetKind, target_id: str
+    ) -> ExportRecord | None: ...
+
+    def upsert(self, record: ExportRecord) -> None: ...
+
+    def list_for_vault(self, vault_id: str) -> Sequence[ExportRecord]: ...
