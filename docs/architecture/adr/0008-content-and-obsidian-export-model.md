@@ -52,6 +52,16 @@ R4 的 `query_scope.note_ids` 解析的是**标注 ID**,不是 `notes` 表的行
 
 `generate-content` 复用既有 Job/Saga 基础设施,新增 `content_generation` Job 类型,继承 Lease/fencing、取消竞态与模糊结果协议;不新建第二套任务机制。
 
+### 2b. 内容资产同时是可恢复任务单元(C1b 补充)
+
+C0 只按"内容资产"的形状冻结了 `generated_contents`,遗漏了它还要承担**可恢复任务**的职责:C1b 的退出标准要求生成过程能扛住 Worker 崩溃、过期 Lease、取消竞态与模糊结果。`chat_runs` 早已具备这些列,而 `generated_contents` 没有。
+
+migration `0010` 补齐 `lease_owner`/`lease_expires_at`/`lease_generation`/`attempt`/`cancel_requested_at`/`provider_request_started_at`/`provider_operation_id`/`failure_code`/`completed_at`。**不改写 `0009`**:它已合并且带 checksum 校验,编辑会让所有已迁移数据库校验失败。
+
+SQLite 无法给既有表追加 CHECK,重建表又会重写 `0009` 刚建的表。因此 Lease 不变量由仓储与两个部分唯一索引保证——`generated_contents_single_lease` 让一行同时只能有一个持有者,`generated_contents_provider_operation` 让一次远程生成只对应一个操作 ID,重试不会产生第二份远程产物。
+
+**任务单元即内容资产**:`generate-content` 返回的 `job_id` 就是内容资产 ID,状态 URL 指向该资产。不复用 `jobs` 表,因为它的 `JobStep` 枚举(`acquiring`/`storing`/`uploading`/…)是导入专用的,塞进生成步骤要拓宽其 CHECK 约束,把两条互不相干的生命周期挤进一张表。
+
 ### 3. 每个修订标注作者归属
 
 `content_revisions` 每行带 `author_kind`(`ai` / `human`)。首个修订必为 `ai`;用户编辑产生新的 `human` 修订,原始稿不可变。这直接满足"用户能够区分 AI 原始稿和自己的修改稿",并让"重新生成"成为追加修订而非覆盖。

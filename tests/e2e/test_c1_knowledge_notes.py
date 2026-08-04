@@ -32,7 +32,7 @@ def test_c1_installed_entrypoint_saves_answers_as_notes_offline(tmp_path) -> Non
     assert completed.stderr == ""
     assert json.loads(completed.stdout) == {
         "status": "ok",
-        "schema_version": 9,
+        "schema_version": 10,
         "knowledge_note_count": 1,
         "repeat_returned_same_note": True,
         "annotation_notes_excluded": True,

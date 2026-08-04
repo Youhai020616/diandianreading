@@ -169,7 +169,7 @@ def test_cli_runs_phase2_notebooklm_adapter_demo(tmp_path, capsys) -> None:
     assert captured.err == ""
     payload = json.loads(captured.out)
     assert payload["status"] == "ok"
-    assert payload["schema_version"] == 9
+    assert payload["schema_version"] == 10
     assert payload["citation_count"] == payload["source_count"]
     assert payload["provider_write_intent_count"] == payload["remote_operation_count"]
     assert str(credentials_root) not in captured.out
@@ -194,7 +194,7 @@ def test_cli_runs_phase3_recoverable_workflow_demo(tmp_path, capsys) -> None:
     assert captured.err == ""
     payload = json.loads(captured.out)
     assert payload["status"] == "ok"
-    assert payload["schema_version"] == 9
+    assert payload["schema_version"] == 10
     assert payload["crash_boundary_count"] == 11
     assert payload["completed_job_count"] == 13
     assert payload["cancelled_job_count"] == 1
@@ -228,7 +228,7 @@ def test_cli_runs_phase4_governed_zlibrary_adapter_demo(tmp_path, capsys) -> Non
     assert captured.err == ""
     payload = json.loads(captured.out)
     assert payload["status"] == "ok"
-    assert payload["schema_version"] == 9
+    assert payload["schema_version"] == 10
     assert payload["default_disabled_gate_verified"] is True
     assert payload["bound_content_hash_count"] == 2
     assert payload["expect_download_count"] == 2
@@ -290,7 +290,7 @@ def test_cli_runs_phase5_secured_unified_product_demo(tmp_path, capsys) -> None:
         "job_sse_verified": True,
         "job_status": "completed",
         "provider_status_verified": True,
-        "schema_version": 9,
+        "schema_version": 10,
         "session_bootstrap_verified": True,
         "status": "ok",
     }

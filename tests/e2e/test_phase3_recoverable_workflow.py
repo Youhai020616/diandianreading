@@ -33,7 +33,7 @@ def test_phase3_cli_recovers_every_crash_boundary_and_refuses_overwrite(tmp_path
     assert completed.stderr == ""
     payload = json.loads(completed.stdout)
     assert payload["status"] == "ok"
-    assert payload["schema_version"] == 9
+    assert payload["schema_version"] == 10
     assert payload["crash_boundary_count"] == 11
     assert payload["completed_job_count"] == 13
     assert payload["cancelled_job_count"] == 1
