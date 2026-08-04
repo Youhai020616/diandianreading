@@ -102,6 +102,11 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM", "RUF"]
 
+[tool.ruff.lint.per-file-ignores]
+# Chinese prompt templates sent to the provider. Fullwidth punctuation is correct
+# typography for the target language, not an ambiguous-character mistake.
+"src/diandianreading/application/use_cases/content_generation.py" = ["RUF001"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["diandianreading"]
 

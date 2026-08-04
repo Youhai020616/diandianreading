@@ -10,6 +10,7 @@ from diandianreading.application.use_cases.annotations import AnnotationService
 from diandianreading.application.use_cases.catalog import CatalogService
 from diandianreading.application.use_cases.chat import ChatUseCase
 from diandianreading.application.use_cases.content import KnowledgeNoteService
+from diandianreading.application.use_cases.content_generation import ContentGenerationUseCase
 from diandianreading.application.use_cases.import_book import ImportBookUseCase
 from diandianreading.application.use_cases.import_source import (
     DurableImportSourceMaterializer,
@@ -52,6 +53,7 @@ from diandianreading.infrastructure.persistence.annotations import (
 )
 from diandianreading.infrastructure.persistence.chat import SQLiteChatRepository
 from diandianreading.infrastructure.persistence.content import (
+    SQLiteContentAssetRepository,
     SQLiteKnowledgeNoteRepository,
 )
 from diandianreading.infrastructure.persistence.reading import (
@@ -139,6 +141,7 @@ class ApplicationRuntime:
     reading: ReadingService
     annotations: AnnotationService
     notes: KnowledgeNoteService
+    content_generation: ContentGenerationUseCase
     chat: ChatUseCase
     security: LocalApiSecurityService
     install_tokens: InstallTokenStore
@@ -250,6 +253,11 @@ def create_runtime(
         reading=reading,
     )
     notes = KnowledgeNoteService(SQLiteKnowledgeNoteRepository(database))
+    content_generation = ContentGenerationUseCase(
+        assets=SQLiteContentAssetRepository(database),
+        knowledge_generation=notebooklm_adapter,
+        mappings=mappings,
+    )
     reading_bridge = ReadingChatBridge(
         reading=reading,
         unit_of_work=unit_of_work,
@@ -267,7 +275,9 @@ def create_runtime(
     install_tokens = InstallTokenStore(effective_paths.credentials_root / "local-api")
     _ = install_tokens.ensure_initial()
     security = LocalApiSecurityService(database, install_tokens)
-    worker = WorkerRunner(imports=imports, chat=chat, worker_id="local-worker")
+    worker = WorkerRunner(
+        imports=imports, chat=chat, content=content_generation, worker_id="local-worker"
+    )
 
     return ApplicationRuntime(
         paths=effective_paths,
@@ -286,6 +296,7 @@ def create_runtime(
         reading=reading,
         annotations=annotations,
         notes=notes,
+        content_generation=content_generation,
         chat=chat,
         security=security,
         install_tokens=install_tokens,

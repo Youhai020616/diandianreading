@@ -32,7 +32,7 @@ from diandianreading.domain.chat import (
     Conversation,
     EffectiveBookScope,
 )
-from diandianreading.domain.content import KnowledgeNote
+from diandianreading.domain.content import ContentAsset, ContentRevision, KnowledgeNote
 from diandianreading.domain.jobs import JobEvent
 
 
@@ -383,4 +383,45 @@ def knowledge_note(value: KnowledgeNote) -> dict[str, object]:
         "created_at": iso(value.created_at),
         "updated_at": iso(value.updated_at),
         "version": value.version,
+    }
+
+
+def content_asset(value: ContentAsset) -> dict[str, object]:
+    return {
+        "id": value.id,
+        "book_id": value.book_id,
+        "content_type": value.request.content_type.value,
+        "status": value.status.value,
+        "language": value.request.language,
+        "tone": value.request.tone.value,
+        "length": value.request.length.value,
+        "target_platform": value.request.target_platform,
+        "require_citations": value.request.require_citations,
+        "first_person": value.request.first_person,
+        "sources": [
+            {"kind": source.kind.value, "reference": source.reference}
+            for source in value.request.sources
+        ],
+        "latest_revision_number": value.latest_revision_number,
+        "created_at": iso(value.created_at),
+        "updated_at": iso(value.updated_at),
+        "version": value.version,
+    }
+
+
+def content_revision(value: ContentRevision) -> dict[str, object]:
+    """Authorship is part of the payload, not an internal detail.
+
+    A reader must be able to tell the model's draft from their own edit months
+    later; hiding ``author_kind`` would make that impossible in the UI.
+    """
+
+    return {
+        "id": value.id,
+        "content_id": value.content_id,
+        "revision_number": value.revision_number,
+        "author_kind": value.author_kind.value,
+        "title": value.title,
+        "body": value.body,
+        "created_at": iso(value.created_at),
     }

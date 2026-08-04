@@ -41,6 +41,10 @@ from diandianreading.application.use_cases.content import (
     EmptyNoteBodyError,
     KnowledgeNoteService,
 )
+from diandianreading.application.use_cases.content_generation import (
+    ContentGenerationUseCase,
+    ContentNotFoundError,
+)
 from diandianreading.application.use_cases.import_book import ImportBookUseCase
 from diandianreading.application.use_cases.import_source import ImportSubmissionUseCase
 from diandianreading.application.use_cases.jobs import (
@@ -76,7 +80,15 @@ from diandianreading.domain.chat import (
     QueryScopeType,
     SelectionLocator,
 )
-from diandianreading.domain.content import KnowledgeNoteSource
+from diandianreading.domain.content import (
+    ContentLength,
+    ContentSource,
+    ContentSourceKind,
+    ContentTone,
+    ContentType,
+    GenerationRequest,
+    KnowledgeNoteSource,
+)
 from diandianreading.infrastructure.local_api import (
     AuthenticatedSession,
     BootstrapAuthenticationError,
@@ -149,6 +161,7 @@ class WebRuntime(Protocol):
     reading: ReadingService
     annotations: AnnotationService
     notes: KnowledgeNoteService
+    content_generation: ContentGenerationUseCase
     chat: ChatUseCase
     security: LocalApiSecurityService
     worker: WorkerRunner
@@ -786,6 +799,89 @@ def create_web_app(
                 ),
             }
         )
+
+    @app.post("/api/messages/{message_id}/generate-content", status_code=202)
+    async def generate_content(message_id: str, request: Request) -> JSONResponse:
+        _ = authorize(request, mutate=True, limiter=reader_limiter)
+        payload = await _read_json_object(request, http_config.max_json_bytes)
+        _require_exact_fields(
+            payload,
+            required={"content_type"},
+            optional={
+                "sources",
+                "language",
+                "tone",
+                "length",
+                "target_platform",
+                "require_citations",
+                "first_person",
+            },
+        )
+        message = runtime.chat.get_message(message_id)
+        if message is None:
+            raise ApiProblem(404, "NOT_FOUND", "Message was not found")
+        conversation = runtime.chat.get_conversation(message.conversation_id)
+        if conversation is None:
+            raise ApiProblem(404, "NOT_FOUND", "Conversation was not found")
+        try:
+            generation_request = _generation_request(payload, book_id=conversation.book_id)
+        except (ValueError, KeyError) as error:
+            raise ApiProblem(422, "VALIDATION", "Generation request is invalid") from error
+        asset = runtime.content_generation.submit(
+            book_id=conversation.book_id, request=generation_request
+        )
+        return JSONResponse(
+            serializers.envelope(
+                {
+                    "job_id": asset.id,
+                    "content": serializers.content_asset(asset),
+                    "status_url": f"/api/contents/{asset.id}",
+                }
+            ),
+            status_code=202,
+        )
+
+    @app.get("/api/contents/{content_id}")
+    async def get_content(content_id: str, request: Request) -> dict[str, object]:
+        _ = authorize(request)
+        asset = runtime.content_generation.get(content_id)
+        if asset is None:
+            raise ApiProblem(404, "NOT_FOUND", "Content asset was not found")
+        revisions = runtime.content_generation.list_revisions(content_id)
+        return serializers.envelope(
+            {
+                "content": serializers.content_asset(asset),
+                "revisions": [serializers.content_revision(item) for item in revisions],
+            }
+        )
+
+    @app.post("/api/contents/{content_id}/revisions", status_code=201)
+    async def edit_content(content_id: str, request: Request) -> JSONResponse:
+        _ = authorize(request, mutate=True, limiter=reader_limiter)
+        payload = await _read_json_object(request, http_config.max_json_bytes)
+        _require_exact_fields(payload, required={"title", "body"}, optional=set())
+        title = payload["title"]
+        body = payload["body"]
+        if not isinstance(title, str) or not isinstance(body, str):
+            raise ApiProblem(422, "VALIDATION", "title and body must be strings")
+        try:
+            asset = runtime.content_generation.edit(content_id, title=title, body=body)
+        except ContentNotFoundError as error:
+            raise ApiProblem(404, "NOT_FOUND", "Content asset was not found") from error
+        except DiandianError as error:
+            raise ApiProblem(422, "VALIDATION", str(error)) from error
+        return JSONResponse(
+            serializers.envelope({"content": serializers.content_asset(asset)}),
+            status_code=201,
+        )
+
+    @app.post("/api/contents/{content_id}/cancel", status_code=202)
+    async def cancel_content(content_id: str, request: Request) -> JSONResponse:
+        _ = authorize(request, mutate=True, limiter=reader_limiter)
+        if runtime.content_generation.get(content_id) is None:
+            raise ApiProblem(404, "NOT_FOUND", "Content asset was not found")
+        accepted = runtime.content_generation.request_cancel(content_id)
+        return JSONResponse(serializers.envelope({"cancel_requested": accepted}), status_code=202)
 
     @app.get("/api/conversations/{conversation_id}/messages")
     async def list_messages(conversation_id: str, request: Request) -> dict[str, object]:
@@ -1689,6 +1785,44 @@ def _domain_error_status(code: ErrorCode) -> int:
 
 def _public_error_code(code: ErrorCode) -> str:
     return "PAYLOAD_TOO_LARGE" if code is ErrorCode.SOURCE_LIMIT_EXCEEDED else code.value
+
+
+def _generation_request(payload: dict[str, object], *, book_id: str) -> GenerationRequest:
+    """Normalise an untrusted generation payload into the frozen domain request.
+
+    Defaults keep the endpoint usable from a one-field call while every value
+    still passes the domain validators, so an out-of-range enum becomes a 422
+    rather than reaching the provider.
+    """
+
+    raw_sources = payload.get("sources")
+    if raw_sources is None:
+        sources: tuple[ContentSource, ...] = (
+            ContentSource(kind=ContentSourceKind.BOOK, reference=book_id),
+        )
+    else:
+        if not isinstance(raw_sources, list):
+            raise ValueError("sources must be a list")
+        sources = tuple(
+            ContentSource(
+                kind=ContentSourceKind(str(item["kind"])),
+                reference=str(item["reference"]),
+            )
+            for item in raw_sources
+            if isinstance(item, dict)
+        )
+    return GenerationRequest(
+        content_type=ContentType(str(payload["content_type"])),
+        sources=sources,
+        language=str(payload.get("language") or "zh-CN"),
+        tone=ContentTone(str(payload.get("tone") or ContentTone.RATIONAL.value)),
+        length=ContentLength(str(payload.get("length") or ContentLength.MEDIUM.value)),
+        target_platform=(
+            None if payload.get("target_platform") is None else str(payload["target_platform"])
+        ),
+        require_citations=bool(payload.get("require_citations", True)),
+        first_person=bool(payload.get("first_person", False)),
+    )
 
 
 def _request_id() -> str:
