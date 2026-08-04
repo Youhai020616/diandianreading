@@ -246,22 +246,24 @@ jobs:
         if: steps.tauri-cli-cache.outputs.cache-hit != 'true'
         run: cargo install tauri-cli --version 2.11.4 --locked
 
+      # Bundle targets are pinned in tauri.conf.json, so no CLI target flag is needed.
       - name: Build the unsigned desktop bundle
         working-directory: apps/desktop
-        run: cargo tauri build --bundles app
+        run: cargo tauri build
 
       - name: Verify the bundle carries the fixed sidecar
         run: |
           APP=apps/desktop/target/release/bundle/macos/diandianreading.app
           test -d "$APP"
           test -x "$APP/Contents/Resources/sidecar/diandian-desktop-sidecar"
+          test -f "$APP/Contents/Resources/sidecar/sidecar-manifest.json"
           test -d "$APP/Contents/Resources/sidecar/_internal"
-          codesign -dv "$APP" 2>&1 | grep -q "adhoc\|not signed" || true
 
+      # smoke_artifact.py takes the onedir artifact directory, not the executable.
       - name: Smoke test the sidecar inside the bundle
         run: >-
           uv run --locked python packaging/sidecar/smoke_artifact.py
-          --artifact apps/desktop/target/release/bundle/macos/diandianreading.app/Contents/Resources/sidecar/diandian-desktop-sidecar
+          --artifact apps/desktop/target/release/bundle/macos/diandianreading.app/Contents/Resources/sidecar
 
   test:
     name: Test Python ${{ matrix.python-version }}
