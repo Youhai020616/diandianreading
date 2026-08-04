@@ -182,3 +182,52 @@ def test_unknown_content_and_editing_before_a_draft_are_refused(tmp_path: Path) 
             headers=api.write_headers(),
         )
         assert early_edit.status_code == 422, early_edit.text
+
+
+def test_workbench_generates_from_a_book_without_a_message(tmp_path: Path) -> None:
+    with open_harness(tmp_path) as api:
+        _, book_id = complete_local_import(api)
+        response = api.client.post(
+            f"/api/books/{book_id}/generate-content",
+            json={"content_type": "reading_card", "tone": "personal"},
+            headers=api.write_headers(),
+        )
+        assert response.status_code == 202, response.text
+        content_id = response.json()["data"]["job_id"]
+
+        assert asyncio.run(api.runtime.worker.run_once()) is True
+
+        listing = api.client.get(f"/api/books/{book_id}/contents", headers=api.read_headers())
+        assert listing.status_code == 200, listing.text
+        contents = listing.json()["data"]["contents"]
+        assert [item["id"] for item in contents] == [content_id]
+        assert contents[0]["status"] == "draft"
+        assert contents[0]["content_type"] == "reading_card"
+
+
+def test_workbench_generation_refuses_an_unknown_book(tmp_path: Path) -> None:
+    with open_harness(tmp_path) as api:
+        _ = complete_local_import(api)
+        response = api.client.post(
+            "/api/books/missing/generate-content",
+            json={"content_type": "reading_report"},
+            headers=api.write_headers(),
+        )
+        assert response.status_code == 404
+
+
+def test_workbench_generation_validates_the_payload(tmp_path: Path) -> None:
+    with open_harness(tmp_path) as api:
+        _, book_id = complete_local_import(api)
+        bad_type = api.client.post(
+            f"/api/books/{book_id}/generate-content",
+            json={"content_type": "nope"},
+            headers=api.write_headers(),
+        )
+        assert bad_type.status_code == 422
+        bad_sources = api.client.post(
+            f"/api/books/{book_id}/generate-content",
+            json={"content_type": "reading_report", "sources": "not-a-list"},
+            headers=api.write_headers(),
+        )
+        assert bad_sources.status_code == 422

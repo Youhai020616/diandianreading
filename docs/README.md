@@ -38,6 +38,7 @@
 | [C1 KnowledgeNote E2E](development/c1-e2e.md) | 知识笔记存储、`save-as-note` 幂等与两种"笔记"的边界验证 | Active |
 | [C1b 内容生成 E2E](development/c1b-e2e.md) | 生成任务的 Lease/fencing、取消竞态、修订历史与作者归属验证 | Active |
 | [C2 Obsidian 导出 E2E](development/c2-e2e.md) | 增量对账、重命名跟随身份、手改冲突与路径封闭验证 | Active |
+| [C3 创作工作台 E2E](development/c3-e2e.md) | 工作台生成参数、修订作者归属可视化与冲突提示验证 | Active |
 | [手动验收清单](development/manual-acceptance-checklist.md) | 维护者在 Mac 上执行的浏览器 UI 与真实 Provider 冒烟清单 | Draft |
 
 ## 推荐阅读顺序

@@ -77,6 +77,17 @@ uv run diandian serve          # 浏览器打开 http://localhost:3000
 - [ ] 打包 App 内完成一次 local import → Job → Chat → Citation 跳转的离线全链路。
 - [ ] WebView 内无 Tauri IPC:开发者工具中 `window.__TAURI__` 为 `undefined`。
 
+## 3.6 P5 创作工作台与 Obsidian(需要真实 Vault 与人工判断)
+
+> 背景:生成链路与导出对账已有自动化覆盖(见 [C1b](c1b-e2e.md)、[C2](c2-e2e.md)、[C3](c3-e2e.md)),但"文案能不能真的用于发布"只能人工判定,Fake Provider 证明不了。
+
+- [ ] 在真实 Obsidian Vault 上配置路径并导出一本书:Books/<书名>/ 下出现 Book/Highlights/Notes/Summary 四个文件,Obsidian 中可正常打开。
+- [ ] 在 Obsidian 里重命名 Notes.md 后再次导出:更新落在改名后的文件上,**没有**新增重复文件。
+- [ ] 在 Obsidian 里手动编辑某个导出文件后再次导出:原文件保持你的修改,旁边出现 `.diandian-conflict.md`,界面明确提示冲突。
+- [ ] 工作台生成三种以上内容类型,判断**至少 3 个模板产出的文案可直接用于发布**(P5 退出标准)。
+- [ ] 编辑一份草稿后切回第 1 版:能读到未被改动的 AI 原文,版本列表标注清晰。
+- [ ] `obsidian://` 深链接点击后能在 Obsidian 中打开对应文件。
+
 ## 4. 结果记录
 
 在本文件同目录建 `manual-acceptance-YYYYMMDD.md`,逐条记录:通过/失败、环境(macOS 版本/浏览器)、失败截图或错误码。失败项回流为 issue,由后续开发处理;不阻塞记录其余项。

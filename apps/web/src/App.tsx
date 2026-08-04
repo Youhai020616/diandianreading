@@ -5,6 +5,7 @@ import { ImportView } from "./components/ImportView";
 import { JobsView } from "./components/JobsView";
 import { LibraryView } from "./components/reader/LibraryView";
 import { ReaderView } from "./components/reader/ReaderView";
+import { WorkbenchView } from "./components/WorkbenchView";
 import type { BootstrapResult } from "./lib/bootstrap";
 import type { PdfEngine } from "./lib/pdf";
 import type { SessionStatus, ViewName } from "./lib/types";
@@ -25,6 +26,7 @@ const NAV_ITEMS: Array<{ view: ViewName; ordinal: string; label: string }> = [
   { view: "import", ordinal: "02", label: "Import / 导入" },
   { view: "jobs", ordinal: "03", label: "Jobs / 任务" },
   { view: "library", ordinal: "04", label: "Library / 书库" },
+  { view: "workbench", ordinal: "05", label: "Workbench / 创作" },
 ];
 
 export interface AppProps {
@@ -153,6 +155,7 @@ export function App({ controller, bootstrapTask, pdfEngine }: AppProps): ReactEl
             <JobsView state={state} controller={controller} />
             <LibraryView state={state} controller={controller} reader={reader} />
             <ReaderView appState={state} controller={controller} reader={reader} />
+            <WorkbenchView state={state} />
           </main>
 
           <footer className="workspace-footer">
