@@ -14,6 +14,83 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect desktop changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      desktop: ${{ steps.filter.outputs.desktop }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The macOS runners are billed at ten times the Linux rate and together
+      # account for over 90% of this workflow's billed minutes. They only prove
+      # anything when the sidecar, the shell, or their packaging changed, so a
+      # Python-only or web-only change skips them. The gate fails open: when the
+      # comparison base cannot be resolved, the desktop jobs still run.
+      - id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "desktop=true" >> "$GITHUB_OUTPUT"
+            echo "Manual dispatch: running desktop jobs"
+            exit 0
+          fi
+
+          base=""
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="$BASE_SHA"
+          elif [ "${BEFORE_SHA:-}" != "0000000000000000000000000000000000000000" ]; then
+            base="${BEFORE_SHA:-}"
+          fi
+
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "desktop=true" >> "$GITHUB_OUTPUT"
+            echo "Comparison base unavailable: running desktop jobs"
+            exit 0
+          fi
+
+          changed=$(git diff --name-only "$base" "$GITHUB_SHA")
+          echo "Changed files:"; echo "$changed" | sed 's/^/  /'
+
+          # Paths whose contents are built or shipped by the macOS jobs.
+          if echo "$changed" | grep -qE '^(apps/desktop/|packaging/|src/diandianreading/interfaces/desktop_sidecar\.py|uv\.lock)'; then
+            echo "desktop=true" >> "$GITHUB_OUTPUT"
+            echo "Desktop source, packaging, or locked dependency changed"
+            exit 0
+          fi
+
+          # ci.yml and pyproject.toml are shared by every lane, so a name match
+          # alone would rebuild macOS for a Python-only edit. Every phase in this
+          # repository adds a Python smoke step to ci.yml, which made a
+          # name-based rule fire on three of the last seven merges for no signal.
+          # Inspect the change itself instead.
+          if echo "$changed" | grep -qE '^\.github/workflows/ci\.yml$' \
+            && git diff -U0 "$base" "$GITHUB_SHA" -- .github/workflows/ci.yml \
+               | grep -qiE '^[+-].*(desktop|macos|sidecar|tauri)'; then
+            echo "desktop=true" >> "$GITHUB_OUTPUT"
+            echo "Workflow change touches the desktop lanes"
+            exit 0
+          fi
+
+          if echo "$changed" | grep -qE '^pyproject\.toml$' \
+            && git diff -U0 "$base" "$GITHUB_SHA" -- pyproject.toml \
+               | grep -qiE '^[+-].*(desktop-sidecar|dependencies|pyinstaller|playwright)'; then
+            echo "desktop=true" >> "$GITHUB_OUTPUT"
+            echo "Project metadata change touches sidecar packaging"
+            exit 0
+          fi
+
+          echo "desktop=false" >> "$GITHUB_OUTPUT"
+          echo "No desktop-relevant change: skipping macOS jobs"
+
   quality:
     name: Quality, build, and wheel smoke
     runs-on: ubuntu-latest
@@ -152,6 +229,8 @@ jobs:
 
   desktop-sidecar:
     name: Desktop sidecar artifact (macOS arm64)
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
     runs-on: macos-latest
     timeout-minutes: 25
     steps:
@@ -217,6 +296,8 @@ jobs:
 
   desktop-shell:
     name: Desktop shell bundle (macOS arm64)
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
