@@ -2,14 +2,15 @@
 
 > 状态：Active
 >
-> 最后更新：2026-08-04
+> 最后更新：2026-08-14
 
 本目录记录 `diandianreading` 的目标架构与架构决策。已通过实现、故障注入、构建与 CI 验证的决策应标记为 `Accepted`；其余仍保持 `Proposed`，不得用规划状态替代验证证据。
 
 ## 核心文档
 
 - [两项目集成计划](integration-plan.md)
-- [Tauri 2 桌面应用实施计划](desktop-application-plan.md)
+- [本地 Web 工具分发实施计划](local-web-distribution-plan.md)
+- [Tauri 2 桌面应用实施计划（历史）](desktop-application-plan.md)
 - [阅读器与标注实施计划](reader-annotation-plan.md)
 - [AI 对话功能设计](../features/ai-chat.md)
 - [完整 API 参考](../api.md)
@@ -23,9 +24,10 @@
 | [ADR-0003](adr/0003-provider-credential-isolation.md) | Proposed | Provider 凭据物理隔离，业务数据库只保存引用 |
 | [ADR-0004](adr/0004-durable-import-saga.md) | Accepted | 资料导入使用可恢复的持久化 Saga/Job 状态机 |
 | [ADR-0005](adr/0005-local-api-security.md) | Proposed | 回环 API 仍执行每安装实例认证与浏览器安全边界 |
-| [ADR-0006](adr/0006-desktop-first-tauri-python-sidecar.md) | Proposed | 桌面优先采用 Tauri 2 壳、React/Vite UI 与 Python Sidecar |
+| [ADR-0006](adr/0006-desktop-first-tauri-python-sidecar.md) | Superseded | 历史桌面优先决策，已由 ADR-0009 替代 |
 | [ADR-0007](adr/0007-reader-annotation-anchor-model.md) | Proposed | 阅读器以派生 Markdown 为正文源,标注采用本地可再锚定位置模型 |
 | [ADR-0008](adr/0008-content-and-obsidian-export-model.md) | Proposed | 内容资产以本地版本化草稿为事实源,Obsidian 导出按稳定 ID 增量对账 |
+| [ADR-0009](adr/0009-local-web-tool-distribution.md) | Accepted | 通过 uv/uvx 启动 single-user local-first Web 工具 |
 
 新增 ADR 时从 [模板](adr/0000-template.md) 开始。
 
@@ -65,11 +67,11 @@ flowchart TD
 
 以下是假设，不是已经完成的功能：
 
-- 第一版为单用户、local-first、desktop-first 工作台；目标桌面壳是 Tauri 2，完整计划见 [桌面应用实施计划](desktop-application-plan.md)。
-- CLI 与浏览器模式保留为开发、自动化和桌面故障恢复入口；桌面、浏览器不建立两套业务核心。
+- 第一版保持单用户、local-first；正式方向是通过 uv/uvx 启动本地 Web 工具，见 [ADR-0009](adr/0009-local-web-tool-distribution.md) 与 [本地 Web 工具分发实施计划](local-web-distribution-plan.md)。
+- CLI 负责启动、诊断与自动化，浏览器承载产品 UI；两者不建立两套业务核心。
 - 对外只暴露 `localhost:3000`；Worker 不监听独立端口。回环不等于授权，本地 API 约束见 [ADR-0005](adr/0005-local-api-security.md)。
-- React/TypeScript/Vite 是目标 UI，Tauri/Rust 负责桌面生命周期；它们均不承载 Python Domain/Application 业务逻辑。
-- Python 负责后端、文档处理、持久 Worker 和第三方集成，并在桌面模式打包为受控 Sidecar。
+- React/TypeScript/Vite 是产品 UI；Python 拥有 Domain/Application、HTTP/SSE、文档处理、持久 Worker 和第三方集成。
+- 已实现的 Tauri/D1/D2 代码在替代能力完成前保留，但不再作为后续产品交付目标。
 - SQLite 和本地文件存储作为第一阶段基础设施。
 - NotebookLM、Z-Library、Obsidian 和发布平台都通过 Adapter 接入。
 - 任何第三方失败都不能破坏本地书籍、标注、笔记或草稿。

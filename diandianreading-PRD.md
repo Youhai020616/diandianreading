@@ -1,9 +1,9 @@
 # diandianreading 产品 PRD
 
-> 版本：v0.2（桌面方向冻结版）
+> 版本：v0.3（本地 Web 工具分发版）
 > 文档状态：产品方向与 MVP 规划
-> 产品形态：桌面优先、local-first、个人使用的 AI 阅读、知识沉淀与内容发布工作台
-> 更新时间：2026-08-04
+> 产品形态：local-first、通过终端启动本地 Web UI 的个人 AI 阅读、知识沉淀与内容发布工作台
+> 更新时间：2026-08-14
 
 ---
 
@@ -41,16 +41,17 @@ diandianreading 是一个把“阅读、思考、AI 创作和社交发布”连�
 
 ### 1.5 产品载体决策
 
-第一版正式产品采用 **Tauri 2 桌面优先**：
+第一版正式产品采用 **local-first Web 工具**：
 
-- React + TypeScript + Vite 提供同一套 Web UI；
-- Tauri 2/Rust 负责窗口、单实例、Python Sidecar 生命周期、受限原生能力、安装和签名更新；
-- 现有 Python/FastAPI 模块化单体继续拥有 Domain、Application、SQLite、私有文件、持久 Worker 和 Provider Adapter；
-- CLI 与浏览器模式保留为开发、自动化和桌面故障恢复入口；
-- 不把桌面化理解为将 NotebookLM、Playwright、文档处理或业务核心重写为 Rust；
-- 不在个人 MVP 引入 Next.js Server、多租户云 Backend 或第二套业务状态。
+- 用户通过 `uvx diandianreading web` 或持久 tool install 在终端启动本地服务；
+- React + TypeScript + Vite 提供浏览器产品 UI；
+- Python/FastAPI 模块化单体拥有 Domain、Application、HTTP/SSE、SQLite、私有文件、持久 Worker 和 Provider Adapter；
+- UI、API 与 Worker 在一个受控本地 Runtime 中运行，固定监听 `127.0.0.1:3000`；
+- 默认 App Home 为 `~/.diandianreading/`，不随 uvx 环境或启动目录变化；
+- 不继续 Tauri/Electron、原生安装包、签名公证、应用内 Updater 或 Windows native bundle；
+- 不在个人 MVP 引入公共云、多租户 Backend、远程代理或第二套业务状态。
 
-完整实施边界见 [Tauri 2 桌面应用实施计划](docs/architecture/desktop-application-plan.md) 与 [ADR-0006](docs/architecture/adr/0006-desktop-first-tauri-python-sidecar.md)。Tauri/React/Sidecar 尚未通过实现验证，当前仍是 Proposed 目标，而不是已交付功能。
+完整实施边界见 [本地 Web 工具分发实施计划](docs/architecture/local-web-distribution-plan.md) 与 [ADR-0009](docs/architecture/adr/0009-local-web-tool-distribution.md)。历史桌面方向见已被替代的 ADR-0006，仅保留 D1/D2 实验记录。
 
 ---
 
@@ -89,7 +90,7 @@ diandianreading 是一个把“阅读、思考、AI 创作和社交发布”连�
 - 一次内容生成至少能派生出 3 种平台形式。
 - 用户可以一键将结果保存为 Obsidian Markdown。
 - 发布前始终可预览、编辑、取消和重试。
-- 普通用户可以从签名桌面安装包启动核心流程，不需要安装 Python、Node、Rust 或 `uv`。
+- 用户只需准备 uv，即可通过一条终端命令启动核心流程；运行时不要求 Node、Rust、Tauri 或项目源码。
 
 ---
 
@@ -648,10 +649,12 @@ Vault/
 下图箭头表示 **runtime call/data flow**，不是模块 import 方向；编译时依赖遵守 `interfaces → application → domain`、`infrastructure → application ports`。
 
 ```text
-Tauri 2 Desktop Shell
-   ├── React / TypeScript / Vite UI
-   └── supervised Python Sidecar
-           ↓ same-origin localhost:3000
+uv / uvx terminal entry
+   └── local Python Runtime
+       ├── React / TypeScript / Vite static UI
+       ├── FastAPI same-origin HTTP/SSE
+       └── embedded durable Worker
+           ↓ localhost:3000
 Authenticated Local API / Application Layer
    ├── Library Service
    ├── Reader & Annotation Service
@@ -668,18 +671,18 @@ Authenticated Local API / Application Layer
            ↓
      SQLite + Private FileStore + SQLite FTS
 
-CLI / Browser recovery mode uses the same Python core and App Home.
+Terminal、Browser 与自动化使用同一 Python core 和 App Home。
 ```
 
-### 推荐技术选择（个人桌面版）
+### 推荐技术选择（本地 Web 版）
 
-- 桌面壳：Tauri 2；Rust 只负责窗口、生命周期、最小原生能力、平台 Bundle 和更新。
-- 前端：React + TypeScript + Vite；构建结果同时进入 Python Package/Sidecar 与 Tauri App，不使用 Next.js Server。
-- 阅读器：PDF.js + epub.js。
-- 后端：按 [ADR-0001](docs/architecture/adr/0001-local-first-modular-monolith.md) 使用 local-first Python 模块化单体，并在桌面模式打包为受控 Sidecar；前端与桌面壳不改变领域边界。
-- 桌面安全与发布：遵守 [ADR-0006](docs/architecture/adr/0006-desktop-first-tauri-python-sidecar.md)，包括单实例、Sidecar 身份、最小 Capability、签名/公证和更新恢复。
+- 分发：PyPI/GitHub immutable release；`uvx diandianreading web` 为一次性入口，`uv tool install` 为持久安装。
+- 前端：React + TypeScript + Vite；production build 进入 Python wheel，不使用 Next.js Server。
+- 阅读器：PDF.js + 受限 Markdown renderer；EPUB 使用派生 Markdown，不引入原生容器渲染。
+- 后端：按 [ADR-0001](docs/architecture/adr/0001-local-first-modular-monolith.md) 使用 local-first Python 模块化单体；FastAPI、Worker 与 Provider Client 由同一进程管理。
+- 本地 Web 安全与分发：遵守 [ADR-0005](docs/architecture/adr/0005-local-api-security.md) 与 [ADR-0009](docs/architecture/adr/0009-local-web-tool-distribution.md)。
 - 数据库：个人版使用 SQLite；只有产品转为多租户云服务时才重新评审 PostgreSQL。
-- 文件：个人版使用本地私有 FileStore；云对象存储不是桌面 MVP 的隐含依赖。
+- 文件：个人版使用本地私有 FileStore；云对象存储不是 local-first MVP 的隐含依赖。
 - 任务：个人版使用 SQLite 持久队列/单 Worker；云队列只有多租户或独立扩缩容时再评审。
 - 搜索：SQLite FTS 起步，后续按本地规模证据评估独立搜索服务。
 - 媒体：PyMuPDF、Pillow、ffmpeg、python-pptx。
@@ -771,16 +774,17 @@ CLI / Browser recovery mode uses the same Python core and App Home.
 - 发布前必须由用户确认。
 - 医疗、法律、金融等高风险内容增加人工核验提示。
 
-### 11.5 本地 API 与桌面壳安全
+### 11.5 本地 Web Runtime 安全
 
 - `localhost:3000` 只是网络暴露边界，不是用户授权。
 - 每安装实例使用独立 Token；浏览器使用短期服务端 Session。所有业务 API、SSE 和 WebSocket 都认证。
 - 同时校验实际 Peer 与 `Host`，默认 same-origin；浏览器写请求校验精确 `Origin` 和 Session 绑定 CSRF Token。
 - 默认拒绝 CORS，不接受 Token 查询参数；SSE/WS 单独执行握手认证、Origin 和连接/消息上限。
 - trusted proxy/转发 Header 支持默认关闭；Header、Body、上传、批量、并发和超时都有显式上限。
-- Tauri 主 WebView 初始不获得远程 Origin Capability、任意 Shell、任意参数或通配文件权限；Rust 只启动 Bundle 中声明且可验证的 Python Sidecar。
-- Bootstrap Secret 只经父子受限控制通道和 URL Fragment 单次传递，不进入参数、环境变量、日志、文件或遥测。
-- 完整约束与 fail-closed 回滚见 [ADR-0005](docs/architecture/adr/0005-local-api-security.md) 和 [ADR-0006](docs/architecture/adr/0006-desktop-first-tauri-python-sidecar.md)。
+- 服务固定绑定回环地址，不提供 `0.0.0.0`、LAN、远程代理或公共部署参数；端口冲突时不附着、不杀进程、不随机换端口。
+- Bootstrap Secret 只通过 readiness 后生成的 URL Fragment 单次传递，不进入参数、普通日志、文件或遥测。
+- Python 包安装不执行浏览器下载；Playwright Chromium 由显式 setup 写入私有版本化目录并校验。
+- 完整约束与 fail-closed 回滚见 [ADR-0005](docs/architecture/adr/0005-local-api-security.md) 和 [ADR-0009](docs/architecture/adr/0009-local-web-tool-distribution.md)。
 
 ### 11.6 不可信资料与权利来源
 
@@ -886,8 +890,8 @@ diandianreading 不与微信读书竞争书库规模，也不与 Buffer 竞争�
 
 ### 15.1 已确认
 
-1. 第一版是单用户、local-first 的个人桌面工具，不建设带公共账号体系的多租户 Web 应用。
-2. 正式产品桌面优先：Tauri 2 + React/Vite + Python Sidecar；CLI/浏览器模式保留为开发与恢复入口。
+1. 第一版是单用户、local-first 的个人工具，不建设带公共账号体系的多租户 Web 应用。
+2. 正式产品通过 uv/uvx 在终端启动 Python 本地 Runtime，React/Vite 浏览器 UI 是主要产品界面。
 3. 第一版先支持 PDF、EPUB 和本地 Markdown，不开发原生移动端。
 4. Obsidian 第一版只做单向导出。
 5. 公开社区、公共书库和跨设备云同步放到个人 MVP 之后。
@@ -899,6 +903,7 @@ diandianreading 不与微信读书竞争书库规模，也不与 Buffer 竞争�
 2. NotebookLM 生成结果哪些必须保留本地副本，以及保留期限。
 3. 是否在后续增加网页和 YouTube 导入。
 4. 主题和内容何时开放公开分享，以及是否需要独立云服务。
-5. Python Sidecar Builder、Playwright Chromium 分发、macOS 最低版本和 Windows 首发范围。
+5. Playwright Chromium setup 的代理、磁盘、清理和受支持平台范围。
+6. PyPI Stable 的 License 与首批 OS/Python 支持矩阵。
 
-桌面工程未决项与证据门见 [桌面应用实施计划](docs/architecture/desktop-application-plan.md)。
+本地 Web 分发未决项与证据门见 [本地 Web 工具分发实施计划](docs/architecture/local-web-distribution-plan.md)。

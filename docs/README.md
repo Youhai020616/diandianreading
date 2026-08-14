@@ -2,27 +2,29 @@
 
 > 状态：Active
 >
-> 最后更新：2026-08-04
+> 最后更新：2026-08-14
 
-本目录保存 `diandianreading` 的产品、架构、集成和功能设计文档。Phase 0–5 已有可执行实现；Phase 5 已交付统一 CLI、本地 Web/API、持久导入/Job 与整本书 AI Chat。长期产品方向已收敛为 Tauri 2 桌面优先，但 React/Vite、Tauri、Python Sidecar、签名和桌面安装包仍是 `Proposed`，不能描述为已经实现。
+本目录保存 `diandianreading` 的产品、架构、集成和功能设计文档。Phase 0–5、R1–R4、D1–D3 与 C0–C3 已有代码交付。ADR-0009 已把正式分发方向调整为通过 uv/uvx 在终端启动 local-first Web 工具；React UI、Python Runtime、SQLite、Worker 和 Provider Adapter 继续复用，Tauri 原生桌面轨只保留历史证据。
 
 ## 文档地图
 
 | 文档 | 作用 | 状态 |
 | --- | --- | --- |
 | [产品 PRD](../diandianreading-PRD.md) | 产品定位、用户流程、功能范围和数据模型 | Draft v0.2 |
-| [产品 Roadmap](../diandianreading-ROADMAP.md) | P0-P9 产品阶段与 D0-D6 桌面交付轨 | Draft v0.2 |
+| [产品 Roadmap](../diandianreading-ROADMAP.md) | P0–P9 产品阶段与 L0–L5 本地 Web 分发轨 | Draft v0.3 |
 | [API 参考](api.md) | `notebooklm-py`、`zlibrary-to-notebooklm` 及 Phase 5 统一产品契约 | Active |
 | [架构文档索引](architecture/README.md) | 架构阅读顺序、ADR 状态和规则 | Active |
 | [两项目集成计划](architecture/integration-plan.md) | 目标架构、抽象边界、重构路径和分阶段迁移 | Active |
-| [Tauri 2 桌面应用实施计划](architecture/desktop-application-plan.md) | React/Vite UI、Python Sidecar、生命周期、安全、打包、签名、更新与 D0–D6 验收 | Proposed |
+| [本地 Web 工具分发实施计划](architecture/local-web-distribution-plan.md) | uv/uvx 启动、本地 Web Runtime、Provider setup、真实进程 E2E、PyPI 发布与桌面轨退场 | Active |
+| [Tauri 2 桌面应用实施计划](architecture/desktop-application-plan.md) | 已终止的 D0–D6 桌面方向与历史 D1/D2 证据 | Deprecated / Historical |
 | [阅读器与标注实施计划](architecture/reader-annotation-plan.md) | 阅读正文服务、划线/笔记、锚点与再锚定、Chat 缝合与 R1–R4 验收 | Proposed |
 | [内容与创作工作台实施计划](architecture/content-workbench-plan.md) | Note、内容资产与修订、Obsidian 增量导出、创作工作台与 C0–C3 验收 | Proposed |
 | [阅读器与标注 ADR](architecture/adr/0007-reader-annotation-anchor-model.md) | 派生 Markdown 正文源、单一 locator 契约与本地标注的强制边界 | Proposed |
 | [并行交付策略](development/parallel-delivery-strategy.md) | 契约冻结、串行区保护、波次模型与对抗评审的多单元并行纪律 | Proposed |
 | [Vendored 源码移除记录](development/removed-vendored-sources.md) | vendored 第三方副本的移除原因、历史修复取回方式与上游化待办 | Active |
 | [本地 API 安全 ADR](architecture/adr/0005-local-api-security.md) | 每安装实例认证、同源浏览器边界、SSE/WS 与资源限制 | Proposed |
-| [桌面架构 ADR](architecture/adr/0006-desktop-first-tauri-python-sidecar.md) | 桌面优先、Tauri 2 壳、React/Vite UI 与 Python Sidecar 的强制边界 | Proposed |
+| [本地 Web 分发 ADR](architecture/adr/0009-local-web-tool-distribution.md) | uv/uvx 启动、本地 Runtime、稳定 App Home 与桌面轨退场边界 | Accepted |
+| [桌面架构 ADR](architecture/adr/0006-desktop-first-tauri-python-sidecar.md) | 历史 Tauri/Sidecar 决策 | Superseded by ADR-0009 |
 | [AI 对话功能设计](features/ai-chat.md) | 已实现整本书对话切片，以及后续章节/笔记/选区目标设计 | Active / Proposed |
 | [Phase 0 本地 E2E](development/phase-0-e2e.md) | Fake Adapter、SQLite 与 Job 全链路验证 | Active |
 | [Phase 1 文档处理 E2E](development/phase-1-e2e.md) | 本地 Acquisition、Markdown/EPUB/PDF Preparation 与真实对象存储验证 | Active |
@@ -33,8 +35,8 @@
 | [R1 正文与章节服务 E2E](development/r1-e2e.md) | 书籍详情、规范化正文、章节索引、ETag 再验证与阅读进度链路验证 | Active |
 | [R2 标注核心 E2E](development/r2-e2e.md) | 划线/笔记生命周期、服务端切片校验、软删除与再锚定引擎验证 | Active |
 | [R4 Chat 缝合 E2E](development/r4-e2e.md) | 选区/笔记范围、补充上下文定界与引用本地定位验证 | Active |
-| [D1 Sidecar E2E](development/d1-sidecar-e2e.md) | Sidecar 控制帧、PyInstaller Artifact 与 Playwright Provisioning 可行性验证 | Active |
-| [D2 Launcher E2E](development/d2-launcher-e2e.md) | Tauri 壳、单实例、端口与附着拒绝、无孤儿进程与未签名 `.app` 验证 | Active |
+| [D1 Sidecar E2E](development/d1-sidecar-e2e.md) | Sidecar 与 Playwright Provisioning 的历史可行性证据 | Historical |
+| [D2 Launcher E2E](development/d2-launcher-e2e.md) | Tauri 壳与生命周期的历史实现证据 | Historical |
 | [C1 KnowledgeNote E2E](development/c1-e2e.md) | 知识笔记存储、`save-as-note` 幂等与两种"笔记"的边界验证 | Active |
 | [C1b 内容生成 E2E](development/c1b-e2e.md) | 生成任务的 Lease/fencing、取消竞态、修订历史与作者归属验证 | Active |
 | [C2 Obsidian 导出 E2E](development/c2-e2e.md) | 增量对账、重命名跟随身份、手改冲突与路径封闭验证 | Active |
@@ -48,8 +50,8 @@
 3. [API 参考](api.md)：了解两个现有项目真实提供的能力与限制。
 4. [两项目集成计划](architecture/integration-plan.md)：了解主项目如何吸收这些能力。
 5. [架构决策记录](architecture/README.md)：了解关键选择及其代价；实现本地 API 前阅读 [ADR-0005](architecture/adr/0005-local-api-security.md)。
-6. [Tauri 2 桌面应用实施计划](architecture/desktop-application-plan.md)：了解桌面产品目标、Sidecar、安全、打包、更新与分阶段验收。
-7. [ADR-0006](architecture/adr/0006-desktop-first-tauri-python-sidecar.md)：了解桌面壳、WebView、Python 核心与数据兼容的强制边界。
+6. [本地 Web 工具分发实施计划](architecture/local-web-distribution-plan.md)：了解 uv/uvx 产品入口、Provider 浏览器安装、发布和桌面轨退场顺序。
+7. [Tauri 2 桌面应用实施计划](architecture/desktop-application-plan.md) 与 [ADR-0006](architecture/adr/0006-desktop-first-tauri-python-sidecar.md)：仅在需要追溯历史桌面实验时阅读。
 8. [阅读器与标注实施计划](architecture/reader-annotation-plan.md) 与 [ADR-0007](architecture/adr/0007-reader-annotation-anchor-model.md)：了解阅读、划线与 Chat 缝合的交付轨与锚点边界。
 9. [AI 对话功能设计](features/ai-chat.md)：了解第一个 NotebookLM 用户界面。
 10. [Phase 0 本地 E2E](development/phase-0-e2e.md)：验证架构地基的可执行链路。

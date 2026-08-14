@@ -2,13 +2,15 @@
 
 ## Status
 
-`Proposed`
+`Superseded by ADR-0009`
 
 ## Date
 
 2026-08-04
 
 ## Context
+
+> 历史说明：本 ADR 的 D1/D2 实验代码曾落地，但长期桌面方向已于 2026-08-14 被 [ADR-0009](0009-local-web-tool-distribution.md) 替代。以下内容保留当时决策与证据，不再构成后续产品目标。
 
 `diandianreading` 是个人优先的 AI 阅读、知识沉淀与内容发布工作台。其核心能力依赖本地 PDF/EPUB/Markdown、本地 SQLite 与私有文件存储、Provider 浏览器会话、可恢复后台任务、Obsidian Vault，以及 NotebookLM/Z-Library/发布平台 Adapter。Phase 0–5 已交付 local-first Python 模块化单体、统一 CLI、`http://localhost:3000` Web/API、持久 Worker、导入和整本书 Chat；当前 Web UI 是由 FastAPI 同源提供的原生 HTML/CSS/JavaScript。
 
