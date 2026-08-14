@@ -1,10 +1,9 @@
 # CLAUDE.md
 
-diandianreading:个人优先的 AI 阅读、知识沉淀与内容发布工作台(local-first Python 模块化单体,目标形态 Tauri 2 桌面应用)。
+diandianreading:个人优先的 AI 阅读、知识沉淀与内容发布工作台(local-first Python 模块化单体,通过终端启动本地 Web UI)。
 
 ## 身份(必须遵守)
 
-- 本仓库所有 gh/git 远程操作前先 `source ~/.gh-Youhai.env`(gh 走 `GH_CONFIG_DIR=~/.config/gh-Youhai`,账号 Youhai020616)。
 - 仓库 local git config 已固定 Youhai 署名与专用 SSH key;不要改动全局 gh 账号与 `~/.gitconfig`。
 
 ## 协作原则:独立判断
@@ -17,14 +16,14 @@ diandianreading:个人优先的 AI 阅读、知识沉淀与内容发布工作台
 
 - 按 phase 自主连续开发:每 phase 跑 offline E2E → 开 PR → CI 绿即合并 → 进入下一 phase,直至任务完成。
 - 浏览器 UI 功能测试与真实 NotebookLM/Z-Library 联调由维护者最后在自己的 Mac 上手动执行;代码侧负责逻辑审查,并维护手动冒烟验证清单文档。
-- 执行顺序:W0 契约冻结(已完成)→ R1 正文与章节服务 → R2 标注核心 → D3 React 迁移 → R3 阅读器 UI → R4 Chat 缝合;D1/D2/D5(Sidecar/Tauri 壳/签名)等 macOS 资源可用时再做。
+- 当前执行顺序:L0 文档与 ADR 冻结 → L1 Web CLI 产品化 → L2 setup/doctor/open → L3 桌面代码退场 → L4 uvx/PyPI 分发准备 → L5 维护者手动验收。
 - Z-Library 模块保留在仓库、默认关闭;`source/` vendored 副本已移除,依赖走 PyPI(见 docs/development/removed-vendored-sources.md)。
 
 ## 关键文档
 
 - 设计:`docs/architecture/adr/0007-reader-annotation-anchor-model.md`、`docs/architecture/reader-annotation-plan.md`
 - 流程:`docs/development/parallel-delivery-strategy.md`(契约冻结、串行区清单、止损规则)
-- 桌面:`docs/architecture/desktop-application-plan.md`(D0–D6)与 ADR-0006
+- 分发:`docs/architecture/local-web-distribution-plan.md`(L0–L5)与 ADR-0009；桌面计划/ADR-0006 仅保留为历史
 
 ## 工程约束
 

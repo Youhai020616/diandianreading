@@ -1,844 +1,435 @@
 # diandianreading 产品 Roadmap
 
-> 路线版本：v0.2（桌面交付轨）
+> 路线版本：v0.3（本地 Web 工具分发轨）
+>
 > 对应 PRD：[diandianreading-PRD.md](./diandianreading-PRD.md)
-> 目标：从产品 PRD 走到可持续维护、可安装和可升级的桌面正式版本
-> 更新时间：2026-08-04
+>
+> 目标：从已实现的 local-first Python/React 产品核心走到可通过 `uvx diandianreading web` 安装、启动、升级和恢复的正式版本
+>
+> 更新时间：2026-08-14
 
 ---
 
 ## 1. 路线总览
 
-diandianreading 采用“个人优先、桌面优先、验证先行、逐步开放”的路线，不直接从大型社交阅读平台或多租户云服务开始，而是先验证最重要的闭环：
+项目采用“个人优先、local-first、验证先行、逐步开放”的路线：
 
 ```text
 读一本书
 → 留下自己的想法
 → AI 帮我理解和创作
 → 保存为个人知识
-→ 发布到社交平台
+→ 再决定是否发布到社交平台
 ```
 
-### 阶段地图
-
-| 阶段 | 名称 | 目标 | 主要结果 |
-|---|---|---|---|
-| P0 | PRD 冻结 | 明确产品边界 | 可执行的需求和验收标准 |
-| P1 | 原型验证 | 验证信息架构和核心交互 | 桌面窗口尺寸下可点击的高保真原型 |
-| P2 | 技术地基 | 搭建可持续开发基础 | local-first Python 核心与桌面 Sidecar 地基 |
-| P3 | 个人 Alpha | 跑通阅读和标注 | 可真实使用的个人阅读器 |
-| P4 | AI Alpha | 接入 NotebookLM | 书籍问答和内容生成 |
-| P5 | 知识与创作 Beta | 接入 Obsidian 与内容工作台 | 可保存、编辑和复用内容 |
-| P6 | 发布 Beta | 接入 SocialCLI | 预览、排程和多平台发布 |
-| P7 | 私人测试 | 验证真实使用价值 | 签名 macOS Desktop Alpha，5～20 名测试用户 |
-| P8 | 公测准备 | 解决稳定性、安全、安装与升级问题 | 签名、公证、可恢复更新的桌面 RC |
-| P9 | v1.0 正式发布 | 发布受支持桌面版本并持续维护 | macOS Stable；满足门槛后增加 Windows |
-
-### 桌面交付轨 / Desktop Track
-
-桌面交付轨是跨越产品阶段的工程门，不替代 P0–P9 的用户价值验收：
-
-| 桌面阶段 | 对应产品阶段 | 交付 |
-| --- | --- | --- |
-| D0 | P0 | Tauri ADR、桌面实施计划、PRD/Roadmap 冻结 |
-| D1 | P2 | Python Sidecar 与 Playwright Provisioning 可行性 |
-| D2 | P2–P3 | Tauri 壳、单实例、Sidecar 生命周期和 packaged offline E2E |
-| D3 | P1–P4 | React/Vite 产品 UI，Browser/Desktop 共用 Build |
-| D4 | P3–P8 | 桌面安全、数据迁移、备份恢复和真实 Provider 验收 |
-| D5 | P7 | 签名、公证的 macOS Desktop Alpha |
-| D6 | P8–P9 | 签名 Updater、Windows 支持与 Stable Gate |
-
-每个 D 阶段独立 PR、direct review、本地构建和 CI；前一阶段退出标准未通过时不开始下一阶段。详细契约见 [桌面应用实施计划](docs/architecture/desktop-application-plan.md)。
-
-### 阅读器交付轨 / Reader Track
-
-阅读器交付轨补齐 P3（个人 Alpha：阅读与标注）与 P4 的入口部分，恢复"以划线为 AI 中心"的产品差异化；详细契约见 [阅读器与标注实施计划](docs/architecture/reader-annotation-plan.md) 与 [ADR-0007](docs/architecture/adr/0007-reader-annotation-anchor-model.md)。
-
-| 阅读器阶段 | 对应产品阶段 | 交付 |
-| --- | --- | --- |
-| W0 | P2 | 锚点契约、Annotation 领域模型与 migration 冻结 |
-| R1 | P3 | 正文/章节/进度服务与只读内容 API |
-| R2 | P3 | 标注存储、CRUD API 与再锚定引擎 |
-| R3 | P3 | React 阅读器 UI：渲染、导航、划线与笔记交互 |
-| R4 | P4 | 引用回原文、选区提问与笔记范围的 Chat 缝合 |
-
-R 轨与 D 轨并行推进（R1/R2 ∥ D1/D2，R3 依赖 D3）；多工作单元并行时遵循 [并行交付策略](docs/development/parallel-delivery-strategy.md)。Gate 2 的进入证据由 R3 验收产出。
-
----
-
-## 2. 总体时间建议
-
-以下按全职 1～3 人小团队估算；如果主要由一个人业余开发，时间应按 2～3 倍估算。
-
-| 时间 | 阶段 | 发布物 |
-|---|---|---|
-| 第 1～2 周 | P0 | PRD v1、技术决策记录 |
-| 第 2～4 周 | P1 | 高保真原型、可用性测试报告 |
-| 第 4～7 周 | P2 | 产品骨架、数据库、任务系统 |
-| 第 7～11 周 | P3 | 个人 Alpha |
-| 第 11～15 周 | P4 | AI Alpha |
-| 第 15～19 周 | P5 | 创作与 Obsidian Beta |
-| 第 19～23 周 | P6 | 社交发布 Beta |
-| 第 23～27 周 | P7 | 私人测试版 |
-| 第 27～31 周 | P8 | 公测候选版 |
-| 第 31～34 周 | P9 | v1.0 正式上线 |
-
-时间是相对规划，不应替代每阶段的验收门槛。任何阶段没有达到退出标准，都应延长该阶段，而不是直接进入下一阶段。原 v0.1 时间没有计入 Python Sidecar、Playwright 浏览器分发、Tauri、macOS 签名/公证、Updater 和 Windows 验证；D1 取得真实构建数据前，不为桌面正式发布承诺固定日期。
-
----
-
-## 3. P0：PRD 与产品边界冻结
-
-### 目标
-
-把产品从想法变成可执行项目，避免一开始同时建设书城、社区、AI、发布和移动端。
-
-### 必须完成
-
-- 确认产品名称和基本视觉方向。
-- 确认个人版 MVP 的用户群。
-- 冻结第一版核心流程：导入 → 阅读 → 标注 → AI → Obsidian → 发布。
-- 确认第一版支持的内容格式：PDF、EPUB、Markdown。
-- 确认第一批社交平台：建议 1 个中文平台 + 1 个国际平台。
-- 已确定 desktop-first、local-first；CLI/浏览器模式只作为开发、自动化和恢复入口。
-- 明确版权和来源使用边界。
-- 确定数据归属：产品数据库 vs Obsidian Vault。
-
-### 交付物
-
-- PRD v1.0。
-- 产品术语表。
-- 用户流程图。
-- 信息架构图。
-- 风险清单。
-- 技术选型记录。
-
-### 退出标准
-
-- 所有 P0 范围内的功能都有明确的“不做什么”。
-- 任何一个核心页面都能描述对应的用户任务和验收标准。
-- 团队对“先做个人桌面工具、后评估公开云平台”达成一致。
-- Tauri/React/Python Sidecar 方向已写入 ADR-0006，但只有通过实现、打包和恢复验证后才能标记 Accepted。
-
----
-
-## 4. P1：高保真原型与可用性验证
-
-### 目标
-
-验证产品是否像一个真正的阅读工作台，而不是工具拼盘或后台面板。
-
-### 原型页面
-
-- 今日：阅读优先的首页。
-- 书库：书籍状态与导入。
-- 阅读器：正文、划线和笔记。
-- 想法：划线、主题和 AI 发现。
-- 创作：内容套件和编辑。
-- 发布：平台适配、日历和排程。
-- 主题：个人知识主题关系。
-- 历史：阅读、创作和发布轨迹。
-
-### 原型交互
-
-- 从首页继续阅读。
-- 在正文中标记和写想法。
-- 对当前书籍提问。
-- 从想法生成卡片。
-- 保存到 Obsidian。
-- 预览并发布社交内容。
-
-### 用户测试
-
-邀请 3～5 名目标用户完成以下任务：
-
-1. 找到正在阅读的书并继续阅读。
-2. 给一段内容划线并写下想法。
-3. 让 AI 解释这段内容和自己的经历有什么关系。
-4. 生成一张读书卡片。
-5. 将卡片保存到知识库并进入发布预览。
-
-### 退出标准
-
-- 用户不需要解释就能找到“继续阅读”。
-- 用户能理解“想法”和“AI 内容”的区别。
-- 用户能明白 Obsidian 是知识出口，SocialCLI 是发布出口。
-- 至少 4/5 测试用户能独立完成核心流程。
-
----
-
-## 5. P2：技术地基
-
-### 目标
-
-搭建一个足以支撑个人 Alpha 的最小系统，而不是过早建设复杂云架构。Python 模块化单体是业务核心；桌面化通过 Tauri 壳和受控 Sidecar 增量实现，不重写领域逻辑。
-
-> 工程状态：Phase 0–5 已完成 Python Local API、SQLite、Worker、Provider Adapter、CLI/Web 和离线 E2E；Tauri、React/Vite、standalone Sidecar、签名和桌面 Bundle 尚未实现，按 D0–D6 推进。
-
-### 必须完成
-
-- 项目仓库和分支策略。
-- 本地开发环境和环境变量管理。
-- 数据库迁移机制。
-- 书籍、章节、标注、内容、任务，以及最小 `DocumentAsset`/`DocumentPart`/`StorageKey` 基础模型；业务模型不含物理路径。
-- 私有文件存储规范：数据库/WAL/SHM、文档、Job、备份的当前用户所有权、`0700/0600`、原子发布与 no-symlink 规则。
-- 统一错误码和日志格式。
-- 正交 Job status/current step/blocked reason/cancel/Lease Schema，以及调用前 `remote_operation_intents`/correlation key。
-- `DocumentPreparationPort`、基础任务队列和外部服务 Adapter 接口；Phase 0 使用 Fake Preparation/Fake Knowledge Adapter。
-- 只有 provider/profile 的 `CredentialRef` 与 Infrastructure Resolver 契约。
-- 本地 API 每安装实例 Token/Session、Peer+Host、same-origin/CSRF、SSE/WS 与资源限制骨架。
-- Tauri 2/Rust 壳与 Python 核心边界：Rust 只负责窗口、单实例、Sidecar 生命周期、最小 Capability、Bundle 和更新。
-- React/TypeScript/Vite UI 与构建边界；Browser/Desktop 使用同一 Build，不引入 Next.js Server。
-- Python standalone Sidecar、版本化父子控制协议、target-triple Artifact 与 Playwright Provisioning Gate。
-- 不含凭据的本地原子备份和恢复脚本。
-
-### 推荐模块
+产品不是公共云 SaaS，也不再继续 Tauri 原生桌面轨。正式运行形态是：
 
 ```text
-app/
-├── library/
-├── reader/
-├── annotations/
-├── topics/
-├── content/
-├── publishing/
-├── integrations/
-│   ├── notebooklm/
-│   ├── obsidian/
-│   └── socialcli/
-└── jobs/
+uvx diandianreading web
+→ Python local Runtime
+→ React browser UI at http://localhost:3000
+→ SQLite / private files / durable Worker / Provider adapters
 ```
 
-### 外部适配器接口
+### 产品阶段
 
-```python
-class NotebookAdapter:
-    async def create_workspace(self, book): ...
-    async def add_source(self, workspace_id, source): ...
-    async def ask(self, workspace_id, prompt): ...
-    async def generate(self, workspace_id, artifact_type, options): ...
+| 阶段 | 名称 | 目标 | 当前状态 |
+| --- | --- | --- | --- |
+| P0 | PRD 冻结 | 明确产品、数据与安全边界 | 已完成，v0.3 同步中 |
+| P1 | 原型验证 | 验证信息架构和核心交互 | 有原型与 React UI；正式用户测试待补 |
+| P2 | 技术地基 | local-first Python、SQLite、Worker、Web/API | Phase 0–5 已完成 |
+| P3 | 个人 Alpha | 阅读、进度、标注和本地检索 | R1–R3 核心已实现；书签/最近阅读/搜索与真实使用待补 |
+| P4 | AI Alpha | NotebookLM 问答、范围与引用 | Adapter、整书/选区/笔记已实现；章节范围与 live 验收待补 |
+| P5 | 知识与创作 Beta | KnowledgeNote、内容修订、Obsidian、工作台 | C0–C3 已实现；真实 Vault 与模板质量待验收 |
+| P6 | 发布 Beta | 人工确认后的平台适配与发布 | 未开始，须先通过 Gate 3 |
+| P7 | 私人测试 | 验证持续使用价值 | 未开始 |
+| P8 | 公测准备 | 安装、升级、备份、安全与恢复 | Local Web L 轨实施中 |
+| P9 | v1.0 | 发布受支持的 local-first Web 工具 | 未开始 |
 
-class KnowledgeExporter:
-    async def export_book(self, book_id, vault_path): ...
+### 本地 Web 分发轨 / Local Web Track
 
-class Publisher:
-    async def preview(self, content_package, platform): ...
-    async def publish(self, content_package, platform, schedule=None): ...
-```
+详细契约见 [本地 Web 工具分发实施计划](docs/architecture/local-web-distribution-plan.md) 与 [ADR-0009](docs/architecture/adr/0009-local-web-tool-distribution.md)。
+
+| 阶段 | 交付 | 退出证据 |
+| --- | --- | --- |
+| L0 | ADR/PRD/Roadmap/文档方向冻结 | 不再承诺 Tauri；与 ADR-0004/0005 一致 |
+| L1 | `diandianreading web`、兼容 alias、真实进程 E2E | installed wheel 启动 Uvicorn、readiness、SIGTERM |
+| L2 | `setup notebooklm`、`doctor`、`open` | Chromium 原子安装、脱敏诊断、安全 reopen |
+| L3 | 删除 Tauri/Rust/Sidecar-only 代码与 macOS CI | Python/Web 全量质量门通过 |
+| L4 | Preview/Stable 分发准备 | TestPyPI/PyPI、immutable tag、clean-machine smoke |
+| L5 | 真实产品验收 | 浏览器、NotebookLM、Obsidian 由维护者手测 |
+
+### 已完成的功能交付轨
+
+#### Reader Track
+
+| 阶段 | 交付 | 状态 |
+| --- | --- | --- |
+| W0 | 锚点、Annotation、Progress 契约 | 已完成 |
+| R1 | 正文、章节、进度服务 | 已完成 |
+| R2 | 标注存储、CRUD、再锚定 | 已完成 |
+| R3 | React 阅读器、PDF/Markdown、标注 UI | 代码完成，手工验收待补 |
+| R4 | 引用定位、选区/笔记 Chat Scope | 代码完成，live 抽样待补 |
+
+#### Content Track
+
+| 阶段 | 交付 | 状态 |
+| --- | --- | --- |
+| C0 | KnowledgeNote/ContentAsset/Obsidian 契约 | 已完成 |
+| C1 | 保存回答为 KnowledgeNote | 已完成 |
+| C1b | 可恢复内容生成、修订作者归属 | 已完成 |
+| C2 | Obsidian 增量导出与冲突保护 | 已完成 |
+| C3 | React 创作工作台 | 代码完成，模板质量待补 |
+
+### 历史 Desktop Track
+
+D1 Sidecar 与 D2 Tauri 壳曾完成可行性和 CI 实验；D3 的 React/Vite 成果保留为 Web UI。ADR-0006 已被 ADR-0009 替代，D4–D6 不再实施。历史文档保留证据，不构成未来承诺。
+
+---
+
+## 2. 执行原则
+
+1. 每阶段单独分支、PR、review、offline E2E 与 CI，线性合并。
+2. Fake/contract 测试证明代码边界，不替代真实 Provider、真实浏览器和真实 Vault。
+3. 默认 PR CI 不持有 Provider、PyPI 或发布 Secret。
+4. 数据和 Credential 始终保存在稳定 App Home，不进入 uvx/tool 环境。
+5. 不为简化安装削弱 localhost Token、Session、Origin、CSRF 和资源限制。
+6. 任何用户数据迁移先备份、后迁移、验证后提交；失败不创建空库伪装成功。
+7. 先完成替代能力，再删除 D1/D2 可复用代码。
+8. 产品阶段按退出证据推进，不按提交数量推进。
+
+---
+
+## 3. P0–P2：产品与技术地基
+
+### 已完成
+
+- 单用户、local-first 产品边界；
+- Python 模块化单体与架构边界测试；
+- SQLite migration/checksum、私有 FileStore；
+- 持久 Job、Lease/fencing、Intent/reconciliation；
+- NotebookLM Adapter 与隔离 Credential；
+- 可选 Z-Library Adapter，默认关闭且要求权利确认；
+- FastAPI 同源 Web/API、Session/CSRF、SSE；
+- React/Vite production UI；
+- installed-wheel Phase 0–5/R/C E2E。
+
+### 仍需补齐
+
+- 根目录用户 README；
+- 公开分发 License；
+- PyPI 包名与发布流程；
+- 数据备份/恢复的最终用户命令；
+- clean-machine uvx 证据。
+
+---
+
+## 4. P3：个人 Alpha——阅读与标注
+
+### 已实现
+
+- PDF/EPUB/Markdown 导入；
+- 书库和正文读取；
+- PDF.js 与派生 Markdown 阅读；
+- 章节导航和阅读进度；
+- 划线、锚定笔记、颜色、软删除和恢复；
+- 内容变化后的唯一 quote 再锚定与 orphan 标记；
+- 引用和标注跳回原文。
+
+### 待实现
+
+- 书签；
+- 最近阅读视图；
+- 本地书名/作者/正文/标注搜索；
+- 长文和真实 PDF 性能测量；
+- 标注导出完整性和连续七天真实使用。
 
 ### 退出标准
 
-- 新开发者可以按文档启动项目。
-- 数据库可以初始化、迁移和备份。
-- Fake Document Preparation + Fake NotebookLM Adapter 可以跑通含调用前 Intent 的持久 Job。
-- Job 非法状态转换、过期 Lease 写入、取消竞态和 remote outcome 歧义被测试拒绝；外部服务失败不会导致主流程崩溃或丢失草稿。
-- 未认证、错误 Host/Origin/CSRF 的本地 API 请求被拒绝；不存在“仅因回环而授权”的业务路由。
-- 干净 macOS Runner 可以构建并启动不依赖系统 Python/Node 的 Sidecar Artifact；缺失资源、端口占用和损坏 Manifest fail closed。
-- Tauri 壳冷启动、重复启动、正常退出与 Sidecar/Tauri 崩溃测试不遗留孤儿 Worker，也不附着或终止未知 `3000` 端口进程。
+- 5–10 本合法真实资料的导入成功率达到目标并有记录；
+- 阅读进度与标注在重启、重新导入、升级后不丢失；
+- 本地搜索、书签和最近阅读满足基本使用；
+- 真实浏览器键盘、窄窗口、高 DPI 和 PDF 样本通过；
+- 连续使用一周无阻塞性数据丢失。
 
 ---
 
-## 6. P3：个人 Alpha——阅读与标注
+## 5. P4：AI Alpha——NotebookLM
 
-### 目标
+### 已实现
 
-先让 diandianreading 成为一个愿意每天打开的阅读器。
+- Provider Session/Adapter；
+- 创建 Workspace、上传正文与持久映射；
+- whole-book Chat；
+- `selection` 与 `notes` QueryScope；
+- `effective_scope`、防空范围扩大和注入定界；
+- 本地 Citation 与唯一 excerpt 定位；
+- ChatRun Lease、取消、重试与模糊结果 fail closed；
+- 回答保存为 KnowledgeNote 与内容生成入口。
 
-### 功能范围
+### 待实现/验证
 
-- PDF/EPUB 导入。
-- 书库列表。
-- `DocumentPreparationPort` 的真实实现：章节解析、确定性 Part 与 manifest。
-- Archive 防穿越/解压炸弹、Parser 无网络/资源上限、私有 staging 和文件类型/魔数校验。
-- 阅读器。
-- 阅读进度。
-- 划线。
-- 个人笔记。
-- 书签。
-- 最近阅读。
-- 本地搜索。
-- 基础导出。
-
-### 暂不接入
-
-- NotebookLM 自动生成。
-- 多平台发布。
-- 公开社区。
-- 复杂推荐算法。
-
-### Alpha 测试内容
-
-使用 5～10 本真实的、用户有权使用且带 `RightsProvenance` 的资料进行测试：
-
-- 3 本 PDF。
-- 3 本 EPUB。
-- 2 篇网页或 Markdown 文档。
-- 至少一本较长资料。
-
-### 关键指标
-
-- 导入成功率 ≥ 95%。
-- 阅读进度保存成功率 ≥ 99%。
-- 标注不丢失。
-- 页面首次打开时间 ≤ 2 秒（本地资料）。
-- 个人连续使用 7 天。
+- `chapters` 与 `conversation_default` QueryScope；
+- 真实 NotebookLM 登录和 Session 恢复；
+- 真实引用定位抽样；
+- 个人笔记上下文是否确实改善回答；
+- Provider 页面变化、断网和重启恢复；
+- 回答质量人工评分。
 
 ### 退出标准
 
-- 连续一周真实使用，没有阻塞性数据丢失问题。
-- 标注可以可靠导出。
-- 书库和阅读器的核心交互不再频繁变化。
+- 真实测试问题中至少 80% 可接受；
+- 选区/笔记/章节范围不跨书、不扩大；
+- Provider 失败时阅读与本地笔记仍可用；
+- 超时、响应丢失、过期 Lease 与取消不会重复创建远程资源；
+- live 结果和失败记录进入手动验收文档。
 
 ---
 
-## 7. P4：AI Alpha——NotebookLM 接入
+## 6. P5：知识与创作 Beta
 
-> 工程状态：Phase 2–5 已交付 NotebookLM Adapter、可恢复导入、统一 CLI/Web/API、持久 Job，以及带本地引用的 whole-book Chat 离线链路。P4 产品阶段尚未完成：章节/选区/个人笔记范围、内容生成界面、真实 Provider 浏览器手测和回答质量人工验收仍待实施。
+### 已实现
 
-### 目标
+- KnowledgeNote 与 save-as-note 幂等；
+- 内容资产、可恢复生成、AI/human 修订作者归属；
+- 内容编辑与版本历史；
+- Vault 配置；
+- Book/Highlights/Notes/Summary/Social Posts 导出；
+- stable ID 增量对账；
+- 重命名跟随、手改冲突文件、路径封闭与 frontmatter 防注入；
+- React 创作工作台。
 
-验证 AI 是否真的能帮助用户理解自己的阅读，而不是只会生成普通摘要。
+### 待验证
 
-### 集成功能
-
-1. 为书籍创建 NotebookLM Notebook。
-2. 上传正文来源。
-3. 上传用户划线和笔记。
-4. 对当前书籍提问（whole-book 已实现；章节/选区/笔记仍为 Proposed）。
-5. 获取带来源的答案（本地 Book/DocumentPart 引用映射已实现）。
-6. 生成读书报告。
-7. 生成知识卡片。
-8. 生成测验或闪卡。
-9. 下载生成结果。
-
-### 任务状态与恢复
-
-生命周期与业务步骤分开：
-
-```text
-status: queued → running → completed
-                  ├→ queued      # 有界重试
-                  ├→ blocked     # AUTH_REQUIRED / REMOTE_OUTCOME_AMBIGUOUS
-                  ├→ failed
-                  └→ cancelled
-
-current_step: creating_workspace → uploading → processing → verifying
-```
-
-`cancel_requested_at` 和 Lease owner/expiry/generation 是独立字段。每个 Notebook/Source/Artifact 写调用前必须持久化 Intent、correlation key、输入指纹和调用前 baseline；超时、断连、取消、进程终止或 Lease 过期后先 reconciliation，禁止按空外部 ID blind recreation。
-
-### 用户体验要求
-
-- 任务执行期间显示明确状态。
-- 长任务可以离开页面后继续运行；API 分别显示 status、current step、blocked reason 与取消是否仍在处理。
-- `AUTH_REQUIRED` 提示重新登录并暂停，不消耗后台重试；结果不确定时提示待对账而不是提供盲目重建按钮。
-- 结果明确失败时显示脱敏原因和符合操作幂等策略的重试按钮。
-- AI 回答显示输入来源。
-- 每个生成结果都保存提示词和输入来源。
-
-### 质量评估
-
-为每本测试书准备 5～10 个问题，人工检查：
-
-- 是否引用正确。
-- 是否混淆不同书籍内容。
-- 是否能使用用户的个人笔记。
-- 是否能回答“这和我有什么关系”。
+- 真实 Obsidian Vault；
+- `obsidian://` 深链接；
+- 手工重命名和冲突体验；
+- 至少三个内容模板可直接用于后续编辑/发布；
+- 冲突频率是否说明需要重新评估单向导出。
 
 ### 退出标准
 
-> 当前尚未达到本节全部退出标准；离线 Fake/Contract/API/installed-wheel E2E 不能替代真实账号与人工回答质量评估。
-
-- 80% 以上测试问题能够给出可接受回答。
-- 用户能明显感受到“基于我的标注”比普通摘要更有价值。
-- NotebookLM API 失败时，书籍阅读和本地笔记仍然可用。
-- 故障注入覆盖调用前 Intent、Provider commit 后响应丢失、ID checkpoint 前崩溃、过期 Lease 与取消竞态，均不会重复创建远程资源。
-- 真实 Provider E2E 仅由受信任维护者在受保护、人工批准的 CI environment 中使用授权 fixture；默认/Fork PR CI 只能使用 Fake/Contract/脱敏 fixture。
+- 生成结果可编辑且 AI 原稿不可变；
+- 重复导出不产生重复文件；
+- 手工修改永不被静默覆盖；
+- 至少三个模板通过维护者质量判断；
+- Provider 失败不破坏本地草稿和修订历史。
 
 ---
 
-## 8. P5：知识沉淀与创作 Beta
+## 7. P6：发布 Beta
 
-### 目标
+P6 暂不自动进入。只有 Gate 3 证明 AI 内容确实减少创作时间后才启动。
 
-把 AI 结果变成可编辑、可复用、可持续积累的内容资产。
+候选范围：
 
-### Obsidian 功能
+- 先支持一个文字平台，再支持一个图片/视频平台；
+- 平台适配、预览、dry-run、人工确认、排程和历史；
+- 每个平台独立状态；
+- 发布前 Intent/correlation key；
+- 超时或响应丢失先 reconciliation，不 blind republish；
+- 媒体失败保留文本草稿。
 
-- 配置 Vault 路径。
-- 导出 `Book.md`。
-- 导出 `Highlights.md`。
-- 导出 `Notes.md`。
-- 导出 `Summary.md`。
-- 导出 `Social Posts/`。
-- 写入 YAML frontmatter。
-- 生成返回应用的深链接。
-- 同一本书增量更新，而不是重复覆盖。
+退出标准：
 
-### 创作工作台功能
+- 连续 20 次受控发布不丢草稿；
+- 失败可安全重试；
+- 用户可在发布前修改每个平台版本；
+- 至少两个平台完成真实测试。
 
-- 输入来源选择。
-- 生成内容类型选择。
-- 语气和长度控制。
-- 结果编辑。
-- 版本历史。
-- 来源引用查看。
-- 内容预览。
-- 内容导出。
+---
 
-### 第一批内容模板
+## 8. P7：私人测试
 
-1. 读书长文。
-2. 一张读书卡片。
-3. 八张分享卡片。
-4. 60 秒视频脚本。
-5. 10 分钟播客脚本。
-6. X/Twitter 短帖或 Thread。
+### 规模
+
+- 5–20 名受邀用户；
+- 至少两周；
+- 至少一半为知识型创作者或重度读者。
+
+### 核心任务
+
+- 通过 uv 安装并启动；
+- 导入 2 本资料；
+- 完成 3 次阅读/标注；
+- 进行 3 次 AI 问答；
+- 生成 2 个内容资产；
+- 导出 1 次 Obsidian；
+- 若 P6 已通过 Gate，再执行发布。
 
 ### 退出标准
 
-- 生成结果可以编辑，而不是只能重新生成。
-- 用户能够区分 AI 原始稿和自己的修改稿。
-- Obsidian 文件可重复同步，不产生大量重复文件。
-- 至少 3 个内容模板可以真实用于发布。
+- 50% 以上用户在两周内第二次使用；
+- 核心任务无高频阻塞或数据丢失；
+- 至少 5 条具体可执行反馈；
+- 安装与 Provider setup 不需要开发者现场修环境。
 
 ---
 
-## 9. P6：社交发布 Beta
+## 9. P8：公测准备
 
-### 目标
+### 安装与升级
 
-让“阅读 → 创作 → 发布”成为可控的完整链路。
-
-### 发布功能
-
-- 平台账号连接。
-- 平台内容适配。
-- 媒体尺寸检查。
-- 文案编辑。
-- 标签编辑。
-- 预览。
-- dry-run。
-- 人工确认。
-- 定时发布。
-- 发布历史。
-- 失败重试。
-
-### 推荐实施顺序
-
-1. 先接入一个文字平台。
-2. 再接入一个图片或视频平台。
-3. 确认内容预览和失败恢复后再增加平台。
-
-### 必须解决的问题
-
-- 不使用不安全的 `shell=True` 拼接命令。
-- 每个平台有独立的发布状态。
-- 媒体转换失败时保留文本草稿。
-- 发布调用前保存 operation intent/correlation key；发布成功后先记录外部平台 ID，再推进状态。
-- 超时或响应丢失先按平台查询/对账；无法证明未发布时阻塞人工处理，不盲目重发。
-- 同一内容重复发布时给出提醒。
-
-### 退出标准
-
-- 连续 20 次测试发布中，草稿不丢失。
-- 发布失败可以重试。
-- 用户能在发布前修改每个平台版本。
-- 至少两个平台完成稳定发布测试。
-
----
-
-## 10. P7：私人测试
-
-### 目标
-
-验证产品是否被真实用户持续使用，而不是只在演示时看起来完整。
-
-### 测试规模
-
-- 5～20 名受邀用户。
-- 其中至少一半是知识型创作者或重度读者。
-- 测试周期至少 2 周。
-
-### 测试任务
-
-每位用户至少完成：
-
-- 导入 2 本资料。
-- 完成 3 次阅读和标注。
-- 进行 3 次 AI 问答。
-- 生成 2 个内容包。
-- 导出 1 次 Obsidian。
-- 发布或排程 1 条内容。
-
-### 收集内容
-
-- 首次上手阻力。
-- 最常使用的页面。
-- AI 结果是否值得编辑。
-- Obsidian 导出是否符合用户习惯。
-- 哪些平台最重要。
-- 用户愿意为哪一步付费。
-
-### 私测退出标准
-
-- 50% 以上测试用户完成两周内的第二次使用。
-- 30% 以上用户完成“阅读 → AI → 发布”完整闭环。
-- 关键任务没有高频阻塞问题。
-- 至少获得 5 个具体、可执行的用户反馈。
-
----
-
-## 11. P8：公测准备
-
-### 目标
-
-从“能用”升级为“可以让更多人安全地使用”。
-
-### 稳定性
-
-- 错误监控。
-- 任务重试。
-- 任务超时。
-- 第三方健康检查。
-- 关键数据备份。
-- 导出和恢复测试。
-- 版本回滚策略。
-- Tauri 单实例、Sidecar readiness/bootstrap、优雅退出和崩溃恢复。
-- 全新机器安装，不依赖系统 Python、Node、Rust、`uv` 或开发机浏览器 Cache。
-- Sidecar、前端、Schema、Control Protocol 与 Shell 版本兼容 Manifest。
-- 签名更新中断、错误签名拒绝和上一个兼容版本恢复。
+- `uvx diandianreading web` clean-machine smoke；
+- `uv tool install/upgrade`；
+- immutable tag、wheel/sdist hash 与 changelog；
+- schema compatibility 与 downgrade 拒绝；
+- App Home 在工具环境重建后保持完整；
+- Playwright Chromium 显式 setup、升级与清理；
+- 备份、恢复、卸载和重新安装说明。
 
 ### 安全
 
-- `CredentialRef` 只有 provider/profile；物理路径和 Secret 只在 Provider Infrastructure 内解析，Token/Cookie/邮箱/路径不进入日志或前端。
-- 检测并迁移 Legacy Profile；`~/.zlibrary/config.json` 可能含明文账号密码，只告警、不导入，验证新登录后再显式清理。
-- 数据库/WAL/SHM、文档、Job、备份和凭据执行私有权限/所有权、根目录 confinement、原子发布和 no-symlink 测试。
-- 本地 API 执行每安装实例 Token/Session、实际 Peer + Host、same-origin、Origin/CSRF、SSE/WS 认证、限制性 CORS、请求/连接上限，并禁用 trusted proxy。
-- URL/每跳 Redirect/浏览器子请求执行 Host/DNS 策略；下载、Archive 和 Parser 有大小、时间、路径、类型、网络和资源硬上限。
-- 上传文件大小、MIME/魔数、哈希和隔离 staging 校验。
-- 删除数据和远程清理均有显式 Intent、审计与可恢复流程，不把取消等同于远程回滚。
-- Tauri 主 WebView 默认无远程 Origin Capability、任意 Shell、任意参数和通配文件权限；Provider 页面不在主 WebView 打开。
-- Sidecar 只从签名 Bundle 的固定 `externalBin` 启动；Bootstrap Secret 不进入参数、环境变量、日志、文件或遥测。
-- macOS App、Sidecar 和 Updater Artifact 完成签名、公证、完整性和错误签名拒绝验证。
+- ADR-0003/0004/0005/0009 全部关键路径有证据；
+- 只绑定回环，不支持 LAN/公网；
+- Token 损坏/丢失时 fail closed 并可恢复；
+- Chromium 不进入基础 wheel、不静默下载、不依赖开发缓存；
+- PyPI Trusted Publishing/OIDC 或受控发布凭据；
+- Secret、账号、正文和路径不进入日志/诊断包；
+- Z-Library 保持默认关闭和权利约束。
 
-### 合规
+### RC 验收
 
-- 明确内容来源和版权责任；Z-Library 导入逐项强制不可预选的 `RightsProvenance`、政策版本、权利依据、脱敏来源与内容哈希。
-- 用户声明用于执行产品政策，不声称自动完成法律验证。
-- 不提供未经授权或通用的书籍下载入口，不绕过访问控制、验证码、付费限制或 DRM。
-- 用户协议和隐私说明。
-- AI 生成内容提示。
-- 社交平台发布风险提示。
-- 高风险领域内容免责声明。
-
-### 公测候选版本（RC）验收
-
-- 核心流程通过率 ≥ 95%。
-- 严重 Bug 为 0。
-- 高优先级 Bug 不超过 3 个。
-- 数据库/WAL、文档和不含凭据的原子备份恢复演练通过；回滚不会跟随链接、覆盖半成品或盲删远程资源。
-- Token/Session 轮换与 fail-closed 恢复演练通过；安全迁移失败时不降级为无认证。
-- 删除用户数据演练通过。
-- 第三方异常有降级提示，remote outcome 歧义可人工对账。
-- 签名、公证的 macOS RC 可在没有开发工具的全新用户账户完成核心流程。
-- 重复启动、未知进程占用 `3000`、Sidecar/Tauri 崩溃和正常退出不产生重复 Runtime、误附着或孤儿 Worker。
-- 安装、覆盖升级、更新中断、卸载、用户数据保留和 CLI fallback 均完成恢复演练。
+- 核心流程通过率 ≥95%；
+- 严重 Bug 为 0；
+- 高优先级 Bug 不超过 3；
+- installed real-process E2E 与发布后 uvx smoke 通过；
+- 备份/恢复、Token 轮换、migration 中断通过；
+- 真实 NotebookLM 与 Obsidian 受控验收通过。
 
 ---
 
-## 12. P9：v1.0 正式桌面发布
+## 10. P9：v1.0
 
 ### 上线范围
 
-正式版只承诺已稳定的功能：
+- PDF/EPUB/Markdown 导入；
+- 阅读、进度、划线与个人笔记；
+- 基础书库、书签、最近阅读和本地搜索；
+- NotebookLM 问答、来源和部分内容生成；
+- Markdown/Obsidian 导出；
+- 内容历史和任务状态；
+- P6 只有在真实平台通过时才进入承诺范围。
 
-- 书籍导入。
-- PDF/EPUB 阅读。
-- 划线和个人笔记。
-- 基础书库。
-- NotebookLM 问答和部分内容生成。
-- Markdown/Obsidian 导出。
-- 两个平台的发布或排程。
-- 内容历史和任务状态。
+### 发布清单
 
-实验性能力必须明确标记：
-
-- 远程 NotebookLM 连接。
-- 尚未稳定的社交平台。
-- 批量书籍处理。
-- 自动化无人值守发布。
-
-### 发布前清单
-
-- [ ] macOS App 与 Python Sidecar 构建可复现。
-- [ ] Apple Developer ID 签名、公证、stapling 与 Gatekeeper 验证完成。
-- [ ] Tauri Updater Artifact 签名、公钥固定、错误签名拒绝和中断恢复完成。
-- [ ] Release Manifest、SBOM、License 清单、SHA-256 和版本兼容信息完成。
-- [ ] 全新机器安装、首次启动、单实例、正常退出和卸载完成。
-- [ ] SQLite/文件备份、Schema migration、兼容降级拒绝和 CLI fallback 完成。
-- [ ] Playwright Chromium Provisioning、离线提示、升级和清理完成。
-- [ ] 错误诊断与本地隐私安全的诊断包完成。
-- [ ] 隐私说明完成。
-- [ ] 使用条款完成。
-- [ ] 新手引导完成。
-- [ ] 首次导入示例完成。
-- [ ] 帮助文档完成。
-- [ ] 反馈入口完成。
-- [ ] 版本号和变更日志完成。
-- [ ] 回滚方案完成。
-
-### 正式发布方式
-
-建议采用分阶段桌面 Channel：
-
-1. `internal`：维护者未签名/临时签名构建，不接入 Stable 数据与 Updater。
-2. `beta`：签名、公证的 macOS Apple Silicon 小规模测试。
-3. `stable`：满足 D0–D6 门槛的 macOS 稳定下载与签名更新。
-4. `windows-beta`：Windows 独立完成打包、签名、WebView2、路径权限和恢复验证后开放。
-
-不要在第一次桌面发布时同时开放所有平台、所有 Provider 和无人值守自动发布。公开云账号、跨设备同步和公共分享需要单独产品/架构阶段。
+- [ ] `uvx diandianreading web` 从正式 PyPI 包启动；
+- [ ] License 与分发渠道一致；
+- [ ] Git tag、wheel/sdist、SHA-256 和 changelog 完整；
+- [ ] Python/OS/Provider 支持矩阵明确；
+- [ ] App Home、Schema、Chromium revision 和升级说明完整；
+- [ ] clean-machine 安装、启动、Ctrl+C、重启和升级完成；
+- [ ] SQLite/文件备份与恢复演练完成；
+- [ ] Token/Session 恢复和端口冲突行为完成；
+- [ ] 隐私、权利边界、AI 内容提示与使用说明完成；
+- [ ] 新手引导、示例导入和反馈入口完成。
 
 ---
 
-## 13. 上线后的 30/60/90 天
+## 11. 版本策略
 
-### 上线后 30 天：稳定性优先
+| 版本 | 目标 |
+| --- | --- |
+| v0.1 | Local Web Developer Preview：Web CLI、setup/doctor、Preview 发布 |
+| v0.2 | 个人 Alpha：阅读器缺口与真实浏览器验证 |
+| v0.3 | AI Alpha：章节范围与 NotebookLM live 验收 |
+| v0.4 | 知识 Beta：Obsidian 与模板质量稳定 |
+| v0.5 | 可选发布 Beta：通过 Gate 3 后的 Social Adapter |
+| v0.9 | Local Web RC：安装、升级、备份、安全与恢复 |
+| v1.0 | 受支持的 local-first Web 工具正式版 |
 
-目标：确认用户可以稳定完成核心闭环。
-
-重点：
-
-- 修复导入、阅读、标注和 AI 任务中的高频问题。
-- 观察第三方接口错误率。
-- 优化首次导入流程。
-- 收集真实生成内容样本。
-- 关闭无人使用或不稳定的功能。
-
-重点指标：
-
-- 首次导入成功率。
-- 首次阅读完成率。
-- AI 生成成功率。
-- 发布任务成功率。
-- 7 日留存。
-
-### 上线后 60 天：提高复用率
-
-目标：让用户不是只处理一本书，而是持续回到自己的知识库。
-
-重点：
-
-- 跨书搜索。
-- 主题页面。
-- 历史时间线。
-- 内容模板优化。
-- Obsidian 增量同步。
-- 生成结果版本管理。
-
-重点指标：
-
-- 每个活跃用户处理的书籍数量。
-- 每本书生成的内容数量。
-- 旧笔记再次被使用的次数。
-- Obsidian 同步频率。
-
-### 上线后 90 天：扩大内容影响力
-
-目标：从个人工具演进为创作者工作台。
-
-重点：
-
-- 内容日历。
-- 平台数据回流。
-- 发布效果分析。
-- 内容系列和主题系列。
-- 可选的公开分享页面。
-- 多人协作或团队空间调研。
-
-重点指标：
-
-- 用户每月发布内容数量。
-- 生成内容的发布转化率。
-- 用户内容的重复创作率。
-- 用户主动邀请比例。
+版本号与当前 Python package `0.1.0` 的对应关系在 L4 发布 PR 中冻结；未发布前不根据文档自动跳版本。
 
 ---
 
-## 14. 版本策略
-
-### v0.1：原型
-
-- 视觉原型。
-- 假数据交互。
-- 用于验证产品结构。
-
-### v0.2：个人 Alpha
-
-- Python Sidecar 与 Tauri 内部构建。
-- React/Vite 基础 UI。
-- 本地书籍导入。
-- 阅读器。
-- 标注和笔记。
-
-### v0.3：AI Alpha
-
-- NotebookLM 接入。
-- 问答和内容生成。
-- 全新 macOS 用户账户完成 Provider 登录和核心流程。
-- Sidecar/Playwright Provisioning 不依赖开发机环境。
-
-### v0.4：知识 Beta
-
-- Obsidian 导出。
-- 主题和跨书搜索。
-
-### v0.5：发布 Beta
-
-- SocialCLI 接入。
-- 多平台适配和排程。
-
-### v0.9：Desktop Release Candidate
-
-- 私测反馈修复。
-- 安全、备份、监控和降级完成。
-- macOS App 签名、公证、Gatekeeper 和签名 Updater 验证完成。
-- 安装、升级、迁移、回滚、卸载和数据保留演练完成。
-
-### v1.0：桌面正式版
-
-- 稳定核心流程。
-- 明确的功能边界。
-- 可复现、可签名的构建、安装和升级流程。
-- macOS Stable；Windows 只有独立满足支持门槛后才进入正式范围。
-
----
-
-## 15. 资源与角色建议
-
-### 最小团队
-
-#### 产品/设计
-
-- 维护 PRD。
-- 组织用户测试。
-- 设计阅读和内容生产流程。
-- 维护模板与内容质量。
-
-#### 全栈工程
-
-- 阅读器、数据模型、任务系统。
-- NotebookLM、Obsidian、SocialCLI Adapter。
-- 部署、备份和监控。
-
-#### 内容/测试
-
-- 准备测试书籍和测试问题。
-- 评估 AI 结果质量。
-- 验证不同平台内容格式。
-
-一个人开发时，建议按以下顺序分配精力：
-
-```text
-产品流程 > 阅读体验 > 数据可靠性 > AI 质量 > 发布数量
-```
-
----
-
-## 16. 主要风险与应对
+## 12. 风险与应对
 
 | 风险 | 影响 | 应对 |
-|---|---|---|
-| NotebookLM 内部接口变化 | AI 功能中断 | Adapter、健康检查、失败降级 |
-| SocialCLI 平台接口变化 | 发布失败 | 草稿保留、平台隔离、手动导出 |
-| 书籍版权问题 | 产品无法公开运营 | 只处理用户有权使用内容，限制正文分享 |
-| 功能范围膨胀 | 无法按期完成 | 严格执行个人版 MVP |
-| AI 结果泛化 | 用户感受不到价值 | 强化个人笔记和来源引用 |
-| Obsidian 双向同步冲突 | 数据不一致 | 第一版只做单向导出 |
-| 媒体处理失败 | 不能发布 | 保留文本稿，提供下载和重试 |
-| 凭证泄露 | 账号和数据风险 | Provider 隔离、opaque CredentialRef、私有权限/所有权、脱敏日志、最小权限 |
-| 本地 API 被网页/同机进程调用 | 文件与远程副作用 | 每安装实例认证、Peer+Host、Origin/CSRF、SSE/WS、限额、禁用 proxy trust |
-| Tauri Capability 或 WebView 导航过宽 | 任意本机能力被不可信内容调用 | 默认无远程 Capability、无任意 Shell/参数/路径，精确 Origin/Window/Command 与负向测试 |
-| Python Sidecar/Playwright 打包不完整 | 用户机器无法启动或登录 | 干净 Runner 构建、target-triple Artifact、资源 Manifest、全新机器 E2E、明确 Provisioning |
-| 壳/Sidecar 崩溃或端口被抢占 | 孤儿 Worker、重复 Runtime、误附着 | 单实例、父子控制协议、身份验证、固定端口 fail closed、优雅关闭与崩溃恢复 |
-| 安装包或更新被篡改 | 本机代码执行与数据破坏 | 应用签名/公证、Updater Artifact 签名、公钥固定、SBOM、错误签名拒绝和回滚演练 |
-| 恶意下载/Archive/Parser | SSRF、路径穿越、资源耗尽 | 逐跳网络策略、流式硬上限、隔离解析与 Archive 限制 |
-| 远程提交后响应丢失 | 重复 Notebook/Source/发布 | 调用前 Intent、correlation key、Lease fencing、reconciliation，不 blind recreation |
+| --- | --- | --- |
+| uv 对目标用户仍太技术化 | 首次采用受阻 | setup/doctor、根 README、clean-machine 测试；有证据后再评估 Homebrew |
+| NotebookLM 接口变化 | AI 中断 | Adapter、健康检查、blocked 状态和本地降级 |
+| Chromium 下载失败/过大 | 无法登录 Provider | 显式 setup、固定 revision、代理/磁盘诊断、版本化私有目录 |
+| uvx 环境重建 | 用户误以为数据丢失 | App Home 独立、升级/卸载文档和恢复测试 |
+| 本地 API 被网页/同机进程调用 | 文件与远程副作用 | Token、Peer+Host、Origin/CSRF、限额、禁用 proxy trust |
+| 固定端口占用 | 无法启动 | fail closed；收集证据后再设计可认证动态 Origin |
+| PyPI 包或发布凭据被篡改 | 本机代码执行 | immutable tag、hash、Trusted Publishing、最小 CI 权限 |
+| 恶意下载/Archive/Parser | SSRF、路径穿越、耗尽 | 逐跳网络策略、流式上限、隔离解析与 Archive 限制 |
+| 远程提交后响应丢失 | 重复资源/发布 | Intent、correlation、Lease fencing、reconciliation |
+| 功能范围膨胀 | 核心体验不稳定 | Gate 先行，P6 不在 P3–P5 验收前自动启动 |
 
 ---
 
-## 17. Go / No-Go 决策门
+## 13. Go / No-Go Gates
 
-### Gate 1：原型是否继续开发
+### Gate 1：产品结构
 
-进入条件：用户能理解产品闭环。  
-停止条件：用户把产品理解成普通书库或普通 AI 聊天。
+进入条件：用户理解“阅读 → 思考 → AI → 知识”。
 
-### Gate 2：是否进入 AI 集成
+停止条件：产品被理解为普通书库或通用聊天。
 
-进入条件：阅读器和标注稳定。  
-停止条件：用户不愿意留下划线和笔记。
+### Gate 2：AI 集成
 
-### Gate 3：是否进入社交发布
+进入条件：阅读器与标注稳定。
 
-进入条件：AI 结果确实能减少创作时间。  
-停止条件：用户认为结果需要完全重写。
+停止条件：用户不愿留下划线和笔记。
 
-### Gate 4：是否开放更多用户
+### Gate 3：社交发布
 
-进入条件：私测用户可以完成核心闭环，数据没有丢失。  
-停止条件：第三方接口不稳定、凭证风险未解决或内容版权边界不清楚。
+进入条件：AI 结果确实减少创作时间，至少三个模板可用。
 
-### Gate 5：是否开放社区能力
+停止条件：结果需要完全重写或用户只需要 Obsidian。
 
-进入条件：个人知识和创作工作流稳定，用户有公开分享需求。  
-停止条件：社区会让产品重新变成传统阅读 App，削弱核心闭环。
+### Gate 4：扩大用户
+
+进入条件：uv 安装、Provider setup、核心闭环和数据恢复稳定。
+
+停止条件：第三方、Credential、版权或数据安全边界未通过。
+
+### Gate 5：云/社区
+
+进入条件：个人工作流稳定且有明确公开分享需求。
+
+停止条件：会推翻 local-first 核心或把产品变回传统社区阅读 App。
 
 ---
 
-## 18. 当前最优先的下一步
+## 14. 当前执行顺序
 
-按照当前 Phase 0–5 工程进度和桌面决策，建议接下来依次完成：
+```text
+L0 文档/ADR 同步
+→ L1 Web CLI + installed-process E2E
+→ L2 setup/doctor/open
+→ L3 桌面代码与 CI 退场
+→ L4 Preview/Stable 分发准备
+→ L5 维护者真实手动验收
+→ 补齐 P3/P4/P5 产品缺口
+→ Gate 3 决定是否进入 P6
+```
 
-1. 完成 NotebookLM/Z-Library 真实浏览器手工验收，记录当前 Provider 基线，避免把桌面打包问题与上游兼容问题混在一起。
-2. 完成 D0 文档 PR，冻结 Tauri 2 + React/Vite + Python Sidecar 边界。
-3. 完成 D1 Sidecar/Playwright 可行性：干净 macOS Runner、target-triple Artifact、资源 Manifest 和全新环境 offline E2E。
-4. 完成 D2 Tauri 壳：单实例、控制协议、固定端口、窗口、退出与崩溃恢复；先复用当前静态 UI。
-5. 完成 D3 React/Vite UI 等价迁移，Browser/Desktop 使用同一 Build。
-6. 实现本地 PDF/EPUB 阅读器、划线、笔记和进度保存。
-7. 扩展章节/选区/个人笔记 Chat Scope 与内容生成。
-8. 完成 D4 桌面安全、备份恢复、真实 Provider 与 Playwright Provisioning。
-9. 增加 Obsidian 单向导出和 SocialCLI 目标平台。
-10. 完成 D5/D6 签名、公证、Updater、macOS Alpha/Stable，再进入 Windows。
+当前不优先：
 
-当前不建议优先做：
-
-- 公共书城。
-- 复杂社交关系。
-- 全平台发布。
-- 自动无人值守发布。
-- 双向 Obsidian 同步。
+- Tauri/Electron/原生安装包；
+- 公共书城和复杂社交关系；
+- 云多租户和跨设备同步；
+- 全平台发布或无人值守发布；
+- 双向 Obsidian 同步；
 - 大规模推荐算法。
 
 ---
 
-## 19. 最终上线定义
-
-当用户可以完成以下流程，并且中间没有需要开发者手动介入的步骤时，diandianreading 才算完成 v1.0：
+## 15. v1.0 最终定义
 
 ```text
-安装并打开签名桌面应用
-→ 在本机创建/打开个人空间
-→ 导入一本合法资料
-→ 打开阅读器
+准备 uv
+→ uvx diandianreading web
+→ 浏览器安全建立本地 Session
+→ 导入合法资料
 → 阅读并留下划线和想法
-→ 向 AI 提问
-→ 生成一组可编辑内容
+→ 向 AI 提问并查看来源
+→ 生成和编辑内容
 → 保存到 Obsidian
-→ 选择两个社交平台
-→ 预览并人工确认
-→ 发布或定时发布
-→ 在历史中看到完整记录
+→ 安全退出、重启和升级
+→ 历史与数据保持完整
 ```
 
-产品正式上线不是“所有功能都有”，而是这条主链稳定、可恢复、可解释，并且用户愿意再次回来使用。
+若 P6 通过 Gate 3，再把“预览 → 人工确认 → 发布/排程”加入正式闭环。产品完成不是功能数量最大，而是这条主链稳定、可恢复、可解释，并且用户愿意再次使用。
