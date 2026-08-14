@@ -35,6 +35,11 @@
 | [L1 本地 Web CLI E2E](development/l1-web-e2e.md) | installed-wheel 真实 Uvicorn、readiness、静态资源与终止链路 | Active |
 | [L2 本地 Runtime E2E](development/l2-local-runtime-e2e.md) | Chromium setup/doctor、安全 reopen 与 Token 丢失恢复 | Active |
 | [L3 桌面轨退场 E2E](development/l3-desktop-retirement-e2e.md) | 删除 Tauri/Rust/PyInstaller Sidecar 与专属 CI | Active |
+| [L4 分发 E2E](development/l4-distribution-e2e.md) | archive 审计、本地 wheel uvx smoke、Preview workflow 与外部 Gate | Code-complete / Blocked |
+| [分发与发布流程](development/release-process.md) | wheel/sdist、uvx candidate、GitHub pre-release、TestPyPI OIDC 与 Stable Gate | Preview-ready |
+| [发行支持矩阵](development/support-matrix.md) | Python/OS/Provider 的证据等级与 Stable Gate | Preview candidate |
+| [安装、升级、备份与恢复](operations/install-upgrade-backup.md) | App Home 生命周期、离线备份、恢复与卸载 | Preview runbook |
+| [L5 维护者真实验收交接](development/l5-maintainer-handoff.md) | Mac 浏览器、Chromium、NotebookLM、Obsidian 与结果模板 | Ready for maintainer |
 | [R1 正文与章节服务 E2E](development/r1-e2e.md) | 书籍详情、规范化正文、章节索引、ETag 再验证与阅读进度链路验证 | Active |
 | [R2 标注核心 E2E](development/r2-e2e.md) | 划线/笔记生命周期、服务端切片校验、软删除与再锚定引擎验证 | Active |
 | [R4 Chat 缝合 E2E](development/r4-e2e.md) | 选区/笔记范围、补充上下文定界与引用本地定位验证 | Active |

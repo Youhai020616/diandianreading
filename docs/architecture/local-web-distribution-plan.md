@@ -454,16 +454,18 @@ build wheel
 - `rg` 不再出现把桌面壳描述为当前或目标产品的有效文档；
 - 全量质量门通过，覆盖率不低于 90%。
 
-### L4：Preview 与 Stable 分发
+### L4：Preview 与 Stable 分发（代码准备完成，外部发布受 Gate 阻塞）
+
+当前证据：根 README、artifact manifest/hash 检查、source-tree 外 `uvx --from <wheel>` process smoke、GitHub pre-release workflow、TestPyPI OIDC workflow、支持矩阵与升级/备份 runbook 已实现。TestPyPI/PyPI 实际上传、immutable tag 和 clean-machine 索引安装尚未执行；License 与 package ownership 未决定前不得标记完成。
 
 交付：
 
-- 根目录用户 README；
-- TestPyPI/GitHub pre-release；
-- clean-machine 安装清单；
-- PyPI Trusted Publishing 或受控发布流程；
-- immutable tag、hash、changelog、支持矩阵；
-- `uvx diandianreading web` 发布后 smoke。
+- 根目录用户 README（已实现）；
+- TestPyPI/GitHub pre-release（workflow 已实现，实际发布待外部配置）；
+- clean-machine 安装清单（已实现，真实索引安装待执行）；
+- PyPI Trusted Publishing 或受控发布流程（TestPyPI OIDC 已实现，Stable 禁用）；
+- immutable tag、hash、changelog、支持矩阵（除实际 tag 外已实现）；
+- `uvx diandianreading web` 发布后 smoke（本地 wheel 已自动化，索引发布后待执行）。
 
 退出标准：
 
@@ -474,7 +476,9 @@ build wheel
 - License 与分发渠道一致；
 - Preview 反馈中的阻塞安装问题为 0 后才发布 Stable。
 
-### L5：产品验收并回到功能 Roadmap
+### L5：产品验收并回到功能 Roadmap（等待维护者真实环境）
+
+执行顺序、脱敏要求和结果模板见 [L5 维护者真实验收交接](../development/l5-maintainer-handoff.md)。代码侧不以 Fake E2E 代填通过结果。
 
 交付：
 

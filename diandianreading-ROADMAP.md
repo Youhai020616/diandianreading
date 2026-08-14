@@ -43,7 +43,7 @@ uvx diandianreading web
 | P5 | 知识与创作 Beta | KnowledgeNote、内容修订、Obsidian、工作台 | C0–C3 已实现；真实 Vault 与模板质量待验收 |
 | P6 | 发布 Beta | 人工确认后的平台适配与发布 | 未开始，须先通过 Gate 3 |
 | P7 | 私人测试 | 验证持续使用价值 | 未开始 |
-| P8 | 公测准备 | 安装、升级、备份、安全与恢复 | Local Web L 轨实施中 |
+| P8 | 公测准备 | 安装、升级、备份、安全与恢复 | L0–L3 已完成；L4 发布代码就绪，外部 Gate 待处理 |
 | P9 | v1.0 | 发布受支持的 local-first Web 工具 | 未开始 |
 
 ### 本地 Web 分发轨 / Local Web Track
@@ -52,11 +52,11 @@ uvx diandianreading web
 
 | 阶段 | 交付 | 退出证据 |
 | --- | --- | --- |
-| L0 | ADR/PRD/Roadmap/文档方向冻结 | 不再承诺 Tauri；与 ADR-0004/0005 一致 |
-| L1 | `diandianreading web`、兼容 alias、真实进程 E2E | installed wheel 启动 Uvicorn、readiness、SIGTERM |
-| L2 | `setup notebooklm`、`doctor`、`open` | Chromium 原子安装、脱敏诊断、安全 reopen |
+| L0 | ADR/PRD/Roadmap/文档方向冻结 | **已完成**；不再承诺 Tauri，与 ADR-0004/0005 一致 |
+| L1 | `diandianreading web`、兼容 alias、真实进程 E2E | **已完成**；installed wheel 启动 Uvicorn、readiness、SIGTERM |
+| L2 | `setup notebooklm`、`doctor`、`open` | **已完成**；Chromium 原子安装、脱敏诊断、安全 reopen |
 | L3 | 删除 Tauri/Rust/Sidecar-only 代码与 macOS CI | **已完成**；Python/Web 全量质量门通过 |
-| L4 | Preview/Stable 分发准备 | TestPyPI/PyPI、immutable tag、clean-machine smoke |
+| L4 | Preview/Stable 分发准备 | workflow/manifest/runbook 已实现；License、名称 ownership、外部发布待维护者 |
 | L5 | 真实产品验收 | 浏览器、NotebookLM、Obsidian 由维护者手测 |
 
 ### 已完成的功能交付轨
@@ -116,11 +116,10 @@ D1 Sidecar 与 D2 Tauri 壳曾完成可行性和 CI 实验；D3 的 React/Vite �
 
 ### 仍需补齐
 
-- 根目录用户 README；
 - 公开分发 License；
-- PyPI 包名与发布流程；
-- 数据备份/恢复的最终用户命令；
-- clean-machine uvx 证据。
+- PyPI 包名 ownership 与 Trusted Publisher 外部配置；
+- first-class 在线备份命令（当前只有停机 runbook）；
+- 从 TestPyPI/PyPI 安装的 clean-machine uvx 证据。
 
 ---
 

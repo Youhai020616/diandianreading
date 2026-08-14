@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import time
@@ -22,13 +23,29 @@ STOP_TIMEOUT_SECONDS = 15.0
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--command", type=Path, required=True)
+    parser.add_argument("--command", required=True)
+    parser.add_argument("--command-arg", action="append", default=[])
+    parser.add_argument("--working-directory", type=Path)
+    parser.add_argument("--start-timeout", type=float, default=START_TIMEOUT_SECONDS)
     parser.add_argument("--home", type=Path, required=True)
     args = parser.parse_args()
-    command = args.command.resolve()
-    home = args.home.resolve()
-    if not command.is_file():
+    if not 0 < args.start_timeout <= 300:
+        raise ValueError("Web smoke start timeout is invalid")
+    executable = shutil.which(args.command)
+    if executable is None:
+        candidate = Path(args.command).resolve()
+        executable = str(candidate) if candidate.is_file() else None
+    elif not Path(executable).is_absolute():
+        executable = str(Path(executable).resolve())
+    if executable is None:
         raise ValueError("installed Web command is unavailable")
+    command = (executable, *args.command_arg)
+    working_directory = (
+        args.working_directory.resolve() if args.working_directory is not None else None
+    )
+    if working_directory is not None and not working_directory.is_dir():
+        raise ValueError("Web smoke working directory is unavailable")
+    home = args.home.resolve()
     if home.exists():
         raise ValueError("Web smoke home must not already exist")
 
@@ -36,7 +53,7 @@ def main() -> int:
     environment["PYTHONUNBUFFERED"] = "1"
     process = subprocess.Popen(
         [
-            str(command),
+            *command,
             "--home",
             str(home),
             "web",
@@ -49,11 +66,12 @@ def main() -> int:
         text=True,
         encoding="utf-8",
         env=environment,
+        cwd=working_directory,
     )
     stdout = ""
     stderr = ""
     try:
-        health = _wait_for_url(f"{ORIGIN}/healthz", process)
+        health = _wait_for_url(f"{ORIGIN}/healthz", process, timeout_seconds=args.start_timeout)
         if json.loads(health) != {"status": "ok"}:
             raise RuntimeError("installed Web process returned an invalid health response")
         index = _read_url(f"{ORIGIN}/")
@@ -63,7 +81,12 @@ def main() -> int:
         main_asset = next((asset for asset in assets if asset.endswith(".js")), None)
         if main_asset is None or not _read_url(f"{ORIGIN}/{main_asset}"):
             raise RuntimeError("installed Web process did not serve its JavaScript asset")
-        _verify_secure_reopen(command, home)
+        _verify_secure_reopen(
+            command,
+            home,
+            environment=environment,
+            working_directory=working_directory,
+        )
     finally:
         if process.poll() is None:
             process.terminate()
@@ -102,14 +125,22 @@ def main() -> int:
     return 0
 
 
-def _verify_secure_reopen(command: Path, home: Path) -> None:
+def _verify_secure_reopen(
+    command: tuple[str, ...],
+    home: Path,
+    *,
+    environment: dict[str, str],
+    working_directory: Path | None,
+) -> None:
     opened = subprocess.run(
-        [str(command), "--home", str(home), "open", "--print-url"],
+        [*command, "--home", str(home), "open", "--print-url"],
         check=False,
         capture_output=True,
         text=True,
         encoding="utf-8",
-        timeout=10.0,
+        timeout=20.0,
+        env=environment,
+        cwd=working_directory,
     )
     if opened.returncode != 0 or "do not share" not in opened.stderr:
         raise RuntimeError("installed CLI could not authenticate the running Web process")
@@ -131,8 +162,13 @@ def _verify_secure_reopen(command: Path, home: Path) -> None:
         raise RuntimeError("installed CLI reopen nonce did not establish a browser session")
 
 
-def _wait_for_url(url: str, process: subprocess.Popen[str]) -> str:
-    deadline = time.monotonic() + START_TIMEOUT_SECONDS
+def _wait_for_url(
+    url: str,
+    process: subprocess.Popen[str],
+    *,
+    timeout_seconds: float,
+) -> str:
+    deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         if process.poll() is not None:
             raise RuntimeError("installed Web process exited before readiness")
