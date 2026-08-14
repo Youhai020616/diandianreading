@@ -48,7 +48,8 @@ diandian jobs list [--status <status>] [--limit 50]
 diandian jobs retry <job-id>
 
 diandian worker [--once]
-diandian serve [--no-open] [--enable-zlibrary]
+diandianreading web [--no-open] [--enable-zlibrary] [--json]
+diandian serve [--no-open] [--enable-zlibrary]  # compatibility alias
 ```
 
 全局 Home 覆盖必须位于子命令之前：
@@ -57,7 +58,7 @@ diandian serve [--no-open] [--enable-zlibrary]
 diandian --home /private/app-home auth status
 ```
 
-`diandian serve` 固定绑定 `127.0.0.1:3000`，规范浏览器 Origin 为 `http://localhost:3000`。如果端口已占用，它会拒绝启动第二个实例；本阶段自动化不会运行该长驻命令。
+`diandianreading web` 固定绑定 `127.0.0.1:3000`，规范浏览器 Origin 为 `http://localhost:3000`。如果端口已占用，它会拒绝启动第二个实例；L1 起 installed-wheel CI 会启动真实 Uvicorn 进程并验证 readiness、静态资源与 SIGTERM。旧 `diandian serve` 保持兼容。
 
 ### 2.2 应用私有目录
 

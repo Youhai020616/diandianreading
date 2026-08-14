@@ -9,6 +9,7 @@ import signal
 import socket
 import sys
 import threading
+import time
 import webbrowser
 from collections.abc import Sequence
 from enum import Enum
@@ -18,6 +19,7 @@ from urllib.parse import quote
 
 import uvicorn
 
+from diandianreading import __version__
 from diandianreading.application.use_cases.jobs import JobQuery
 from diandianreading.domain import (
     DiandianError,
@@ -55,7 +57,11 @@ _SUPPORTED_CLI_RIGHTS = (
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="diandian", description="diandianreading local tools")
+    parser = argparse.ArgumentParser(
+        prog="diandianreading",
+        description="Local-first AI reading and knowledge workspace",
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
         "--home",
         type=Path,
@@ -104,12 +110,16 @@ def build_parser() -> argparse.ArgumentParser:
     worker.add_argument("--poll-interval", type=float, default=1.0)
     worker.add_argument("--enable-zlibrary", action="store_true")
 
+    web = subparsers.add_parser(
+        "web",
+        help="start the local Web UI and worker on http://localhost:3000",
+    )
+    _add_web_arguments(web)
     serve = subparsers.add_parser(
         "serve",
-        help="serve the secured Web/API and worker on http://localhost:3000",
+        help="compatibility alias for 'web'",
     )
-    serve.add_argument("--no-open", action="store_true", help="do not open the system browser")
-    serve.add_argument("--enable-zlibrary", action="store_true")
+    _add_web_arguments(serve)
 
     phase0 = subparsers.add_parser(
         "phase0-e2e",
@@ -202,10 +212,20 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _add_web_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--no-open", action="store_true", help="do not open the system browser")
+    parser.add_argument("--enable-zlibrary", action="store_true")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="emit the bounded machine-readable startup record",
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        if args.command == "serve":
+        if args.command in {"web", "serve"}:
             return _serve(args)
         if args.command == "phase5-e2e":
             _print_result(run_phase5_demo(args.app_home, args.workspace))
@@ -456,30 +476,12 @@ async def _run_worker(runtime: Any, args: argparse.Namespace) -> dict[str, objec
 def _serve(args: argparse.Namespace) -> int:
     _require_port_3000_available()
     zlibrary_override = True if args.enable_zlibrary else None
+    paths = _paths(args.home)
     runtime = create_runtime(
-        _paths(args.home),
+        paths,
         config=RuntimeConfig.from_environment(zlibrary_enabled=zlibrary_override),
     )
     app = create_web_app(runtime)
-    if not args.no_open:
-        nonce = runtime.security.issue_bootstrap()
-        url = f"http://localhost:3000/#bootstrap={quote(nonce.nonce, safe='')}"
-        timer = threading.Timer(0.8, _open_browser, args=(url,))
-        timer.daemon = True
-        timer.start()
-    print(
-        json.dumps(
-            {
-                "status": "starting",
-                "origin": "http://localhost:3000",
-                "worker": "enabled",
-                "zlibrary": "enabled" if runtime.zlibrary_enabled else "disabled",
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-        ),
-        flush=True,
-    )
     config = uvicorn.Config(
         app,
         host="127.0.0.1",
@@ -494,8 +496,78 @@ def _serve(args: argparse.Namespace) -> int:
         h11_max_incomplete_event_size=16 * 1024,
         log_level="warning",
     )
-    uvicorn.Server(config).run()
+    server = uvicorn.Server(config)
+    if not args.no_open:
+        opener = threading.Thread(
+            target=_open_browser_when_ready,
+            args=(server, runtime.security),
+            daemon=True,
+            name="diandian-browser-opener",
+        )
+        opener.start()
+    _print_web_startup(
+        paths,
+        zlibrary_enabled=runtime.zlibrary_enabled,
+        machine_readable=bool(args.json or args.command == "serve"),
+    )
+    if args.command == "serve" and not args.json:
+        print(
+            "warning: 'diandian serve' is a compatibility alias; use 'diandianreading web'",
+            file=sys.stderr,
+            flush=True,
+        )
+    server.run()
     return 0
+
+
+def _print_web_startup(
+    paths: ApplicationPaths,
+    *,
+    zlibrary_enabled: bool,
+    machine_readable: bool,
+) -> None:
+    if machine_readable:
+        print(
+            json.dumps(
+                {
+                    "status": "starting",
+                    "origin": "http://localhost:3000",
+                    "worker": "enabled",
+                    "zlibrary": "enabled" if zlibrary_enabled else "disabled",
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+        return
+    print(
+        "\n".join(
+            (
+                f"diandianreading {__version__}",
+                "",
+                "Local Web UI: http://localhost:3000",
+                f"Data directory: {paths.home}",
+                "Worker: starting",
+                f"Z-Library: {'enabled' if zlibrary_enabled else 'disabled'}",
+                "",
+                "Opening your browser...",
+                "Press Ctrl+C to stop.",
+            )
+        ),
+        flush=True,
+    )
+
+
+def _open_browser_when_ready(server: uvicorn.Server, security: Any) -> None:
+    deadline = time.monotonic() + 15.0
+    while not server.started:
+        if server.should_exit or time.monotonic() >= deadline:
+            return
+        time.sleep(0.05)
+    nonce = security.issue_bootstrap()
+    url = f"http://localhost:3000/#bootstrap={quote(nonce.nonce, safe='')}"
+    _open_browser(url)
 
 
 def _paths(home: Path | None) -> ApplicationPaths:
