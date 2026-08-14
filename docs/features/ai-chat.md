@@ -61,7 +61,7 @@ Phase 5 的 SSE 只传输持久状态事件，不提供逐 Token Streaming。Web
 
 ### 3.2 R 轨与 D3 已实现
 
-Phase 5 之后，阅读器交付轨（R1–R4）与桌面轨 D3 追加提供：
+Phase 5 之后，阅读器交付轨（R1–R4）与 React 迁移追加提供：
 
 - R1/R2：正文、章节与阅读进度服务，标注 SQLite 存储、CRUD API 与再锚定引擎；
 - R3：React 阅读器 UI（正文渲染、章节导航、划线与笔记交互、PDF 视图），以及 Chat 面板的响应式 Drawer/移动页（三档断点、`aria-modal`，见 `apps/web/src/components/ChatPanel.tsx`）；

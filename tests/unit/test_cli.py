@@ -18,6 +18,9 @@ class FakeProductRuntime:
         self.close_count = 0
         self.config: Any = None
         self.zlibrary_enabled = False
+        self.browser_runtime = SimpleNamespace(
+            inspect=lambda: SimpleNamespace(state=cli_module.BrowserRuntimeState.READY)
+        )
         for name, service in services.items():
             setattr(self, name, service)
 
@@ -465,6 +468,32 @@ def test_unified_cli_auth_login_and_logout_use_managed_profiles(
     assert logout_result["local_profile_removed"] is True
     assert selected.logout_calls == [CredentialRef(provider, profile)]
     assert runtime.close_count == 2
+
+
+def test_auth_login_requires_the_managed_browser_runtime(tmp_path, monkeypatch, capsys) -> None:
+    session = SimpleNamespace(login=lambda credential: pytest.fail(str(credential)))
+    runtime = FakeProductRuntime(notebooklm_session=session, zlibrary_session=session)
+    runtime.browser_runtime = SimpleNamespace(
+        inspect=lambda: SimpleNamespace(state=cli_module.BrowserRuntimeState.MISSING)
+    )
+    install_runtime(monkeypatch, runtime)
+
+    assert (
+        main(
+            [
+                "--home",
+                str(tmp_path / "home"),
+                "auth",
+                "login",
+                "notebooklm",
+            ]
+        )
+        == 2
+    )
+
+    error = json.loads(capsys.readouterr().err)
+    assert "diandianreading setup notebooklm" in error["error"]["message"]
+    assert runtime.close_count == 1
 
 
 @pytest.mark.parametrize(

@@ -10,7 +10,7 @@
 
 ## Context
 
-Phase 0–5 交付了导入、NotebookLM 集成、可恢复 Workflow 与整本书 Chat,但产品尚无阅读器和标注。PRD 将"以用户划线和想法为 AI 生成的中心"定义为核心差异化;Roadmap Gate 2 要求先有稳定的阅读与标注,再扩大 AI 集成;[桌面应用实施计划](../desktop-application-plan.md) 的 Definition of Done 也要求阅读与标注,但 D0–D6 未给它排期。本 ADR 冻结阅读器与标注的架构决策,交付排期见 [阅读器与标注实施计划](../reader-annotation-plan.md)。
+Phase 0–5 交付了导入、NotebookLM 集成、可恢复 Workflow 与整本书 Chat,但产品尚无阅读器和标注。PRD 将"以用户划线和想法为 AI 生成的中心"定义为核心差异化；Roadmap Gate 2 要求先有稳定的阅读与标注，再扩大 AI 集成。本 ADR 冻结阅读器与标注的架构决策，交付排期见 [阅读器与标注实施计划](../reader-annotation-plan.md)。
 
 现有基础决定了设计空间:
 
@@ -19,7 +19,7 @@ Phase 0–5 交付了导入、NotebookLM 集成、可恢复 Workflow 与整本�
 - `ChatReferenceLocationType`(`epub_cfi`/`pdf_page`/`markdown_offset`)、`chat_references.location_*` 列与序列化器三层已备好位置通道,但没有生产者,`location` 恒为 `None`。
 - [AI 对话功能设计](../../features/ai-chat.md) §4 已定义章节/选区/笔记的 `QueryScope` 语义(Proposed),依赖"本地阅读器标识"和"本地 Note ID"这两个尚不存在的前置。
 - 现有 Web CSP 为 `default-src 'none'` + `frame-src 'none'` + `worker-src 'none'`,排除了 iframe 型渲染器(epub.js)与 Worker 型渲染器(PDF.js)的默认用法。
-- ADR-0006 已决定 UI 演进为 React/Vite(桌面计划 D3);当前 vanilla `app.js` 为单文件非模块结构,将被替代。
+- 历史 D3 已完成 React/Vite 迁移；该构建现由 FastAPI 同源托管，vanilla `app.js` 已被替代。
 
 ## Threat model
 
@@ -88,7 +88,7 @@ Phase 0–5 交付了导入、NotebookLM 集成、可恢复 Workflow 与整本�
 
 ### 6. UI 落点:React 一次到位
 
-- 阅读器 UI 只在 D3 的 React/Vite 工程中实现,不在现有 vanilla `app.js` 上开发过渡版。标注后端(§3/§4)不依赖前端,可与桌面 D1/D2 并行交付并用 API 级测试验收。
+- 阅读器 UI 只在 React/Vite 工程中实现，不在旧 vanilla `app.js` 上开发过渡版。标注后端(§3/§4)不依赖前端，可用 API 级测试独立验收。
 - CSP 演进:为 PDF.js 增加 `worker-src 'self'` 与受限 `blob:` 用途,保持无 inline、无远程、无 `unsafe-eval`;每项放宽必须有对应的负向测试。`frame-src 'none'` 不变。
 
 ## Security and privacy
@@ -112,7 +112,7 @@ Phase 0–5 交付了导入、NotebookLM 集成、可恢复 Workflow 与整本�
 - EPUB 不需要前端容器解析,渲染、锚定、引用定位共用一份规范化正文,单一事实源。
 - 锚点以内容哈希 + 文本指纹双保险,重新导入不静默丢标注。
 - ChatReference 位置通道从"预留"变为"生产",引用可跳回原文,兑现 PRD 来源可追溯原则。
-- 标注后端与桌面 D1/D2 并行,不被前端栈迁移阻塞。
+- 标注后端不依赖前端栈，可独立测试和演进。
 
 ### Negative
 
@@ -158,16 +158,16 @@ Phase 0–5 交付了导入、NotebookLM 集成、可恢复 Workflow 与整本�
 3. 标注 CRUD 在独立限流池下的突发写入测试通过,且不影响导入/Chat 配额。
 4. ChatReference 位置生产者:唯一命中/零命中/多义命中三类用例正确,失败不伪造定位。
 5. React 阅读器在放宽后 CSP 下渲染恶意样本(脚本、HTML、超长行、巨型文档)无执行、无注入,负向测试在 CI。
-6. R1–R4 各阶段 offline E2E 与既有 Phase 0–5 E2E 全部通过;打包桌面链路的验收随 D 轨执行。
+6. R1–R4 各阶段 offline E2E 与既有 Phase 0–5 E2E 全部通过；installed-wheel local Web 链路独立验收。
 
 ## Related
 
 - [阅读器与标注实施计划](../reader-annotation-plan.md)
 - [AI 对话功能设计](../../features/ai-chat.md)
-- [桌面应用实施计划](../desktop-application-plan.md)
+- [Local Web 分发实施计划](../local-web-distribution-plan.md)
 - [ADR-0001:local-first Python 模块化单体](0001-local-first-modular-monolith.md)
 - [ADR-0004:持久化导入 Saga](0004-durable-import-saga.md)
 - [ADR-0005:本地 API 安全](0005-local-api-security.md)
-- [ADR-0006:桌面优先 Tauri 2 壳与 Python Sidecar](0006-desktop-first-tauri-python-sidecar.md)
+- [ADR-0009:Local Web 工具分发](0009-local-web-tool-distribution.md)
 - [产品 PRD](../../../diandianreading-PRD.md)
 - [产品 Roadmap](../../../diandianreading-ROADMAP.md)

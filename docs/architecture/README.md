@@ -71,9 +71,9 @@ flowchart TD
 - CLI 负责启动、诊断与自动化，浏览器承载产品 UI；两者不建立两套业务核心。
 - 对外只暴露 `localhost:3000`；Worker 不监听独立端口。回环不等于授权，本地 API 约束见 [ADR-0005](adr/0005-local-api-security.md)。
 - React/TypeScript/Vite 是产品 UI；Python 拥有 Domain/Application、HTTP/SSE、文档处理、持久 Worker 和第三方集成。
-- 已实现的 Tauri/D1/D2 代码在替代能力完成前保留，但不再作为后续产品交付目标。
+- L3 已删除 Tauri/D1/D2 产品代码与桌面 CI；D1/D2 文档仅保留历史证据。
 - SQLite 和本地文件存储作为第一阶段基础设施。
 - NotebookLM、Z-Library、Obsidian 和发布平台都通过 Adapter 接入。
 - 任何第三方失败都不能破坏本地书籍、标注、笔记或草稿。
 
-如果产品从单用户本地工具转为多租户云服务，必须重新评审 ADR-0001、ADR-0003、ADR-0004、ADR-0005 和 ADR-0006。
+如果产品从单用户本地工具转为多租户云服务，必须重新评审 ADR-0001、ADR-0003、ADR-0004、ADR-0005 和 ADR-0009。

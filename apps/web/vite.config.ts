@@ -48,8 +48,8 @@ function injectCspMeta(): PluginOption {
 
 export default defineConfig({
   plugins: [react(), injectCspMeta()],
-  // Relative asset URLs so the FastAPI app (or the Tauri shell later) can host
-  // the build from any mount path without rewriting the HTML.
+  // Relative asset URLs let FastAPI host the build from any mount path without
+  // rewriting the HTML.
   base: "./",
   build: {
     target: "es2022",
@@ -59,8 +59,8 @@ export default defineConfig({
     modulePreload: { polyfill: false },
   },
   server: {
-    // Source-development convenience only (§7.1 desktop plan): proxy API and
-    // SSE calls to the local Python runtime. Mutating endpoints may still be
+    // Source-development convenience only: proxy API and SSE calls to the
+    // local Python runtime. Mutating endpoints may still be
     // rejected by the Python Origin/Host boundary when running cross-port;
     // full verification happens against the built assets served same-origin.
     proxy: {

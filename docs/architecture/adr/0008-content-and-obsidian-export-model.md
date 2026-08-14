@@ -17,7 +17,7 @@ R1–R4 交付了阅读、标注与带本地引用的 Chat,产品能产生 AI �
 - `annotations` 已有 `AnnotationKind.NOTE`,但它**强制绑定 `ContentAnchor`**——那是"正文某处的想法"。AI 回答没有正文锚点,`save-as-note` 无法复用该表而不破坏锚点不变量。
 - Phase 3 的持久化 Saga/Job 状态机(`ADR-0004`)、Lease/fencing Worker 与 `AMBIGUOUS_PROVIDER_OUTCOME` 协议已就绪,`generate-content` 不需要另立一套任务机制。
 - `ai-chat.md` §8.6 已把 `save-as-note`(以 message ID 为幂等键)和 `generate-content`(返回 `202` + `job_id`)写为目标契约,但两者都是 Proposed,没有路由。
-- D2 冻结了桌面安全边界:主 WebView **不获得任何 Tauri Command**,不注册自定义 URL scheme。任何"从 Obsidian 跳回应用"的设计不能假设自定义 scheme 存在。
+- ADR-0005/0009 冻结了 local Web 安全边界：浏览器不获得原生壳能力，产品不注册自定义 URL scheme。任何“从 Obsidian 跳回应用”的设计不能假设 native handler 存在。
 
 ## Threat model
 
@@ -87,7 +87,7 @@ SQLite 无法给既有表追加 CHECK,重建表又会重写 `0009` 刚建的表�
 
 ### 6. 路径消毒与 Vault 封闭
 
-Vault 根目录由用户显式配置。所有导出路径由 Vault 根 + 消毒后的相对段拼接,消毒规则:剥离路径分隔符与 `..`、限制长度、拒绝空串与保留名。写入前 canonicalize 并断言仍在 Vault 根内,与 `launcher_core::sidecar::resolve_bundled` 的逃逸检查同构。
+Vault 根目录由用户显式配置。所有导出路径由 Vault 根 + 消毒后的相对段拼接,消毒规则:剥离路径分隔符与 `..`、限制长度、拒绝空串与保留名。写入前 canonicalize 并断言仍在 Vault 根内，与项目其他受管文件路径采用同一 confinement 原则。
 
 ### 7. Frontmatter 与正文严格分离
 
@@ -95,7 +95,7 @@ Vault 根目录由用户显式配置。所有导出路径由 Vault 根 + 消毒�
 
 ### 8. 反向深链接使用本地 HTTP URL,不引入自定义 scheme
 
-从产品跳到 Obsidian 用 `obsidian://open?vault=<name>&file=<path>`(Obsidian 官方 scheme)。从 Obsidian 跳回产品使用 `http://localhost:3000/...`。**不注册自定义 scheme**:D2 明确不给主 WebView 任何 Tauri Command,注册自定义 scheme 会新增一条绕过该边界的入口,且要求桌面壳解析不可信 URL。等 D4 评估桌面安全时再单独决策。
+从产品跳到 Obsidian 用 `obsidian://open?vault=<name>&file=<path>`(Obsidian 官方 scheme)。从 Obsidian 跳回产品使用 `http://localhost:3000/...`。**不注册产品自定义 scheme**：local Web 工具没有原生壳，新增系统级 URL handler 会扩大安装与不可信 URL 解析边界；若未来需要，必须另立 ADR。
 
 ### 9. 导出是显式动作,不做后台自动同步
 
@@ -132,7 +132,7 @@ P5 不实现文件监听或双向同步。Obsidian 是**单向出口**:产品数
 ### Follow-up
 
 - P6 发布轨实现 `scheduled`/`published` 状态转移与平台版本。
-- D4 评估是否引入自定义 URL scheme 及其桌面安全代价。
+- 按真实使用反馈评估是否需要产品自定义 URL scheme；如需新增，先独立评审系统 handler 安全边界。
 - 合并 UI 与 Vault 内冲突文件清理留待 P5 之后按实际冲突频率决定。
 
 ## Alternatives considered
@@ -168,6 +168,6 @@ P5 不实现文件监听或双向同步。Obsidian 是**单向出口**:产品数
 
 - [ADR-0004](0004-durable-import-saga.md):Job/Saga 与恢复协议。
 - [ADR-0005](0005-local-api-security.md):本地 API 安全边界。
-- [ADR-0006](0006-desktop-first-tauri-python-sidecar.md):桌面壳与 Capability 边界。
+- [ADR-0009](0009-local-web-tool-distribution.md)：local Web 分发与无原生壳边界。
 - [ADR-0007](0007-reader-annotation-anchor-model.md):Annotation 与锚点不变量。
 - [AI 对话功能设计](../../features/ai-chat.md) §8.6:`save-as-note` 与 `generate-content` 目标契约。

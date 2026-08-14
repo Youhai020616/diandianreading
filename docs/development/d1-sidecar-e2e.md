@@ -1,6 +1,8 @@
 # D1 Sidecar 与 Playwright 可行性 E2E
 
-> 状态：Active
+> 状态：Historical
+>
+> L3 已删除这里记录的 Sidecar/PyInstaller 实现与 CI；下列命令只用于追溯当时实验，不再能在当前仓库执行。
 >
 > 范围：D1 的 Python Sidecar、打包资源和 Playwright Chromium 分发可行性；不包含 Tauri 窗口、单实例或签名/公证。
 

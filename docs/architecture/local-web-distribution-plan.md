@@ -268,19 +268,12 @@ diandianreading doctor
 
 - 默认发行依赖包含 `notebooklm-py[browser]` 与精确 `playwright==1.61.0`，保证 `setup notebooklm` 在 uvx/tool 环境内可执行；
 - Chromium 二进制不进入基础 wheel，仍需用户显式 setup；
-- 旧 `notebooklm-login`/`zlibrary` extras 暂保留为空兼容标记，L3 可随桌面依赖清理统一移除；
+- L3 已移除旧 `notebooklm-login`、`zlibrary` 与 `desktop-sidecar` extras；Playwright 是固定基础依赖；
 - NotebookLM 未 setup 时，本地阅读、标注、创作和 Obsidian 能力继续可用。
 
-### 5.3 D1 资产复用
+### 5.3 D1 资产复用（已完成）
 
-删除 `packaging/sidecar/` 前，先评估并迁移其中可复用的：
-
-- browser manifest；
-- executable confinement；
-- staging/atomic publish；
-- Artifact smoke 的资源完整性检查。
-
-PyInstaller onedir、Sidecar 控制帧和 Tauri Bundle 专属逻辑不进入新产品 Runtime。
+L2 已迁移 browser manifest、executable confinement、staging/atomic publish 与资源完整性检查。L3 随后删除 `packaging/sidecar/`；PyInstaller onedir、Sidecar 控制帧和 Tauri Bundle 专属逻辑没有进入新产品 Runtime。
 
 ## 6. 分发与发布 / Distribution and Release
 
@@ -443,7 +436,7 @@ build wheel
 - 已运行服务可由 `open` 安全重新打开，不以 `/healthz` 作为身份；
 - 未知进程占用 3000 时不附着、不杀进程。
 
-### L3：桌面代码退场与 CI 简化
+### L3：桌面代码退场（已完成）与 CI 简化
 
 交付：
 

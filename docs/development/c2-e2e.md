@@ -19,7 +19,7 @@ Vault 不是本产品拥有的数据库,而是**用户会手动编辑的目录**
 | --- | --- |
 | 路径逃逸(书名来自 EPUB 元数据,不可信) | 逐段消毒(剥离分隔符/控制字符/保留设备名/首尾点、限长),拼接后**再次**断言仍在 Vault 根内——消毒器有 bug 也不足以写到外面 |
 | Frontmatter 注入(正文来自 Provider) | 行首 `---` 与 `diandian_id:`/`diandian_content_hash:` 被前置零宽字符中和,生成文本无法伪造身份或截断 YAML 块 |
-| 反向深链接扩大桌面攻击面 | 不注册自定义 scheme;`obsidian://` 只用于跳出去,跳回来用 `http://localhost:3000/…`(ADR-0008 §8) |
+| 反向深链接扩大系统 handler 攻击面 | 不注册产品自定义 scheme；`obsidian://` 只用于跳出去，跳回来用 `http://localhost:3000/…`（ADR-0008 §8） |
 
 frontmatter 读取是**最小实现而非 YAML 解析器**:Vault 文件是不可信输入,交给通用解析器只会扩大攻击面而无收益。
 

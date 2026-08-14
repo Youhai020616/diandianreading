@@ -4,7 +4,7 @@
 >
 > 最后更新：2026-08-14
 
-本目录保存 `diandianreading` 的产品、架构、集成和功能设计文档。Phase 0–5、R1–R4、D1–D3 与 C0–C3 已有代码交付。ADR-0009 已把正式分发方向调整为通过 uv/uvx 在终端启动 local-first Web 工具；React UI、Python Runtime、SQLite、Worker 和 Provider Adapter 继续复用，Tauri 原生桌面轨只保留历史证据。
+本目录保存 `diandianreading` 的产品、架构、集成和功能设计文档。Phase 0–5、R1–R4 与 C0–C3 已有代码交付；D1/D2 仅保留历史实验文档，D3 的 React 成果已并入 Web UI。ADR-0009 已把正式分发方向调整为通过 uv/uvx 在终端启动 local-first Web 工具；React UI、Python Runtime、SQLite、Worker 和 Provider Adapter 继续复用，Tauri 原生桌面轨代码已在 L3 删除。
 
 ## 文档地图
 
@@ -34,6 +34,7 @@
 | [Phase 5 统一产品 E2E](development/phase-5-e2e.md) | Session/CSRF、导入、Worker、书库、整本书 Chat、引用与 SSE 全链路验证 | Active |
 | [L1 本地 Web CLI E2E](development/l1-web-e2e.md) | installed-wheel 真实 Uvicorn、readiness、静态资源与终止链路 | Active |
 | [L2 本地 Runtime E2E](development/l2-local-runtime-e2e.md) | Chromium setup/doctor、安全 reopen 与 Token 丢失恢复 | Active |
+| [L3 桌面轨退场 E2E](development/l3-desktop-retirement-e2e.md) | 删除 Tauri/Rust/PyInstaller Sidecar 与专属 CI | Active |
 | [R1 正文与章节服务 E2E](development/r1-e2e.md) | 书籍详情、规范化正文、章节索引、ETag 再验证与阅读进度链路验证 | Active |
 | [R2 标注核心 E2E](development/r2-e2e.md) | 划线/笔记生命周期、服务端切片校验、软删除与再锚定引擎验证 | Active |
 | [R4 Chat 缝合 E2E](development/r4-e2e.md) | 选区/笔记范围、补充上下文定界与引用本地定位验证 | Active |
