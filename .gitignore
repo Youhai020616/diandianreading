@@ -32,11 +32,6 @@ node_modules/
 *.tsbuildinfo
 .vite/
 
-# Rust and Tauri desktop shell (apps/desktop); Cargo.lock is committed on purpose
-apps/desktop/target/
-apps/desktop/src-tauri/gen/
-apps/desktop/src-tauri/resources/
-
 # Local application state, credentials, SQLite sidecars, and logs
 *.log
 *.db

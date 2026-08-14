@@ -1,6 +1,8 @@
 # D2 Tauri 壳与生命周期 E2E
 
-> 状态：Active
+> 状态：Historical
+>
+> L3 已删除这里记录的 Tauri/Rust/Sidecar 实现与 macOS CI；下列命令只用于追溯当时实验，不再能在当前仓库执行。
 >
 > 范围：D2 的 Tauri 壳、单实例、Sidecar 生命周期、Capability 边界与未签名 `.app`；不包含签名、公证、Updater、Windows 与真实 Provider 联调。
 

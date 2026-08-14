@@ -1,8 +1,8 @@
 # diandianreading web UI (`apps/web`)
 
-React + TypeScript + Vite 版本的本地工作区 UI，等价迁移自
-`src/diandianreading/interfaces/web/static/{index.html,app.js,app.css}`（D3 阶段，
-见 `docs/architecture/desktop-application-plan.md` §14 D3 与 ADR-0006 §2）。
+React + TypeScript + Vite 本地工作区 UI。它最初在历史 D3 阶段从
+`src/diandianreading/interfaces/web/static/{index.html,app.js,app.css}` 迁移，现由
+FastAPI 同源托管，并作为 ADR-0009 local Web 发行形态的唯一产品 UI。
 
 HTTP/SSE 契约一字未改：接口事实以 `src/diandianreading/interfaces/web/app.py`
 与 `serializers.py` 为准。UI 仍是同源单页应用，凭 cookie 会话 + CSRF
@@ -10,10 +10,8 @@ double-submit 调用 `/api/*`，用原生 `EventSource` 订阅 Jobs / Chat Run �
 
 ## 工具链决策
 
-- **包管理器：pnpm**。理由：本机已可用（pnpm 10，随 Node 24 的 corepack 亦可复现）；
-  单一锁文件 `pnpm-lock.yaml`（仓库规定不得同时维护多个前端锁文件，见 desktop plan §6）；
-  原生 workspace 支持，后续 `apps/desktop`（Tauri）可直接并入同一 workspace 而不换工具。
-  版本钉在 `package.json#packageManager`。
+- **包管理器：pnpm**。仓库只维护 `pnpm-lock.yaml`，版本钉在
+  `package.json#packageManager`；Node 24 的 corepack 可复现该工具链。
 - **Node 24**：`.nvmrc` 与 `package.json#engines` 记录（本机 v24.18.0）。
 - **TypeScript strict**（`~5.9`，`tsc --noEmit` 为构建门槛）；Vite 8 + @vitejs/plugin-react 6；
   vitest 4 + @testing-library/react 16。

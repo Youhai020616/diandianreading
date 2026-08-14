@@ -51,7 +51,7 @@ diandianreading 是一个把“阅读、思考、AI 创作和社交发布”连�
 - 不继续 Tauri/Electron、原生安装包、签名公证、应用内 Updater 或 Windows native bundle；
 - 不在个人 MVP 引入公共云、多租户 Backend、远程代理或第二套业务状态。
 
-完整实施边界见 [本地 Web 工具分发实施计划](docs/architecture/local-web-distribution-plan.md) 与 [ADR-0009](docs/architecture/adr/0009-local-web-tool-distribution.md)。历史桌面方向见已被替代的 ADR-0006，仅保留 D1/D2 实验记录。
+完整实施边界见 [本地 Web 工具分发实施计划](docs/architecture/local-web-distribution-plan.md) 与 [ADR-0009](docs/architecture/adr/0009-local-web-tool-distribution.md)。历史桌面方向见已被替代的 ADR-0006；D1/D2 实现已删除，仅保留实验记录。
 
 ---
 

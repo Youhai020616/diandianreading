@@ -204,8 +204,8 @@ def test_missing_browser_extra_fails_before_runner_or_profile_replacement(tmp_pa
         asyncio.run(manager.login(credential))
 
     assert raised.value.code is ErrorCode.VALIDATION
-    assert "notebooklm-login" in raised.value.public_message
-    assert "notebooklm-py[browser]==0.8.0rc1" in raised.value.public_message
+    assert "diandianreading setup notebooklm" in raised.value.public_message
+    assert "Reinstall diandianreading" in raised.value.public_message
     assert runner.calls == []
     assert probe.calls == []
     assert invalidated == []

@@ -51,7 +51,7 @@ uv run diandianreading web     # 浏览器打开 http://localhost:3000
 
 > 风险背景:所有自动化验证基于 fake adapter;这是 adapter 与真实服务的第一次实弹。逐条记录结果(通过/失败/截图),失败不要当场修,记录后继续。
 
-- [ ] `uv run diandian auth login`:Playwright 浏览器登录成功;`auth status` 显示健康。
+- [ ] `uv run diandian auth login notebooklm`:受管 Playwright 浏览器登录成功;`auth status` 显示健康。
 - [ ] 导入一本你拥有权利的真实 EPUB:任务完整跑通(创建 Notebook → 上传 sources → ready);在 NotebookLM 网页端能看到对应 Notebook。
 - [ ] 整本书提问 3–5 个问题:回答返回、引用列表非空、excerpt 与书内容相符。
 - [ ] **引用定位抽样(R4 关键假设)**:抽 10 条真实引用,记录"点击后能否跳到原文正确位置 / 显示未能定位"的比例——这是 excerpt 唯一匹配假设的实证,结果直接决定 R4 定位器是否需要调整。
@@ -64,20 +64,7 @@ uv run diandianreading web     # 浏览器打开 http://localhost:3000
 - [ ] 默认状态:UI 中 Z-Library 入口显示"未启用";`DIANDIAN_ZLIBRARY_ENABLED=1` 后才可用。
 - [ ] 仅用你有权获取的资料走一次完整获取 → 导入;权利声明步骤不可跳过。
 
-## 3.5 D2 桌面壳(需要 macOS 桌面会话;CI 无法提供证据)
-
-> 背景:`launcher-core` 的端口拒绝、控制帧解析与子进程回收已有单元测试,macOS CI 也验证了未签名 `.app` 可构建且 Bundle 内 Sidecar 可启动。但"进程表里真的没有残留""第二次启动只聚焦窗口"必须在真实桌面会话观察。详见 [D2 Launcher E2E](d2-launcher-e2e.md)。
-
-- [ ] 冷启动 `.app`:窗口打开并加载产品 UI;`pgrep -f diandian-desktop-sidecar` 只有一个进程。
-- [ ] 正常退出应用后:`pgrep -f diandian-desktop-sidecar` 无输出(无孤儿)。
-- [ ] 重复启动:第二次打开只聚焦既有窗口,不出现第二个窗口,Sidecar 进程数仍为 1。
-- [ ] 强杀 Sidecar(`kill -9`):壳不静默挂起,退出后无残留进程。
-- [ ] 强杀 Tauri 壳(`kill -9`):Sidecar 不长期存活;再次启动不会附着到旧进程。
-- [ ] 3000 端口被无关进程占用(如 `python3 -m http.server 3000`)时启动:显示诊断并退出;占用进程**未被结束**,端口**未被改用**其他值。
-- [ ] 打包 App 内完成一次 local import → Job → Chat → Citation 跳转的离线全链路。
-- [ ] WebView 内无 Tauri IPC:开发者工具中 `window.__TAURI__` 为 `undefined`。
-
-## 3.6 P5 创作工作台与 Obsidian(需要真实 Vault 与人工判断)
+## 4. P5 创作工作台与 Obsidian(需要真实 Vault 与人工判断)
 
 > 背景:生成链路与导出对账已有自动化覆盖(见 [C1b](c1b-e2e.md)、[C2](c2-e2e.md)、[C3](c3-e2e.md)),但"文案能不能真的用于发布"只能人工判定,Fake Provider 证明不了。
 
@@ -88,6 +75,6 @@ uv run diandianreading web     # 浏览器打开 http://localhost:3000
 - [ ] 编辑一份草稿后切回第 1 版:能读到未被改动的 AI 原文,版本列表标注清晰。
 - [ ] `obsidian://` 深链接点击后能在 Obsidian 中打开对应文件。
 
-## 4. 结果记录
+## 5. 结果记录
 
 在本文件同目录建 `manual-acceptance-YYYYMMDD.md`,逐条记录:通过/失败、环境(macOS 版本/浏览器)、失败截图或错误码。失败项回流为 issue,由后续开发处理;不阻塞记录其余项。

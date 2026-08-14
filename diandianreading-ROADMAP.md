@@ -55,7 +55,7 @@ uvx diandianreading web
 | L0 | ADR/PRD/Roadmap/文档方向冻结 | 不再承诺 Tauri；与 ADR-0004/0005 一致 |
 | L1 | `diandianreading web`、兼容 alias、真实进程 E2E | installed wheel 启动 Uvicorn、readiness、SIGTERM |
 | L2 | `setup notebooklm`、`doctor`、`open` | Chromium 原子安装、脱敏诊断、安全 reopen |
-| L3 | 删除 Tauri/Rust/Sidecar-only 代码与 macOS CI | Python/Web 全量质量门通过 |
+| L3 | 删除 Tauri/Rust/Sidecar-only 代码与 macOS CI | **已完成**；Python/Web 全量质量门通过 |
 | L4 | Preview/Stable 分发准备 | TestPyPI/PyPI、immutable tag、clean-machine smoke |
 | L5 | 真实产品验收 | 浏览器、NotebookLM、Obsidian 由维护者手测 |
 
@@ -95,7 +95,7 @@ D1 Sidecar 与 D2 Tauri 壳曾完成可行性和 CI 实验；D3 的 React/Vite �
 4. 数据和 Credential 始终保存在稳定 App Home，不进入 uvx/tool 环境。
 5. 不为简化安装削弱 localhost Token、Session、Origin、CSRF 和资源限制。
 6. 任何用户数据迁移先备份、后迁移、验证后提交；失败不创建空库伪装成功。
-7. 先完成替代能力，再删除 D1/D2 可复用代码。
+7. L2 已先迁移 Browser Provisioning，L3 再删除 D1/D2 专属代码。
 8. 产品阶段按退出证据推进，不按提交数量推进。
 
 ---

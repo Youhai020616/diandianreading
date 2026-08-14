@@ -626,6 +626,11 @@ async def _run_auth(runtime: Any, args: argparse.Namespace) -> dict[str, object]
         runtime.notebooklm_session if args.provider == "notebooklm" else runtime.zlibrary_session
     )
     if args.auth_command == "login":
+        browser = runtime.browser_runtime.inspect()
+        if browser.state is not BrowserRuntimeState.READY:
+            raise ValueError(
+                "Managed Chromium is not ready; run `diandianreading setup notebooklm` first"
+            )
         status = await manager.login(credential)
         return {"status": "ok", "provider": _provider_status(status)}
     if args.auth_command == "logout":

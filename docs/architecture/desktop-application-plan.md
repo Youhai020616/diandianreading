@@ -4,7 +4,7 @@
 >
 > 历史目标：把已完成的 local-first Python 产品演进为可安装、可升级、可恢复的桌面应用
 >
-> 终止说明：2026-08-14 起由 [ADR-0009](adr/0009-local-web-tool-distribution.md) 与 [本地 Web 工具分发实施计划](local-web-distribution-plan.md) 替代；D1/D2 证据保留，但 D4–D6 不再实施
+> 终止说明：2026-08-14 起由 [ADR-0009](adr/0009-local-web-tool-distribution.md) 与 [本地 Web 工具分发实施计划](local-web-distribution-plan.md) 替代；L3 已删除 D1/D2 产品代码与专属 CI，本文只保留历史证据，D4–D6 不再实施
 >
 > 最后更新：2026-08-14
 

@@ -1,16 +1,16 @@
 # 并行交付策略 / Parallel Delivery Strategy
 
-> 状态：Proposed
+> 状态：Active principles / Historical D-track examples
 >
-> 适用范围：R 轨(阅读器与标注)与 D 轨(桌面)的并行开发,以及后续多轨阶段
+> 适用范围：后续多轨开发；文中的 D1/D2 波次只记录已终止桌面轨当时的协作实例，不再是当前执行指令
 >
-> 关联:[阅读器与标注实施计划](../architecture/reader-annotation-plan.md)、[桌面应用实施计划](../architecture/desktop-application-plan.md)
+> 关联:[阅读器与标注实施计划](../architecture/reader-annotation-plan.md)、[Local Web 分发计划](../architecture/local-web-distribution-plan.md)
 >
 > 最后更新:2026-08-03
 
 ## 1. 目标 / Goal
 
-用多个并行工作单元(子 agent / 并行分支)缩短 R1/R2/D1/D2 的墙钟时间,同时不破坏本仓库既有的质量约束:线性历史、逐 PR 评审、mypy strict、覆盖率门槛、架构边界测试与 migration checksum 校验。
+用多个并行工作单元(子 agent / 并行分支)缩短独立工作流的墙钟时间，同时不破坏本仓库既有的质量约束：线性历史、逐 PR 评审、mypy strict、覆盖率门槛、架构边界测试与 migration checksum 校验。R1/R2/D1/D2 只作为历史案例。
 
 预期收益按依赖结构估算为 **2–3 倍墙钟压缩**,不随并行单元数量线性增长。并行的目的是把独立子系统的等待时间重叠,不是提高单位时间代码产量;产出必须以"已通过验证门"计量,不以行数计量。
 
@@ -20,7 +20,7 @@
 2. **串行区保护**:§4 列出的热点文件在任何并行波次中只允许一个工作单元修改;其余单元对这些文件只读。
 3. **评审对齐**:并行度向评审吞吐对齐。产生代码的波次必须配套评审波次;不允许"CI 绿即合并"绕过人工确认。
 4. **隔离执行**:每个并行单元在独立 git worktree 与独立分支上工作,禁止共享工作区。
-5. **验证门串行**:阶段退出标准(R1–R4、D1–D6 的 exit criteria)逐个通过,不因并行而合批豁免。
+5. **验证门串行**：每个阶段的 exit criteria 逐个通过，不因并行而合批豁免。
 
 ## 3. 波次模型 / Wave Model
 

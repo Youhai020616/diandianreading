@@ -18,7 +18,7 @@ Reading surface
 + citation → jump-to-text, selection → ask, notes → chat scope
 ```
 
-本计划补齐 [桌面应用实施计划](desktop-application-plan.md) Definition of Done 已要求、但 D0–D6 未排期的阅读与标注能力,并为 [AI 对话功能设计](../features/ai-chat.md) §4 中 Proposed 的章节/选区/笔记范围提供其依赖的本地阅读器标识与 Note 存储。
+本计划补齐产品核心的阅读与标注能力，并为 [AI 对话功能设计](../features/ai-chat.md) §4 的章节/选区/笔记范围提供其依赖的本地阅读器标识与 Note 存储。
 
 与 Roadmap 的关系:R 轨对应产品 Roadmap 的 **P3(个人 Alpha:阅读与标注)** 与 **P4 的入口部分(选区/笔记问答)**;R3 验收产出 Gate 2("阅读器和标注稳定")的进入证据。R 编号独立于 git 历史的 phase-0..5 与桌面 D0–D6,避免再引入一套冲突编号。
 
@@ -55,14 +55,14 @@ Reading surface
 - 正文与书籍详情端点(现无任何内容可读端点);
 - `Annotation`/`reading_progress` 领域模型、migration、Repository、Use Case、API;
 - 锚点与再锚定引擎;
-- React 阅读器 UI(依赖 D3 的 React/Vite 工程);
+- React 阅读器 UI（复用已完成的 React/Vite 工程）；
 - ChatReference 位置生产者与选区/笔记 Chat 入口。
 
 ## 4. 交付阶段 / Delivery Phases
 
-R1/R2 是纯 Python 后端,**与桌面 D1/D2 并行**,用 API 级测试与 offline E2E 验收,不等待前端。R3 依赖 D3 的 React 工程就绪。每阶段独立分支、PR、review、CI,前一阶段退出标准通过后才开始下一阶段。多工作单元并行执行本计划时,遵循 [并行交付策略](../development/parallel-delivery-strategy.md) 的契约冻结、串行区与评审纪律。
+R1/R2 是纯 Python 后端，用 API 级测试与 offline E2E 验收；R3 复用 React 工程。每阶段独立分支、PR、review、CI，前一阶段退出标准通过后才开始下一阶段。多工作单元并行执行本计划时，遵循 [并行交付策略](../development/parallel-delivery-strategy.md) 的契约冻结、串行区与评审纪律。
 
-### R1:正文与章节服务(Python,∥ D1)
+### R1:正文与章节服务(Python)
 
 交付:
 
@@ -79,7 +79,7 @@ R1/R2 是纯 Python 后端,**与桌面 D1/D2 并行**,用 API 级测试与 offli
 - 进度写入合并生效,不占用既有 mutation 配额;
 - 既有 Phase 0–5 E2E 不回归,PR CI 绿色。
 
-### R2:标注核心与再锚定(Python,∥ D2)
+### R2:标注核心与再锚定(Python)
 
 交付:
 
@@ -97,7 +97,7 @@ R1/R2 是纯 Python 后端,**与桌面 D1/D2 并行**,用 API 级测试与 offli
 - 标注数据不出现在日志与诊断输出;
 - 既有 E2E 不回归,PR CI 绿色。
 
-### R3:React 阅读器 UI(依赖 D3 完成)
+### R3:React 阅读器 UI
 
 交付:
 
@@ -110,7 +110,7 @@ R1/R2 是纯 Python 后端,**与桌面 D1/D2 并行**,用 API 级测试与 offli
 
 - 三种格式真实样本人工验收:连续阅读、划线、进度恢复、窄窗口与高 DPI;
 - CSP 负向测试全绿,无 inline/远程/`unsafe-eval`;
-- Browser 与(D 轨可用时)Desktop 使用同一构建;
+- Browser 使用 FastAPI 同源托管的唯一生产构建；
 - 本阶段产出 Roadmap Gate 2 进入证据清单。
 
 ### R4:Chat 缝合(Python + React)
@@ -129,19 +129,17 @@ R1/R2 是纯 Python 后端,**与桌面 D1/D2 并行**,用 API 级测试与 offli
 - ai-chat.md 对应小节状态从 Proposed 更新为与实现一致;
 - 既有全部 E2E 不回归,PR CI 绿色。
 
-## 5. 与桌面 D 轨的依赖 / Dependency on Desktop Track
+## 5. 与 Local Web 运行时的关系
 
 ```text
-D1 Sidecar PoC   ∥  R1 正文服务          (无依赖)
-D2 Tauri 壳      ∥  R2 标注核心          (无依赖)
-D3 React 迁移    →  R3 阅读器 UI         (硬依赖:React 工程与四视图迁移完成)
-D4 桌面安全      ←  R3 的 CSP 变更进入 D4 威胁测试范围
-D5 macOS Alpha   ←  建议包含 R3/R4,使 Alpha 具备"阅读→标注→AI"核心闭环
+Python R1/R2 services → FastAPI contracts → React R3/R4 UI
+                               ↓
+                    diandianreading web
 ```
 
-- R1/R2 先于 D3 完成时,D3 的迁移范围自动包含其 API 消费(详情/进度端点),不新增双写。
-- 若 D1/D2 延期,R1/R2 照常交付并以 CLI/浏览器模式验收;R 轨不被桌面打包阻塞。
-- 反向约束:D5 若不含 R3,则 Alpha 只有导入+Chat,不满足桌面计划 §16 对阅读/标注的要求;两轨在 D5 前必须汇合。
+- Python、React 与 Worker 由同一 local Web Runtime 管理，不存在桌面壳或第二套业务核心；
+- R3 的 CSP 由 FastAPI 同源静态资源和浏览器负向测试共同验证；
+- 浏览器 UI 与 CLI 使用同一 App Home、SQLite、Session 和 Provider Adapter。
 
 ## 6. 测试矩阵 / Test Matrix
 
@@ -154,7 +152,7 @@ D5 macOS Alpha   ←  建议包含 R3/R4,使 Alpha 具备"阅读→标注→AI"�
 | 阅读器恶意样本/CSP(R3) | 是 | 视觉确认 |
 | 阅读体验/可访问性(R3) | 静态检查 | 键盘/窄窗/高 DPI |
 | 引用定位正确性(R4) | 是 | 真实书籍抽样 |
-| 真实 Provider 下引用/选区 | 否 | 随 D 轨受控验收 |
+| 真实 Provider 下引用/选区 | 否 | 维护者受控验收 |
 
 ## 7. Definition of Done
 
@@ -180,8 +178,8 @@ R 轨完成当且仅当:
 ## 9. 官方依据 / Primary References
 
 - [ADR-0007:阅读器与标注锚点模型](adr/0007-reader-annotation-anchor-model.md)
-- [ADR-0006:桌面优先 Tauri 2 壳与 Python Sidecar](adr/0006-desktop-first-tauri-python-sidecar.md)
-- [桌面应用实施计划](desktop-application-plan.md)
+- [ADR-0009:Local Web 工具分发](adr/0009-local-web-tool-distribution.md)
+- [Local Web 分发实施计划](local-web-distribution-plan.md)
 - [AI 对话功能设计](../features/ai-chat.md)
 - [产品 PRD](../../diandianreading-PRD.md) §6.3/§6.4/§8.3
 - [产品 Roadmap](../../diandianreading-ROADMAP.md) P3/P4 与 Gate 2

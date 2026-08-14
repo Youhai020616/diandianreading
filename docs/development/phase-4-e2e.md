@@ -92,7 +92,7 @@ Playwright 只负责把本次已验证用户动作关联到下载 URL；捕获�
 默认安装不导入或安装浏览器二进制。需要手工验证真实页面时，显式安装：
 
 ```bash
-uv sync --extra zlibrary
+uv sync --locked --all-groups
 uv run playwright install chromium
 ```
 

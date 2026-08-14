@@ -16,7 +16,7 @@ diandianreading:个人优先的 AI 阅读、知识沉淀与内容发布工作台
 
 - 按 phase 自主连续开发:每 phase 跑 offline E2E → 开 PR → CI 绿即合并 → 进入下一 phase,直至任务完成。
 - 浏览器 UI 功能测试与真实 NotebookLM/Z-Library 联调由维护者最后在自己的 Mac 上手动执行;代码侧负责逻辑审查,并维护手动冒烟验证清单文档。
-- 当前执行顺序:L0 文档与 ADR 冻结 → L1 Web CLI 产品化 → L2 setup/doctor/open → L3 桌面代码退场 → L4 uvx/PyPI 分发准备 → L5 维护者手动验收。
+- 当前执行顺序:L0–L3 已完成；继续 L4 uvx/PyPI 分发准备 → L5 维护者手动验收。
 - Z-Library 模块保留在仓库、默认关闭;`source/` vendored 副本已移除,依赖走 PyPI(见 docs/development/removed-vendored-sources.md)。
 
 ## 关键文档

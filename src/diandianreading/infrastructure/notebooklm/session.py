@@ -23,9 +23,8 @@ from diandianreading.infrastructure.notebooklm.credentials import (
 _DEFAULT_LOGIN_TIMEOUT_SECONDS = 300.0
 _PROCESS_TERMINATION_TIMEOUT_SECONDS = 5.0
 _BROWSER_EXTRA_GUIDANCE = (
-    "NotebookLM interactive login requires browser support. Install it with "
-    "`uv sync --extra notebooklm-login` or "
-    '`pip install "notebooklm-py[browser]==0.8.0rc1"`.'
+    "NotebookLM browser support is missing from this tool environment. "
+    "Reinstall diandianreading, then run `diandianreading setup notebooklm`."
 )
 
 
