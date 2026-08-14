@@ -16,6 +16,15 @@ uv run diandianreading web     # 浏览器打开 http://localhost:3000
 
 真实 Provider 联调前执行 `uv run diandianreading setup notebooklm`，经确认把固定 Chromium 安装到 App Home；凭据只进入 `~/.diandianreading/credentials/`，不要出现在终端历史或截图里。
 
+### 0.1 Preview 发行验收（TestPyPI artifact 可用后）
+
+- [ ] 在没有项目源码的临时目录运行固定 Preview 版本，`diandianreading --version` 与 release manifest 一致。
+- [ ] `uvx ... diandianreading web` readiness 后打开 UI；终止后无残留 Worker。
+- [ ] 删除 uvx tool/cache 后重跑，原 App Home 的书籍、进度、标注与草稿仍在。
+- [ ] 升级到下一 Preview 后 migration 不重复、数据不丢；`doctor` 给出可操作状态。
+- [ ] 按 [运维 runbook](../operations/install-upgrade-backup.md) 完成停机备份与恢复。
+- [ ] wheel/sdist SHA-256 与 `release-manifest.json` 一致，wheel 内没有 Chromium、Credential、Token 或 SQLite。
+
 ## 1. 浏览器 UI 功能测试(离线,无需登录 Provider)
 
 ### 1.1 会话与安全
@@ -77,4 +86,4 @@ uv run diandianreading web     # 浏览器打开 http://localhost:3000
 
 ## 5. 结果记录
 
-在本文件同目录建 `manual-acceptance-YYYYMMDD.md`,逐条记录:通过/失败、环境(macOS 版本/浏览器)、失败截图或错误码。失败项回流为 issue,由后续开发处理;不阻塞记录其余项。
+按 [L5 维护者交接](l5-maintainer-handoff.md) 的模板在本文件同目录建 `manual-acceptance-YYYYMMDD.md`，逐条记录：通过/失败、环境（macOS 版本/浏览器）、脱敏失败证据或错误码。失败项回流为 issue，由后续开发处理；不阻塞记录其余项。

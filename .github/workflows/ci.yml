@@ -60,11 +60,21 @@ jobs:
       - name: Lint
         run: uv run --locked ruff check src tests
 
+      - name: Check relative Markdown links
+        run: uv run --locked python tests/markdown_link_smoke.py
+
       - name: Type check
         run: uv run --locked mypy src/diandianreading
 
       - name: Build distributions from locked build tools
         run: uv build --no-build-isolation
+
+      - name: Verify distribution contents and generate hashes
+        run: >-
+          uv run --locked python tests/distribution_artifact_smoke.py
+          --wheel dist/diandianreading-0.1.0-py3-none-any.whl
+          --sdist dist/diandianreading-0.1.0.tar.gz
+          --output dist/release-manifest.json
 
       - name: Install built wheel in an isolated environment
         run: |
@@ -78,6 +88,21 @@ jobs:
           python tests/web_process_smoke.py
           --command .tmp/ci-wheel-venv/bin/diandianreading
           --home .tmp/ci-wheel/web/app-home
+
+      - name: Run local-wheel uvx process smoke outside the source tree
+        env:
+          UV_CACHE_DIR: ${{ github.workspace }}/.tmp/ci-uvx-cache
+          UV_TOOL_DIR: ${{ github.workspace }}/.tmp/ci-uvx-tools
+        run: |
+          mkdir -p .tmp/ci-uvx-work
+          python tests/web_process_smoke.py \
+            --command uvx \
+            --command-arg=--from \
+            --command-arg="$GITHUB_WORKSPACE/dist/diandianreading-0.1.0-py3-none-any.whl" \
+            --command-arg=diandianreading \
+            --working-directory .tmp/ci-uvx-work \
+            --start-timeout 180 \
+            --home .tmp/ci-uvx/app-home
 
       - name: Run installed-wheel Phase 0 migration and import smoke
         run: >-
@@ -163,7 +188,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
