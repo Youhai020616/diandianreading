@@ -185,7 +185,8 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
-    { name = "notebooklm-py" },
+    { name = "notebooklm-py", extra = ["browser"] },
+    { name = "playwright" },
     { name = "uvicorn" },
 ]
 
@@ -194,12 +195,6 @@ desktop-sidecar = [
     { name = "notebooklm-py", extra = ["browser"] },
     { name = "playwright" },
     { name = "python-multipart" },
-]
-notebooklm-login = [
-    { name = "notebooklm-py", extra = ["browser"] },
-]
-zlibrary = [
-    { name = "playwright" },
 ]
 
 [package.dev-dependencies]
@@ -216,11 +211,10 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.116,<1" },
-    { name = "notebooklm-py", specifier = "==0.8.0rc1" },
+    { name = "notebooklm-py", extras = ["browser"], specifier = "==0.8.0rc1" },
     { name = "notebooklm-py", extras = ["browser"], marker = "extra == 'desktop-sidecar'", specifier = "==0.8.0rc1" },
-    { name = "notebooklm-py", extras = ["browser"], marker = "extra == 'notebooklm-login'", specifier = "==0.8.0rc1" },
+    { name = "playwright", specifier = "==1.61.0" },
     { name = "playwright", marker = "extra == 'desktop-sidecar'", specifier = "==1.61.0" },
-    { name = "playwright", marker = "extra == 'zlibrary'", specifier = "==1.61.0" },
     { name = "python-multipart", marker = "extra == 'desktop-sidecar'", specifier = ">=0.0.20,<1" },
     { name = "uvicorn", specifier = ">=0.35,<1" },
 ]

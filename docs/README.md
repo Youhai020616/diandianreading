@@ -33,6 +33,7 @@
 | [Phase 4 Z-Library 可选 Adapter E2E](development/phase-4-e2e.md) | Rights gate、真实 session marker、逐跳网络、bounded download、Archive 与 Legacy migration 验证 | Active |
 | [Phase 5 统一产品 E2E](development/phase-5-e2e.md) | Session/CSRF、导入、Worker、书库、整本书 Chat、引用与 SSE 全链路验证 | Active |
 | [L1 本地 Web CLI E2E](development/l1-web-e2e.md) | installed-wheel 真实 Uvicorn、readiness、静态资源与终止链路 | Active |
+| [L2 本地 Runtime E2E](development/l2-local-runtime-e2e.md) | Chromium setup/doctor、安全 reopen 与 Token 丢失恢复 | Active |
 | [R1 正文与章节服务 E2E](development/r1-e2e.md) | 书籍详情、规范化正文、章节索引、ETag 再验证与阅读进度链路验证 | Active |
 | [R2 标注核心 E2E](development/r2-e2e.md) | 划线/笔记生命周期、服务端切片校验、软删除与再锚定引擎验证 | Active |
 | [R4 Chat 缝合 E2E](development/r4-e2e.md) | 选区/笔记范围、补充上下文定界与引用本地定位验证 | Active |

@@ -111,6 +111,7 @@ from diandianreading.interfaces.web.http_security import (
     LocalHttpConfig,
     LocalHttpError,
     LocalHttpSecurityBoundary,
+    PrincipalKind,
     RequestPrincipal,
     SseConnectionLimiter,
 )
@@ -437,6 +438,22 @@ def create_web_app(
         else:
             media_type = "application/octet-stream"
         return FileResponse(static_root / "assets" / asset_name, media_type=media_type)
+
+    @app.post("/api/session/bootstrap-nonces")
+    async def issue_bootstrap_nonce(request: Request) -> dict[str, object]:
+        principal = boundary.authenticate(request)
+        if principal.kind is not PrincipalKind.INSTALL_TOKEN:
+            raise ApiProblem(403, "VALIDATION", "Install-token authentication is required")
+        peer = request.client.host if request.client is not None else "unknown"
+        if not bootstrap_limiter.allow(f"issue:{peer}"):
+            raise ApiProblem(429, "AUTH_REQUIRED", "Bootstrap issuance limit exceeded")
+        nonce = runtime.security.issue_bootstrap()
+        return serializers.envelope(
+            {
+                "nonce": nonce.nonce,
+                "expires_at": serializers.iso(nonce.expires_at),
+            }
+        )
 
     @app.post("/api/session/bootstrap")
     async def bootstrap_session(request: Request) -> JSONResponse:

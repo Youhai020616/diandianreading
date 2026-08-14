@@ -224,7 +224,7 @@ diandianreading --home /private/path web
 - CLI 自动打开浏览器；
 - 只有显式 `--print-url` 才允许把一次性 URL 输出到终端，并附带泄漏风险提示。
 
-端点与命令实现前，不能宣称关闭浏览器后可无重启安全恢复 Session。
+L2 已实现该端点与命令，并由 installed-process smoke 验证一次性 Nonce 可建立新 Session。
 
 ### 4.5 关闭
 
@@ -253,7 +253,7 @@ diandianreading doctor
 
 `setup notebooklm`：
 
-- 在下载前显示版本、来源、预计下载量和目标目录；
+- 在下载前显示版本、来源、目标目录，并明确下载量由平台决定、安装后报告验证字节数；
 - 需要显式用户确认，非交互模式要求 `--yes`；
 - 将 Playwright Chromium 写入 `~/.diandianreading/browsers/<version>/`；
 - 使用固定 Playwright/Chromium revision；
@@ -262,23 +262,14 @@ diandianreading doctor
 - 不回退到开发机 `~/Library/Caches`；
 - 不读取系统 PATH 上任意 Chromium 作为“已验证”结果。
 
-`doctor` 只输出脱敏类别：ready、missing、corrupt、version-mismatch、permission-error、disk-space 等，不打印 Credential 或用户路径细节。
+`doctor` 只输出脱敏类别：ready、missing、corrupt、version_mismatch、support_missing、unsafe 等，不打印 Credential 或用户路径细节。
 
-### 5.2 依赖策略 Gate
+### 5.2 依赖策略（已决定）
 
-L0/L1 必须用可复现实验决定：
-
-1. `notebooklm-py[browser]` 是否进入默认发行依赖；
-2. 或通过 `diandianreading[notebooklm]` extra 安装。
-
-判定标准：
-
-- `uvx diandianreading web` 必须始终可以启动本地阅读、标注和 Obsidian 能力；
-- 用户不能在 UI 点“连接 NotebookLM”后才遇到无法解释的 `ImportError`；
-- 若采用 extra，UI/CLI 必须给出精确升级命令，并在重启后检测成功；
-- Chromium 二进制不进入基础 wheel。
-
-在测量 wheel 大小、首次 setup 时间和 uvx 重启行为前，不提前宣称哪种依赖布局胜出。
+- 默认发行依赖包含 `notebooklm-py[browser]` 与精确 `playwright==1.61.0`，保证 `setup notebooklm` 在 uvx/tool 环境内可执行；
+- Chromium 二进制不进入基础 wheel，仍需用户显式 setup；
+- 旧 `notebooklm-login`/`zlibrary` extras 暂保留为空兼容标记，L3 可随桌面依赖清理统一移除；
+- NotebookLM 未 setup 时，本地阅读、标注、创作和 Obsidian 能力继续可用。
 
 ### 5.3 D1 资产复用
 
@@ -432,7 +423,7 @@ build wheel
 - 输出无 Secret、Credential、正文与敏感路径；
 - Python/Web 既有质量门全绿。
 
-### L2：Setup、Doctor 与安全重新打开
+### L2：Setup、Doctor 与安全重新打开（已完成）
 
 交付：
 
@@ -570,14 +561,11 @@ Local Web 分发完成当且仅当：
 ## 13. 仍需证据决定的问题 / Open Evidence Gates
 
 1. PyPI 最终包名与 console script 名称是否均使用 `diandianreading`。
-2. `notebooklm-py[browser]` 进入默认依赖还是 extra。
-3. 第一批正式支持的 OS/Python 组合；当前 Python matrix 不能替代 OS 级 Provider 验收。
-4. Chromium 的下载大小、冷启动、代理与清理策略。
-5. `diandianreading open` 的 nonce endpoint 具体 HTTP 契约。
-6. 是否为端口冲突后的“已认证同实例”提供只打开浏览器的行为；不得附着未知服务。
-7. PyPI Stable 前采用何种 License。
-8. 是否需要 Homebrew formula；先由 uv clean-machine 反馈决定。
-9. 日志目录、保留期与用户主动诊断包的最小范围。
+2. 第一批正式支持的 OS/Python 组合；当前 Python matrix 不能替代 OS 级 Provider 验收。
+3. Chromium 的真实下载大小、冷启动、代理与清理策略。
+4. PyPI Stable 前采用何种 License。
+5. 是否需要 Homebrew formula；先由 uv clean-machine 反馈决定。
+6. 日志目录、保留期与用户主动诊断包的最小范围。
 
 每项必须由构建、测量或用户测试决定；需要改变安全/数据边界时新增 ADR。
 
@@ -589,5 +577,5 @@ Local Web 分发完成当且仅当：
 - [ADR-0003](adr/0003-provider-credential-isolation.md)：Provider Credential 物理隔离。
 - [ADR-0004](adr/0004-durable-import-saga.md)：持久任务与远程结果 reconciliation。
 - [ADR-0005](adr/0005-local-api-security.md)：回环 API 的认证、同源与资源边界。
-- [ADR-0006](adr/0006-desktop-first-tauri-python-sidecar.md)：将由 L0 的 ADR-0009 正式替代的历史桌面决策。
-- [Phase 5 E2E](../development/phase-5-e2e.md)：当前 `diandian serve`、App Home、Local API 与 installed-wheel 基线。
+- [ADR-0006](adr/0006-desktop-first-tauri-python-sidecar.md)：已由 ADR-0009 替代的历史桌面决策。
+- [Phase 5 E2E](../development/phase-5-e2e.md)：当前 `diandianreading web`、App Home、Local API 与 installed-wheel 基线。

@@ -290,6 +290,53 @@ def test_bearer_and_browser_cookie_credentials_cannot_be_mixed(api: ApiHarness) 
     assert bearer.token not in response.text
 
 
+def test_install_token_can_issue_one_safe_reopen_nonce(api: ApiHarness) -> None:
+    token = api.runtime.install_tokens.read_for_cli().token
+    with TestClient(
+        api.app,
+        base_url=ORIGIN,
+        client=("127.0.0.1", 50_003),
+        follow_redirects=False,
+        raise_server_exceptions=False,
+    ) as client:
+        unauthorized = client.post(
+            "/api/session/bootstrap-nonces",
+            headers={"Authorization": "Bearer wrong-token"},
+        )
+        assert unauthorized.status_code == 401
+
+        issued = client.post(
+            "/api/session/bootstrap-nonces",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert issued.status_code == 200
+        assert issued.headers["cache-control"] == "no-store"
+        nonce = issued.json()["data"]["nonce"]
+        assert isinstance(nonce, str)
+        assert nonce
+        assert token not in issued.text
+
+        consumed = client.post(
+            "/api/session/bootstrap",
+            json={"nonce": nonce},
+            headers={"Origin": ORIGIN},
+        )
+        assert consumed.status_code == 200
+        replay = client.post(
+            "/api/session/bootstrap",
+            json={"nonce": nonce},
+            headers={"Origin": ORIGIN},
+        )
+        assert replay.status_code == 401
+
+    browser_attempt = api.client.post(
+        "/api/session/bootstrap-nonces",
+        headers=api.write_headers(),
+    )
+    assert browser_attempt.status_code == 403
+    assert browser_attempt.json()["error"]["code"] == "VALIDATION"
+
+
 def test_bootstrap_csrf_rotation_logout_and_rate_limits(api: ApiHarness) -> None:
     missing_csrf = api.client.post("/api/jobs/missing/retry", headers={"Origin": ORIGIN})
     assert missing_csrf.status_code == 401
