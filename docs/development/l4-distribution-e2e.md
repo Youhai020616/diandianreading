@@ -3,6 +3,8 @@
 > 状态：Code-complete / External gates blocked
 >
 > 范围：root README、发行 metadata、wheel/sdist 审计、本地 wheel uvx process smoke、GitHub pre-release 与 TestPyPI OIDC 工作流；不把未执行的公开上传描述为完成。
+>
+> Artifact-only Distribution Preview 已在 main commit `5092f3d` 通过：[Actions run 31801072914](https://github.com/Youhai020616/diandianreading/actions/runs/31801072914)。该 run 未创建 tag、GitHub Release 或 PyPI/TestPyPI 上传。
 
 ## 自动化链路
 
