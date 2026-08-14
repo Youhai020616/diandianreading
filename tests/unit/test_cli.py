@@ -81,6 +81,13 @@ def test_cli_requires_a_subcommand() -> None:
     assert raised.value.code == 2
 
 
+def test_cli_reports_the_package_version_without_initializing_runtime(capsys) -> None:
+    with pytest.raises(SystemExit) as raised:
+        build_parser().parse_args(["--version"])
+    assert raised.value.code == 0
+    assert capsys.readouterr().out == "diandianreading 0.1.0\n"
+
+
 def test_cli_runs_phase0_demo_and_returns_structured_collision_error(tmp_path, capsys) -> None:
     database = tmp_path / "state" / "app.sqlite3"
     workspace = tmp_path / "state" / "workspace"
@@ -629,7 +636,7 @@ def test_unified_cli_worker_once_is_portless_and_closes_runtime(
     assert runtime_calls[0][1].zlibrary_enabled is True
 
 
-def test_unified_cli_serve_uses_mocked_server_and_schedules_mocked_browser(
+def test_unified_cli_web_uses_mocked_server_and_opens_only_after_readiness(
     tmp_path,
     monkeypatch,
     capsys,
@@ -642,18 +649,19 @@ def test_unified_cli_serve_uses_mocked_server_and_schedules_mocked_browser(
             self.calls += 1
             return SimpleNamespace(nonce="nonce with /?")
 
-    timers: list[Any] = []
+    threads: list[Any] = []
     configs: list[Any] = []
     servers: list[Any] = []
+    opened: list[str] = []
 
-    class FakeTimer:
-        def __init__(self, interval, function, args=()) -> None:
-            self.interval = interval
-            self.function = function
+    class FakeThread:
+        def __init__(self, *, target, args, daemon, name) -> None:
+            self.target = target
             self.args = args
-            self.daemon = False
+            self.daemon = daemon
+            self.name = name
             self.started = False
-            timers.append(self)
+            threads.append(self)
 
         def start(self) -> None:
             self.started = True
@@ -668,10 +676,13 @@ def test_unified_cli_serve_uses_mocked_server_and_schedules_mocked_browser(
         def __init__(self, config) -> None:
             self.config = config
             self.ran = False
+            self.started = False
+            self.should_exit = False
             servers.append(self)
 
         def run(self) -> None:
             self.ran = True
+            self.started = True
 
     security = Security()
     runtime = FakeProductRuntime(security=security)
@@ -684,42 +695,95 @@ def test_unified_cli_serve_uses_mocked_server_and_schedules_mocked_browser(
         lambda: port_checks.append(3000),
     )
     monkeypatch.setattr(cli_module, "create_web_app", lambda candidate: app)
-    monkeypatch.setattr(cli_module.threading, "Timer", FakeTimer)
+    monkeypatch.setattr(cli_module.threading, "Thread", FakeThread)
     monkeypatch.setattr(cli_module.uvicorn, "Config", FakeConfig)
     monkeypatch.setattr(cli_module.uvicorn, "Server", FakeServer)
+    monkeypatch.setattr(cli_module, "_open_browser", opened.append)
 
     assert (
         main(
             [
                 "--home",
                 str(tmp_path / "home"),
-                "serve",
+                "web",
                 "--enable-zlibrary",
+                "--json",
             ]
         )
         == 0
     )
 
-    assert json.loads(capsys.readouterr().out) == {
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert json.loads(captured.out) == {
         "origin": "http://localhost:3000",
         "status": "starting",
         "worker": "enabled",
         "zlibrary": "enabled",
     }
     assert port_checks == [3000]
-    assert security.calls == 1
+    assert security.calls == 0
     assert runtime_calls[0][1].zlibrary_enabled is True
-    timer = timers[0]
-    assert timer.interval == 0.8
-    assert timer.args == ("http://localhost:3000/#bootstrap=nonce%20with%20%2F%3F",)
-    assert timer.daemon is True
-    assert timer.started is True
+    thread = threads[0]
+    assert thread.target is cli_module._open_browser_when_ready
+    assert thread.args == (servers[0], security)
+    assert thread.daemon is True
+    assert thread.name == "diandian-browser-opener"
+    assert thread.started is True
     assert configs[0].app is app
     assert configs[0].kwargs["host"] == "127.0.0.1"
     assert configs[0].kwargs["port"] == 3000
     assert servers[0].config is configs[0]
     assert servers[0].ran is True
+
+    thread.target(*thread.args)
+    assert security.calls == 1
+    assert opened == ["http://localhost:3000/#bootstrap=nonce%20with%20%2F%3F"]
     assert runtime.close_count == 0
+
+
+def test_unified_cli_web_has_human_output_and_serve_is_a_json_compatibility_alias(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    class FakeServer:
+        started = False
+        should_exit = False
+
+        def __init__(self, config) -> None:
+            self.config = config
+
+        def run(self) -> None:
+            return None
+
+    runtime = FakeProductRuntime(security=SimpleNamespace())
+    install_runtime(monkeypatch, runtime)
+    monkeypatch.setattr(cli_module, "_require_port_3000_available", lambda: None)
+    monkeypatch.setattr(cli_module, "create_web_app", lambda candidate: object())
+    monkeypatch.setattr(cli_module.uvicorn, "Server", FakeServer)
+
+    home = tmp_path / "home"
+    assert main(["--home", str(home), "web", "--no-open"]) == 0
+    human = capsys.readouterr()
+    assert "diandianreading 0.1.0" in human.out
+    assert "Local Web UI: http://localhost:3000" in human.out
+    assert f"Data directory: {home}" in human.out
+    assert "bootstrap" not in human.out.casefold()
+    assert human.err == ""
+
+    assert main(["--home", str(home), "serve", "--no-open"]) == 0
+    legacy = capsys.readouterr()
+    assert json.loads(legacy.out)["status"] == "starting"
+    assert "compatibility alias" in legacy.err
+
+
+def test_browser_opener_stops_without_issuing_a_secret_when_server_exits(monkeypatch) -> None:
+    server = SimpleNamespace(started=False, should_exit=True)
+    security = SimpleNamespace(issue_bootstrap=lambda: pytest.fail("secret was issued"))
+    monkeypatch.setattr(cli_module.time, "sleep", lambda seconds: None)
+
+    cli_module._open_browser_when_ready(server, security)
 
 
 def test_unified_cli_port_conflict_is_structured_before_runtime_creation(

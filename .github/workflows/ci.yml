@@ -150,6 +150,12 @@ jobs:
             --python .tmp/ci-wheel-venv/bin/python \
             ./dist/diandianreading-0.1.0-py3-none-any.whl
 
+      - name: Run installed-wheel real Web process smoke
+        run: >-
+          python tests/web_process_smoke.py
+          --command .tmp/ci-wheel-venv/bin/diandianreading
+          --home .tmp/ci-wheel/web/app-home
+
       - name: Run installed-wheel Phase 0 migration and import smoke
         run: >-
           .tmp/ci-wheel-venv/bin/diandian phase0-e2e

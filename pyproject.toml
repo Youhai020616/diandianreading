@@ -22,6 +22,7 @@ desktop-sidecar = [
 ]
 
 [project.scripts]
+diandianreading = "diandianreading.interfaces.cli:main"
 diandian = "diandianreading.interfaces.cli:main"
 diandian-desktop-sidecar = "diandianreading.interfaces.desktop_sidecar:main"
 
