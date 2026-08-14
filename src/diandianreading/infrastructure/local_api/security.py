@@ -831,6 +831,32 @@ class LocalApiSecurityService:
     def rotate_install_token(self) -> InstallTokenSecret:
         return self._install_tokens.rotate()
 
+    def recover_after_install_token_loss(self) -> None:
+        """Revoke every browser credential after a missing token file is recreated."""
+
+        now = self._now().isoformat()
+        with self._connect(immediate=True) as connection:
+            connection.execute(
+                """
+                UPDATE browser_bootstrap_nonces
+                SET consumed_at = COALESCE(consumed_at, ?)
+                WHERE consumed_at IS NULL
+                """,
+                (now,),
+            )
+            connection.execute(
+                """
+                UPDATE browser_sessions
+                SET revoked_at = COALESCE(revoked_at, ?),
+                    revoked_reason = COALESCE(
+                        revoked_reason, ?
+                    ),
+                    version = CASE WHEN revoked_at IS NULL THEN version + 1 ELSE version END
+                WHERE revoked_at IS NULL
+                """,
+                (now, SessionRevocationReason.SECURITY_RECOVERY.value),
+            )
+
     @contextmanager
     def _connect(self, *, immediate: bool = False) -> Generator[sqlite3.Connection, None, None]:
         try:

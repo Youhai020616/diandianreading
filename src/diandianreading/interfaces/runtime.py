@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -30,12 +31,14 @@ from diandianreading.infrastructure.acquisition.zlibrary import (
     ZLibraryNetworkPolicy,
     ZLibrarySessionManager,
 )
+from diandianreading.infrastructure.browser_runtime import BrowserRuntimeManager
 from diandianreading.infrastructure.documents import (
     LocalDocumentPreparationAdapter,
     PolicyReadingDocumentProcessor,
 )
 from diandianreading.infrastructure.documents.reading_bridge import ReadingChatBridge
 from diandianreading.infrastructure.local_api import (
+    INSTALL_TOKEN_FILENAME,
     InstallTokenStore,
     LocalApiSecurityService,
 )
@@ -79,6 +82,7 @@ class ApplicationPaths:
     credentials_root: Path = field(init=False)
     staging_root: Path = field(init=False)
     upload_root: Path = field(init=False)
+    browser_root: Path = field(init=False)
 
     def __post_init__(self) -> None:
         home = Path(os.path.abspath(self.home.expanduser()))
@@ -88,6 +92,7 @@ class ApplicationPaths:
         object.__setattr__(self, "credentials_root", home / "credentials")
         object.__setattr__(self, "staging_root", home / "staging")
         object.__setattr__(self, "upload_root", home / "uploads")
+        object.__setattr__(self, "browser_root", home / "browsers")
 
     @classmethod
     def default(cls) -> ApplicationPaths:
@@ -149,6 +154,7 @@ class ApplicationRuntime:
     chat: ChatUseCase
     security: LocalApiSecurityService
     install_tokens: InstallTokenStore
+    browser_runtime: BrowserRuntimeManager
     worker: WorkerRunner
 
     async def aclose(self) -> None:
@@ -172,6 +178,10 @@ def create_runtime(
 
     effective_paths = paths or ApplicationPaths.default()
     effective_config = config or RuntimeConfig.from_environment()
+    _prepare_app_home(effective_paths.home)
+
+    browser_runtime = BrowserRuntimeManager(effective_paths.browser_root)
+    _ = browser_runtime.configure_environment()
 
     database = SQLiteDatabase(effective_paths.database)
     schema_version = database.migrate()
@@ -280,9 +290,18 @@ def create_runtime(
         document_text=reading_bridge,
     )
 
-    install_tokens = InstallTokenStore(effective_paths.credentials_root / "local-api")
+    install_token_root = effective_paths.credentials_root / "local-api"
+    install_token_path = install_token_root / INSTALL_TOKEN_FILENAME
+    try:
+        _ = install_token_path.lstat()
+        install_token_was_missing = False
+    except FileNotFoundError:
+        install_token_was_missing = True
+    install_tokens = InstallTokenStore(install_token_root)
     _ = install_tokens.ensure_initial()
     security = LocalApiSecurityService(database, install_tokens)
+    if install_token_was_missing:
+        security.recover_after_install_token_loss()
     worker = WorkerRunner(
         imports=imports, chat=chat, content=content_generation, worker_id="local-worker"
     )
@@ -309,8 +328,29 @@ def create_runtime(
         chat=chat,
         security=security,
         install_tokens=install_tokens,
+        browser_runtime=browser_runtime,
         worker=worker,
     )
+
+
+def _prepare_app_home(home: Path) -> None:
+    try:
+        metadata = home.lstat()
+    except FileNotFoundError:
+        home.mkdir(parents=True, mode=0o700)
+        if os.name != "nt":
+            home.chmod(0o700)
+        metadata = home.lstat()
+    if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
+        raise ValueError("Application home must be a private directory")
+    if os.name != "nt":
+        if metadata.st_uid != os.getuid():
+            raise ValueError("Application home must be owned by the current user")
+        if stat.S_IMODE(metadata.st_mode) & 0o077:
+            home.chmod(0o700)
+            metadata = home.lstat()
+            if stat.S_IMODE(metadata.st_mode) & 0o077:
+                raise ValueError("Application home permissions could not be made private")
 
 
 def notebooklm_credential(profile: str = DEFAULT_PROFILE) -> CredentialRef:

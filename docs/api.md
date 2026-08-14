@@ -1550,6 +1550,7 @@ Phase 5 将两个 Provider 能力组合到主应用，但不合并其凭据或�
 ├── state/app.sqlite3
 ├── objects/
 ├── credentials/
+├── browsers/
 ├── staging/
 └── uploads/
 ```
@@ -1562,11 +1563,10 @@ diandian --home /private/app-home auth status
 
 #### CLI
 
-真实交互登录需要显式安装可选浏览器依赖；基础 wheel 和默认 CI 不安装浏览器：
+发行环境包含固定 Playwright Python 依赖，但 Chromium 二进制不进入 wheel；真实交互登录前显式安装到私有 App Home：
 
 ```bash
-uv sync --extra notebooklm-login --extra zlibrary
-uv run playwright install chromium
+diandianreading setup notebooklm
 ```
 
 ```text
@@ -1590,7 +1590,11 @@ diandian import <zlibrary-url> \
 diandian jobs list [--status <status>] [--limit 50]
 diandian jobs retry <job-id>
 diandian worker [--once] [--poll-interval 1.0] [--enable-zlibrary]
-diandian serve [--no-open] [--enable-zlibrary]
+diandianreading web [--no-open] [--enable-zlibrary] [--json]
+diandianreading setup notebooklm [--yes] [--force] [--json]
+diandianreading doctor [--json]
+diandianreading open [--json | --print-url]
+diandian serve [--no-open] [--enable-zlibrary]  # compatibility alias
 ```
 
 规则：
@@ -1600,7 +1604,8 @@ diandian serve [--no-open] [--enable-zlibrary]
 - CLI/UI 当前只开放 `owned_copy`、`public_domain`、`open_license`。后两者必须提供 `--license-identifier`；`licensed`/`explicit_permission` 需要单独 Evidence `StorageKey`，当前入口不会伪造或跳过该证据。
 - 每个导入必须显式 `--rights-confirmed`；Z-Library 还必须显式 `--title`。
 - `diandian worker --once` 每类最多领取一个工作项（最多一个 Import Job 加一个 ChatRun）；两类都无任务时安全返回 `handled=false`。
-- `diandian serve` 只绑定 `127.0.0.1:3000`，浏览器打开 `http://localhost:3000`；若端口已占用会拒绝启动第二实例。
+- `diandianreading web` 只绑定 `127.0.0.1:3000`，readiness 后打开 `http://localhost:3000`；若端口已占用会拒绝启动第二实例。
+- `setup notebooklm` 显式下载并验证 App Home 管理的 Chromium；`doctor` 不访问 Provider；`open` 使用私有 Install Token 向已运行实例申请一次性 Nonce。
 
 #### HTTP 与静态入口
 
@@ -1610,6 +1615,7 @@ GET    /
 GET    /static/app.css
 GET    /static/app.js
 
+POST   /api/session/bootstrap-nonces   # Install Token only
 POST   /api/session/bootstrap
 GET    /api/session
 POST   /api/session/logout

@@ -153,6 +153,33 @@ def test_bootstrap_is_one_time_expiring_generation_bound_and_uniform(tmp_path: P
     _ = service.consume_bootstrap(current.nonce)
 
 
+def test_missing_install_token_recovery_revokes_all_browser_credentials(tmp_path: Path) -> None:
+    database, store, original, clock, service = make_security(tmp_path)
+    pending = service.issue_bootstrap()
+    credentials = issue_session(service)
+    session = service.authenticate_session(credentials.session_token)
+    assert service.is_session_active(session)
+
+    store.path.unlink()
+    replacement_store = InstallTokenStore(store.path.parent)
+    replacement = replacement_store.ensure_initial()
+    recovered = LocalApiSecurityService(database, replacement_store, clock=clock)
+    recovered.recover_after_install_token_loss()
+
+    assert replacement.token != original.token
+    with pytest.raises(BootstrapAuthenticationError):
+        _ = recovered.consume_bootstrap(pending.nonce)
+    with pytest.raises(SessionAuthenticationError):
+        _ = recovered.authenticate_session(credentials.session_token)
+    with database.connect() as connection:
+        revoked = fetch_one(
+            connection,
+            "SELECT revoked_at, revoked_reason FROM browser_sessions",
+        )
+    assert revoked[0] is not None
+    assert revoked[1] == "security_recovery"
+
+
 def test_session_idle_absolute_revoke_and_csrf_validation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -28,11 +28,10 @@ single-use browser bootstrap
 
 ### 2.1 统一 CLI
 
-真实交互登录需要显式安装浏览器 extras；基础 wheel 与默认 CI 不安装浏览器：
+发行环境包含固定 Playwright Python 依赖，但 Chromium 二进制不进入 wheel；真实交互登录前显式安装到私有 App Home：
 
 ```bash
-uv sync --extra notebooklm-login --extra zlibrary
-uv run playwright install chromium
+uv run diandianreading setup notebooklm
 ```
 
 ```text
@@ -70,6 +69,7 @@ diandian --home /private/app-home auth status
 │   ├── local-api/
 │   ├── notebooklm/
 │   └── zlibrary/
+├── browsers/
 ├── staging/
 └── uploads/
 ```
@@ -83,6 +83,7 @@ diandian --home /private/app-home auth status
 ```text
 GET    /healthz
 GET    / + /static/app.css + /static/app.js
+POST   /api/session/bootstrap-nonces   # Install Token only, for `open`
 POST   /api/session/bootstrap
 GET    /api/session
 POST   /api/session/logout

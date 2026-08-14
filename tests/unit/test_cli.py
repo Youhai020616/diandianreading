@@ -838,3 +838,170 @@ def test_open_browser_uses_only_the_mocked_browser_boundary(monkeypatch) -> None
     cli_module._open_browser("http://localhost:3000/#bootstrap=redacted")
 
     assert calls == [("http://localhost:3000/#bootstrap=redacted", 1, True)]
+
+
+def test_setup_notebooklm_requires_explicit_machine_confirmation(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    status = SimpleNamespace(
+        state=cli_module.BrowserRuntimeState.MISSING,
+        playwright_version="1.61.0",
+        revision=None,
+        installed_bytes=None,
+    )
+
+    class Manager:
+        def __init__(self, root) -> None:
+            self.root = root
+
+        def inspect(self):
+            return status
+
+    monkeypatch.setattr(cli_module, "BrowserRuntimeManager", Manager)
+
+    assert (
+        main(
+            [
+                "--home",
+                str(tmp_path / "home"),
+                "setup",
+                "notebooklm",
+                "--json",
+            ]
+        )
+        == 2
+    )
+    error = json.loads(capsys.readouterr().err)
+    assert error["error"]["message"] == "Machine-readable setup requires --yes"
+
+
+def test_setup_notebooklm_provisions_and_reports_a_verified_revision(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    missing = SimpleNamespace(
+        state=cli_module.BrowserRuntimeState.MISSING,
+        playwright_version="1.61.0",
+        revision=None,
+        installed_bytes=None,
+    )
+    ready = SimpleNamespace(
+        state=cli_module.BrowserRuntimeState.READY,
+        playwright_version="1.61.0",
+        revision="chromium-1228",
+        installed_bytes=1234,
+    )
+    calls: list[tuple[bool, bool]] = []
+
+    class Manager:
+        def __init__(self, root) -> None:
+            self.root = root
+
+        def inspect(self):
+            return missing
+
+        def provision(self, *, force, quiet):
+            calls.append((force, quiet))
+            return ready
+
+    monkeypatch.setattr(cli_module, "BrowserRuntimeManager", Manager)
+
+    assert (
+        main(
+            [
+                "--home",
+                str(tmp_path / "home"),
+                "setup",
+                "notebooklm",
+                "--yes",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["browser_state"] == "ready"
+    assert result["revision"] == "chromium-1228"
+    assert result["installed_bytes"] == 1234
+    assert calls == [(False, True)]
+
+
+def test_doctor_is_passive_and_treats_missing_browser_as_non_blocking(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    status = SimpleNamespace(
+        state=cli_module.BrowserRuntimeState.MISSING,
+        playwright_version="1.61.0",
+        revision=None,
+        installed_bytes=None,
+    )
+
+    class Manager:
+        def __init__(self, root) -> None:
+            self.root = root
+
+        def inspect(self):
+            return status
+
+    monkeypatch.setattr(cli_module, "BrowserRuntimeManager", Manager)
+    monkeypatch.setattr(cli_module, "_require_port_3000_available", lambda: None)
+    home = tmp_path / "home"
+
+    assert main(["--home", str(home), "doctor", "--json"]) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ok"
+    assert result["app_home"] == "missing"
+    assert result["browser"]["state"] == "missing"
+    assert result["port_3000"] == "available"
+    assert result["static_assets"] == "ready"
+    assert not home.exists()
+
+
+def test_open_authenticates_the_running_instance_without_printing_the_nonce(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    opened: list[str] = []
+
+    class Store:
+        def __init__(self, root) -> None:
+            self.root = root
+
+        def read_for_cli(self):
+            return SimpleNamespace(token="install-secret")
+
+    monkeypatch.setattr(cli_module, "InstallTokenStore", Store)
+    monkeypatch.setattr(
+        cli_module,
+        "_request_bootstrap_nonce",
+        lambda token: "one-time/nonce" if token == "install-secret" else pytest.fail(),
+    )
+    monkeypatch.setattr(cli_module, "_open_browser", opened.append)
+
+    assert main(["--home", str(tmp_path / "home"), "open", "--json"]) == 0
+
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == {
+        "opened": True,
+        "origin": "http://localhost:3000",
+        "status": "ok",
+    }
+    assert "one-time" not in captured.out
+    assert opened == ["http://localhost:3000/#bootstrap=one-time%2Fnonce"]
+
+
+def test_open_print_url_is_explicitly_sensitive(tmp_path, monkeypatch, capsys) -> None:
+    class Store:
+        def __init__(self, root) -> None:
+            self.root = root
+
+        def read_for_cli(self):
+            return SimpleNamespace(token="install-secret")
+
+    monkeypatch.setattr(cli_module, "InstallTokenStore", Store)
+    monkeypatch.setattr(cli_module, "_request_bootstrap_nonce", lambda token: "one-time")
+
+    assert main(["--home", str(tmp_path / "home"), "open", "--print-url"]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out == "http://localhost:3000/#bootstrap=one-time\n"
+    assert "do not share" in captured.err

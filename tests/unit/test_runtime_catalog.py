@@ -17,6 +17,7 @@ from diandianreading.domain import Book, BookStatus, ErrorCode, TargetCapabiliti
 from diandianreading.interfaces.runtime import (
     ApplicationPaths,
     RuntimeConfig,
+    _prepare_app_home,
     notebooklm_credential,
     zlibrary_credential,
 )
@@ -106,8 +107,20 @@ def test_application_paths_default_uses_configured_home_and_derives_locations(
     assert paths.credentials_root == configured_home / "credentials"
     assert paths.staging_root == configured_home / "staging"
     assert paths.upload_root == configured_home / "uploads"
+    assert paths.browser_root == configured_home / "browsers"
     assert notebooklm_credential("reader").provider == "notebooklm"
     assert zlibrary_credential("reader").provider == "zlibrary"
+
+
+def test_runtime_prepares_a_private_application_home(tmp_path) -> None:
+    home = tmp_path / "home"
+    home.mkdir(mode=0o755)
+
+    _prepare_app_home(home)
+
+    assert home.is_dir()
+    if home.stat().st_mode & 0o077:
+        pytest.fail("application home remained accessible to other users")
 
 
 @pytest.mark.parametrize("value", ("1", " true ", "YES", "On"))

@@ -11,6 +11,7 @@ import signal
 import subprocess
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -62,6 +63,7 @@ def main() -> int:
         main_asset = next((asset for asset in assets if asset.endswith(".js")), None)
         if main_asset is None or not _read_url(f"{ORIGIN}/{main_asset}"):
             raise RuntimeError("installed Web process did not serve its JavaScript asset")
+        _verify_secure_reopen(command, home)
     finally:
         if process.poll() is None:
             process.terminate()
@@ -90,6 +92,7 @@ def main() -> int:
                 "asset_verified": True,
                 "health_verified": True,
                 "process_stopped": True,
+                "reopen_verified": True,
                 "startup_record_verified": True,
                 "status": "ok",
             },
@@ -97,6 +100,35 @@ def main() -> int:
         )
     )
     return 0
+
+
+def _verify_secure_reopen(command: Path, home: Path) -> None:
+    opened = subprocess.run(
+        [str(command), "--home", str(home), "open", "--print-url"],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=10.0,
+    )
+    if opened.returncode != 0 or "do not share" not in opened.stderr:
+        raise RuntimeError("installed CLI could not authenticate the running Web process")
+    one_time_url = opened.stdout.strip()
+    fragment = urllib.parse.parse_qs(urllib.parse.urlsplit(one_time_url).fragment)
+    nonces = fragment.get("bootstrap", [])
+    if len(nonces) != 1:
+        raise RuntimeError("installed CLI returned an invalid reopen URL")
+    body = json.dumps({"nonce": nonces[0]}).encode("utf-8")
+    request = urllib.request.Request(
+        f"{ORIGIN}/api/session/bootstrap",
+        data=body,
+        headers={"Content-Type": "application/json", "Origin": ORIGIN},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=2.0) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if payload.get("data", {}).get("authenticated") is not True:
+        raise RuntimeError("installed CLI reopen nonce did not establish a browser session")
 
 
 def _wait_for_url(url: str, process: subprocess.Popen[str]) -> str:

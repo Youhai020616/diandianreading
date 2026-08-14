@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import signal
 import socket
+import stat
 import sys
 import threading
 import time
@@ -15,6 +17,8 @@ from collections.abc import Sequence
 from enum import Enum
 from pathlib import Path
 from typing import Any
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 from urllib.parse import quote
 
 import uvicorn
@@ -28,6 +32,12 @@ from diandianreading.domain import (
     RightsBasis,
     UnsafePathError,
 )
+from diandianreading.infrastructure.browser_runtime import (
+    BrowserRuntimeError,
+    BrowserRuntimeManager,
+    BrowserRuntimeState,
+)
+from diandianreading.infrastructure.local_api import INSTALL_TOKEN_FILENAME, InstallTokenStore
 from diandianreading.interfaces.c1_demo import run_c1_demo
 from diandianreading.interfaces.c1b_demo import run_c1b_demo
 from diandianreading.interfaces.c2_demo import run_c2_demo
@@ -120,6 +130,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="compatibility alias for 'web'",
     )
     _add_web_arguments(serve)
+
+    setup = subparsers.add_parser("setup", help="install explicit local runtime dependencies")
+    setup_commands = setup.add_subparsers(dest="setup_command", required=True)
+    setup_notebooklm = setup_commands.add_parser(
+        "notebooklm", help="install the managed Playwright Chromium runtime"
+    )
+    setup_notebooklm.add_argument("--yes", action="store_true", help="confirm the download")
+    setup_notebooklm.add_argument(
+        "--force", action="store_true", help="replace an invalid current revision"
+    )
+    setup_notebooklm.add_argument("--json", action="store_true")
+
+    doctor = subparsers.add_parser(
+        "doctor", help="inspect the local runtime without Provider calls"
+    )
+    doctor.add_argument("--json", action="store_true")
+
+    open_command = subparsers.add_parser(
+        "open", help="securely open a new browser session for the running local service"
+    )
+    open_command.add_argument("--json", action="store_true")
+    open_command.add_argument(
+        "--print-url",
+        action="store_true",
+        help="print the one-time URL instead of opening it (sensitive)",
+    )
 
     phase0 = subparsers.add_parser(
         "phase0-e2e",
@@ -227,6 +263,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command in {"web", "serve"}:
             return _serve(args)
+        if args.command == "setup":
+            return _run_setup(args)
+        if args.command == "doctor":
+            return _run_doctor(args)
+        if args.command == "open":
+            return _run_open(args)
         if args.command == "phase5-e2e":
             _print_result(run_phase5_demo(args.app_home, args.workspace))
             return 0
@@ -325,6 +367,220 @@ def main(argv: Sequence[str] | None = None) -> int:
             retryable=False,
             exit_code=1,
         )
+
+
+def _run_setup(args: argparse.Namespace) -> int:
+    if args.setup_command != "notebooklm":
+        raise ValueError("Unsupported setup target")
+    paths = _paths(args.home)
+    manager = BrowserRuntimeManager(paths.browser_root)
+    current = manager.inspect()
+    if current.state is BrowserRuntimeState.READY and not args.force:
+        return _emit_setup_result(current, machine_readable=args.json, already_ready=True)
+    if args.json and not args.yes:
+        raise ValueError("Machine-readable setup requires --yes")
+    if not args.yes:
+        version = current.playwright_version or "unavailable"
+        print(
+            "\n".join(
+                (
+                    "NotebookLM setup will download the Playwright Chromium revision "
+                    f"for Playwright {version}.",
+                    "Source: Playwright-managed browser CDN "
+                    "(or PLAYWRIGHT_DOWNLOAD_HOST when configured).",
+                    "Size: platform-dependent; the verified installed byte count is "
+                    "reported after setup.",
+                    f"Target: {manager.version_root}",
+                )
+            ),
+            flush=True,
+        )
+        try:
+            confirmed = input("Continue? [y/N] ").strip().casefold() in {"y", "yes"}
+        except EOFError:
+            confirmed = False
+        if not confirmed:
+            print("Setup cancelled.", flush=True)
+            return 0
+    try:
+        status = manager.provision(force=args.force, quiet=args.json)
+    except BrowserRuntimeError as error:
+        raise ValueError(str(error)) from error
+    return _emit_setup_result(status, machine_readable=args.json, already_ready=False)
+
+
+def _emit_setup_result(
+    status: Any,
+    *,
+    machine_readable: bool,
+    already_ready: bool,
+) -> int:
+    result: dict[str, object] = {
+        "status": "ok",
+        "browser": "chromium",
+        "browser_state": status.state.value,
+        "playwright_version": status.playwright_version,
+        "revision": status.revision,
+        "installed_bytes": status.installed_bytes,
+        "already_ready": already_ready,
+    }
+    if machine_readable:
+        _print_result(result)
+    else:
+        message = "already ready" if already_ready else "installed and verified"
+        print(
+            f"NotebookLM Chromium is {message} "
+            f"(Playwright {status.playwright_version}, revision {status.revision}).",
+            flush=True,
+        )
+    return 0
+
+
+def _run_doctor(args: argparse.Namespace) -> int:
+    paths = _paths(args.home)
+    browser = BrowserRuntimeManager(paths.browser_root).inspect()
+    app_home_state = _app_home_state(paths.home)
+    static_root = Path(__file__).with_name("web") / "static"
+    static_ready = (static_root / "index.html").is_file() and any(
+        (static_root / "assets").glob("*.js")
+    )
+    port_state = "available"
+    try:
+        _require_port_3000_available()
+    except ValueError:
+        port_state = "occupied"
+    provider_root = paths.credentials_root / "notebooklm" / "profiles"
+    profile_state = (
+        "present" if provider_root.is_dir() and any(provider_root.iterdir()) else "missing"
+    )
+    token_state = _install_token_state(paths)
+    blocking = (
+        app_home_state == "unsafe"
+        or browser.state is BrowserRuntimeState.CORRUPT
+        or token_state == "unsafe"
+        or not static_ready
+    )
+    result: dict[str, object] = {
+        "status": "error" if blocking else "ok",
+        "version": __version__,
+        "app_home": app_home_state,
+        "database": "present" if paths.database.is_file() else "missing",
+        "static_assets": "ready" if static_ready else "missing",
+        "port_3000": port_state,
+        "notebooklm_profile": profile_state,
+        "local_api_token": token_state,
+        "browser": {
+            "state": browser.state.value,
+            "playwright_version": browser.playwright_version,
+            "revision": browser.revision,
+            "installed_bytes": browser.installed_bytes,
+        },
+        "zlibrary": "disabled_by_default",
+    }
+    if args.json:
+        _print_result(result)
+    else:
+        print(
+            "\n".join(
+                (
+                    f"diandianreading doctor {__version__}",
+                    f"App home: {app_home_state}",
+                    f"Database: {result['database']}",
+                    f"Static assets: {result['static_assets']}",
+                    f"Port 3000: {port_state}",
+                    f"NotebookLM profile: {profile_state}",
+                    f"Local API token: {token_state}",
+                    f"Chromium: {browser.state.value}",
+                    "Z-Library: disabled by default",
+                )
+            ),
+            flush=True,
+        )
+    return 3 if blocking else 0
+
+
+def _run_open(args: argparse.Namespace) -> int:
+    if args.json and args.print_url:
+        raise ValueError("--json and --print-url cannot be combined")
+    paths = _paths(args.home)
+    try:
+        token = InstallTokenStore(paths.credentials_root / "local-api").read_for_cli()
+        nonce = _request_bootstrap_nonce(token.token)
+    except Exception as error:
+        raise ValueError(
+            "The running local Web service could not be authenticated for this App Home"
+        ) from error
+    url = f"http://localhost:3000/#bootstrap={quote(nonce, safe='')}"
+    if args.print_url:
+        print(
+            "warning: the following URL is a short-lived one-time credential; do not share it",
+            file=sys.stderr,
+            flush=True,
+        )
+        print(url, flush=True)
+        return 0
+    _open_browser(url)
+    if args.json:
+        _print_result({"status": "ok", "origin": "http://localhost:3000", "opened": True})
+    else:
+        print("Opened diandianreading in the system browser.", flush=True)
+    return 0
+
+
+def _request_bootstrap_nonce(token: str) -> str:
+    request = urllib_request.Request(
+        "http://localhost:3000/api/session/bootstrap-nonces",
+        data=b"",
+        headers={"Authorization": f"Bearer {token}"},
+        method="POST",
+    )
+    try:
+        with urllib_request.urlopen(request, timeout=3.0) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, urllib_error.URLError) as error:
+        raise ValueError("Local Web bootstrap request failed") from error
+    data = payload.get("data") if isinstance(payload, dict) else None
+    nonce = data.get("nonce") if isinstance(data, dict) else None
+    if (
+        not isinstance(nonce, str)
+        or not nonce
+        or len(nonce.encode("utf-8")) > 512
+        or any(character.isspace() or not 0x21 <= ord(character) <= 0x7E for character in nonce)
+    ):
+        raise ValueError("Local Web bootstrap response was invalid")
+    return nonce
+
+
+def _install_token_state(paths: ApplicationPaths) -> str:
+    token_root = paths.credentials_root / "local-api"
+    token_path = token_root / INSTALL_TOKEN_FILENAME
+    try:
+        _ = token_path.lstat()
+    except FileNotFoundError:
+        return "missing"
+    except OSError:
+        return "unsafe"
+    try:
+        _ = InstallTokenStore(token_root).read_for_cli()
+    except Exception:
+        return "unsafe"
+    return "ready"
+
+
+def _app_home_state(home: Path) -> str:
+    try:
+        metadata = home.lstat()
+    except FileNotFoundError:
+        return "missing"
+    except OSError:
+        return "unsafe"
+    if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
+        return "unsafe"
+    if os.name != "nt" and (
+        metadata.st_uid != os.getuid() or stat.S_IMODE(metadata.st_mode) & 0o077
+    ):
+        return "unsafe"
+    return "ready"
 
 
 async def _run_product_command(args: argparse.Namespace) -> dict[str, object]:

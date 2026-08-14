@@ -11,10 +11,10 @@
 ```bash
 git clone git@github.com:Youhai020616/diandianreading.git && cd diandianreading
 uv sync --locked --all-groups
-uv run diandian serve          # 浏览器打开 http://localhost:3000
+uv run diandianreading web     # 浏览器打开 http://localhost:3000
 ```
 
-真实 Provider 联调额外需要:`uv sync --extra notebooklm-login && uv run playwright install chromium`;凭据只进入 `~/.diandianreading/credentials/`,不要出现在终端历史或截图里。
+真实 Provider 联调前执行 `uv run diandianreading setup notebooklm`，经确认把固定 Chromium 安装到 App Home；凭据只进入 `~/.diandianreading/credentials/`，不要出现在终端历史或截图里。
 
 ## 1. 浏览器 UI 功能测试(离线,无需登录 Provider)
 
