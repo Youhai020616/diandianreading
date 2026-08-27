@@ -2115,3 +2115,371 @@ code {
   font-size: 0.9rem;
   color: var(--muted-strong);
 }
+
+/* ---------------------------------------------------------------------------
+   Creation workbench (C3).
+
+   The view shipped with eight `workbench-*` class names that no stylesheet
+   ever defined, so every control fell back to the browser default rendering.
+   These rules reuse the shared `.field` / `.button` primitives and only add
+   the layout and state colours the workbench itself needs.
+--------------------------------------------------------------------------- */
+
+.workbench-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  align-items: end;
+  gap: 1rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 253, 248, 0.88);
+  box-shadow: var(--shadow-soft);
+  padding: clamp(1.2rem, 3vw, 1.6rem);
+}
+
+.workbench-controls .field {
+  margin-bottom: 0;
+}
+
+.workbench-controls .field input,
+.workbench-controls .field select {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  padding: 0.72rem 0.82rem;
+}
+
+.workbench-toggles,
+.workbench-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.7rem 0.9rem;
+}
+
+.workbench-toggles {
+  border-top: 1px solid var(--line);
+  padding-top: 1.1rem;
+}
+
+.workbench-toggle {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  font-weight: 720;
+  padding: 0.35rem 1rem 0.35rem 0.78rem;
+  cursor: pointer;
+}
+
+.workbench-toggle:hover {
+  border-color: var(--line-strong);
+}
+
+.workbench-toggle input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.workbench-toggle:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.workbench-status {
+  min-height: 1.6rem;
+  margin: 1rem 0 0;
+  color: var(--muted-strong);
+  font-size: 0.86rem;
+}
+
+.workbench-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(258px, 1fr));
+  gap: 0.8rem;
+  margin: 1.3rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workbench-list button {
+  width: 100%;
+  min-height: 66px;
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-soft);
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 720;
+  text-align: left;
+  padding: 0.85rem 1rem;
+  transition: border-color 140ms ease, transform 140ms ease;
+}
+
+.workbench-list button:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+
+.workbench-editor {
+  display: grid;
+  gap: 1.05rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  margin-top: 1.4rem;
+  background: rgba(255, 253, 248, 0.88);
+  box-shadow: var(--shadow-soft);
+  padding: clamp(1.2rem, 3vw, 1.6rem);
+}
+
+.workbench-editor .field {
+  margin-bottom: 0;
+}
+
+.workbench-editor .field input {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  padding: 0.72rem 0.82rem;
+}
+
+.workbench-editor .field textarea {
+  width: 100%;
+  min-height: 240px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  line-height: 1.72;
+  padding: 0.8rem 0.9rem;
+  resize: vertical;
+}
+
+.workbench-editor .button {
+  justify-self: start;
+}
+
+.workbench-revisions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workbench-revisions button {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--muted-strong);
+  font-size: 0.83rem;
+  font-weight: 720;
+  padding: 0.3rem 0.95rem;
+}
+
+.workbench-revisions button:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.workbench-revisions button[aria-pressed="true"] {
+  border-color: var(--lavender-line);
+  background: var(--lavender-soft);
+  color: var(--lavender-hover);
+}
+
+/* Authorship must be unmistakable at a glance: an editable draft that cannot
+   answer "did I write this" is the AI-content risk the PRD names. */
+.workbench-author {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--lavender-line);
+  border-radius: 999px;
+  margin: 0;
+  background: var(--lavender-soft);
+  color: var(--lavender-hover);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 0.34rem 0.85rem;
+}
+
+.workbench-author[data-author="human"] {
+  border-color: #bcd6c4;
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.workbench-preview-block {
+  border-top: 1px solid var(--line);
+  padding-top: 1.1rem;
+}
+
+.workbench-preview-block h3 {
+  margin-bottom: 0.55rem;
+  font-size: 0.95rem;
+}
+
+.workbench-preview {
+  min-height: 3rem;
+  margin: 0;
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  color: var(--ink-soft);
+  line-height: 1.75;
+  padding: 1rem 1.1rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.workbench-exports {
+  display: grid;
+  gap: 0.6rem;
+  margin: 1.3rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workbench-exports li {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--muted);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink-soft);
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+  padding: 0.72rem 0.9rem;
+}
+
+.workbench-exports li[data-outcome="created"],
+.workbench-exports li[data-outcome="updated"],
+.workbench-exports li[data-outcome="unchanged"] {
+  border-left-color: var(--success);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+/* A conflict is not a success: the export refused to overwrite a manual edit. */
+.workbench-exports li[data-outcome="conflict"] {
+  border-left-color: var(--warning);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-weight: 700;
+}
+
+@media (max-width: 719px) {
+  .workbench-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workbench-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workbench-actions .button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Vault configuration: the export target must be visible and settable in the
+   UI, otherwise the whole Obsidian path is unreachable without hand-written
+   API calls. */
+.workbench-vault {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  margin-top: 1.1rem;
+  background: rgba(255, 253, 248, 0.88);
+  box-shadow: var(--shadow-soft);
+  padding: clamp(1.1rem, 3vw, 1.5rem);
+}
+
+.workbench-vault-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.workbench-vault-heading h3 {
+  margin-bottom: 0;
+  font-size: 1rem;
+}
+
+.workbench-vault-state {
+  margin: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--muted-strong);
+  font-size: 0.78rem;
+  font-weight: 780;
+  overflow-wrap: anywhere;
+  padding: 0.28rem 0.8rem;
+}
+
+.workbench-vault-state[data-configured="true"] {
+  border-color: #bcd6c4;
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.workbench-vault-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+  align-items: end;
+  gap: 0.9rem;
+}
+
+.workbench-vault-form .field {
+  margin-bottom: 0;
+}
+
+.workbench-vault-form .field input {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  padding: 0.72rem 0.82rem;
+}
+
+.workbench-vault .field-help {
+  margin: 0.8rem 0 0;
+}
+
+@media (max-width: 860px) {
+  .workbench-vault-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workbench-vault-form .button {
+    width: 100%;
+    justify-content: center;
+  }
+}

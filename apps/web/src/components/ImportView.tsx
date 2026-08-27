@@ -80,25 +80,28 @@ export function ImportView({ state, controller }: ImportViewProps): ReactElement
           <div className="form-intro">
             <div>
               <p className="card-kicker">RECOMMENDED</p>
-              <h2>Upload a local PDF or EPUB</h2>
+              <h2>Upload a local PDF, EPUB, or Markdown</h2>
               <p>文件字节直接发送到同源 API；页面只显示文件名，不读取或显示物理路径。</p>
             </div>
-            <span className="format-chip">PDF · EPUB</span>
+            <span className="format-chip">PDF · EPUB · MD</span>
           </div>
 
           <div className="field full-field">
             <label htmlFor="local-file">Book file / 书籍文件</label>
+            {/* Must stay in sync with `_ALLOWED_BOOK_SUFFIXES` in
+                interfaces/web/app.py: a narrower list here hides formats the
+                server accepts, which is how Markdown became CLI-only. */}
             <input
               id="local-file"
               name="file"
               type="file"
-              accept=".pdf,.epub,application/pdf,application/epub+zip"
+              accept=".pdf,.epub,.md,.markdown,application/pdf,application/epub+zip,text/markdown"
               required
               aria-describedby="local-file-help"
               disabled={localBusy}
             />
             <p className="field-help" id="local-file-help">
-              选择一个你有权处理的 PDF 或 EPUB 文件。
+              选择一个你有权处理的 PDF、EPUB 或 Markdown 文件。
             </p>
           </div>
 

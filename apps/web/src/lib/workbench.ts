@@ -44,6 +44,12 @@ export interface ExportResultSnapshot {
   conflict_path: string | null;
 }
 
+export interface VaultSnapshot {
+  id: string;
+  name: string;
+  root_path: string;
+}
+
 export interface GenerationForm {
   contentType: string;
   tone: string;
@@ -138,6 +144,27 @@ export async function saveRevision(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title, body }),
   });
+}
+
+export async function loadVault(): Promise<VaultSnapshot | null> {
+  const data = envelopeData(await apiRequest("/api/obsidian/vault"));
+  const vault = data.vault;
+  return vault ? (vault as VaultSnapshot) : null;
+}
+
+export async function configureVault(
+  name: string,
+  rootPath: string,
+): Promise<VaultSnapshot | null> {
+  const data = envelopeData(
+    await apiRequest("/api/obsidian/vault", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, root_path: rootPath }),
+    }),
+  );
+  const vault = data.vault;
+  return vault ? (vault as VaultSnapshot) : null;
 }
 
 export async function exportToObsidian(bookId: string): Promise<ExportResultSnapshot[]> {

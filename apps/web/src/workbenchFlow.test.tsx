@@ -60,13 +60,18 @@ const HUMAN_REVISION = {
   body: "我改的正文。",
 };
 
+const VAULT = { id: "vault-1", name: "My Vault", root_path: "/Users/me/Vault" };
+
 interface Options {
   revisions?: unknown[];
   exports?: unknown[];
+  vault?: typeof VAULT | null;
+  vaultError?: string;
 }
 
 function installWorkbenchApi(options: Options = {}): { requests: RecordedRequest[] } {
   let revisions = options.revisions ?? [AI_REVISION];
+  let vault = options.vault ?? null;
   return installFetchMock((request) => {
     const url = new URL(request.url, "http://localhost:3000");
     const path = url.pathname;
@@ -84,6 +89,18 @@ function installWorkbenchApi(options: Options = {}): { requests: RecordedRequest
     }
     if (path === "/api/books/book-1/contents") {
       return jsonResponse(200, { data: { contents: [ASSET] } });
+    }
+    if (path === "/api/obsidian/vault" && request.method === "GET") {
+      return jsonResponse(200, { data: { vault } });
+    }
+    if (path === "/api/obsidian/vault" && request.method === "PUT") {
+      if (options.vaultError !== undefined) {
+        return jsonResponse(422, {
+          error: { code: "VALIDATION", message: options.vaultError },
+        });
+      }
+      vault = VAULT;
+      return jsonResponse(200, { data: { vault } });
     }
     if (path === "/api/books/book-1/generate-content") {
       return jsonResponse(202, {
@@ -196,8 +213,13 @@ describe("creation workbench", () => {
 
   it("reports an export conflict instead of claiming success", async () => {
     setCsrfCookie("token");
-    installWorkbenchApi();
+    installWorkbenchApi({ vault: VAULT });
     await openWorkbench();
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-vault-state")).toHaveTextContent(
+        "/Users/me/Vault",
+      ),
+    );
 
     fireEvent.click(screen.getByText("导出到 Obsidian"));
 
@@ -208,6 +230,73 @@ describe("creation workbench", () => {
     );
     const list = screen.getByLabelText("导出结果");
     expect(list).toHaveTextContent("Notes.diandian-conflict.md");
+  });
+
+  it("configures the export vault from the workbench", async () => {
+    setCsrfCookie("token");
+    const { requests } = installWorkbenchApi();
+    await openWorkbench();
+
+    fireEvent.change(screen.getByLabelText("Vault 名称"), {
+      target: { value: "My Vault" },
+    });
+    fireEvent.change(screen.getByLabelText("Vault 根目录（绝对路径）"), {
+      target: { value: "/Users/me/Vault" },
+    });
+    fireEvent.click(screen.getByText("保存 Vault"));
+
+    await waitFor(() => {
+      const saved = requests.find(
+        (item) => item.url.includes("/api/obsidian/vault") && item.method === "PUT",
+      );
+      expect(saved).toBeTruthy();
+      expect(JSON.parse(String(saved?.body ?? "{}"))).toEqual({
+        name: "My Vault",
+        root_path: "/Users/me/Vault",
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-vault-state")).toHaveTextContent(
+        "/Users/me/Vault",
+      ),
+    );
+  });
+
+  // An export that silently does nothing is worse than a refusal: the user
+  // would believe their notes reached the vault.
+  it("refuses to export before a vault is configured", async () => {
+    setCsrfCookie("token");
+    const { requests } = installWorkbenchApi();
+    await openWorkbench();
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-vault-state")).toHaveTextContent("尚未配置"),
+    );
+
+    fireEvent.click(screen.getByText("导出到 Obsidian"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-status")).toHaveTextContent(
+        "尚未配置 Obsidian Vault",
+      ),
+    );
+    expect(requests.some((item) => item.url.includes("obsidian-export"))).toBe(false);
+  });
+
+  it("shows the local rule that rejected a vault path", async () => {
+    setCsrfCookie("token");
+    installWorkbenchApi({ vaultError: "Vault path must be absolute" });
+    await openWorkbench();
+
+    fireEvent.change(screen.getByLabelText("Vault 根目录（绝对路径）"), {
+      target: { value: "relative/path" },
+    });
+    fireEvent.click(screen.getByText("保存 Vault"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-status")).toHaveTextContent(
+        "Vault path must be absolute",
+      ),
+    );
   });
 
   it("refuses to generate without a book", async () => {
