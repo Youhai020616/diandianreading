@@ -14,7 +14,7 @@
 
 当前工作区只有：
 
-- 静态 HTML 原型 [`ai-reading-ecosystem-demo/index.html`](../../../ai-reading-ecosystem-demo/index.html)。
+- 静态 HTML 原型 `ai-reading-ecosystem-demo/index.html`（记录本 ADR 时存在，React UI 交付后已从仓库移除）。
 - 产品 [PRD](../../../diandianreading-PRD.md) 与 [Roadmap](../../../diandianreading-ROADMAP.md)。
 - 两个 Python 集成项目：`notebooklm-py` 和 `zlibrary-to-notebooklm`。
 

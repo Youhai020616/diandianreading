@@ -33,3 +33,4 @@
 - Tauri/Rust desktop shell、launcher-core 与 macOS `.app` CI。
 - PyInstaller Sidecar、`diandian-desktop-sidecar` 入口和 desktop-only dependencies。
 - Tauri 签名、公证、Updater 与 Windows native bundle 路线。
+- 旧静态 HTML 原型 `ai-reading-ecosystem-demo/`；视觉方向已由 `apps/web/` 的 React UI 承接。

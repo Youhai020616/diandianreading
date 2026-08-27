@@ -79,8 +79,6 @@ R3/R4 的浏览器 UI 功能、视觉与可访问性仍待按 `docs/development/
 - 上下文/事件保留清理任务、真实 Provider History reconciliation 的 live smoke、回答质量人工验收；
 - 真实 NotebookLM/Z-Library 浏览器交互测试。本阶段只完成离线 Fake/contract/API/installed-wheel E2E，用户将另行手工测试。
 
-旧静态原型 [`ai-reading-ecosystem-demo/index.html`](../../ai-reading-ecosystem-demo/index.html) 仍只用于视觉方向；它的 `setTimeout()` 模拟不属于主应用运行链路，也不作为 API、响应式或无障碍实现依据。
-
 ## 4. 入口与查询上下文
 
 浏览器只提交本地主项目 ID 和有限的用户输入，不提交 NotebookLM Source ID、Provider Conversation ID 或其他 Provider 内部标识。Application 层负责把本地 `query_scope` 解析为 Provider 请求，并把实际结果投影为 `effective_scope`。
