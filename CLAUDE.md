@@ -4,7 +4,7 @@ diandianreading:个人优先的 AI 阅读、知识沉淀与内容发布工作台
 
 ## 身份(必须遵守)
 
-- 仓库 local git config 已固定 Youhai 署名与专用 SSH key;不要改动全局 gh 账号与 `~/.gitconfig`。
+- 不要改动 gh 账号、`~/.gitconfig` 或仓库 git config;提交沿用仓库历史既有署名。
 
 ## 协作原则:独立判断
 
