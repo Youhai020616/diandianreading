@@ -21,6 +21,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from starlette.middleware.base import RequestResponseEndpoint
 
 from diandianreading.application.ports.chat import ChatMessageCursor
+from diandianreading.application.ports.content import VaultConfig
 from diandianreading.application.use_cases.annotations import (
     AnnotationCursor,
     AnnotationNotFoundError,
@@ -960,6 +961,14 @@ def create_web_app(
             {"contents": [serializers.content_asset(item) for item in assets]}
         )
 
+    @app.get("/api/obsidian/vault")
+    async def read_vault(request: Request) -> dict[str, object]:
+        # Without this the UI cannot tell "no vault configured" from "vault set
+        # earlier in another session", and the only feedback left is a failed
+        # export.
+        _ = authorize(request)
+        return serializers.envelope({"vault": _vault_view(runtime.obsidian_export.active_vault())})
+
     @app.put("/api/obsidian/vault")
     async def configure_vault(request: Request) -> dict[str, object]:
         _ = authorize(request, mutate=True, limiter=reader_limiter)
@@ -973,9 +982,7 @@ def create_web_app(
             vault = runtime.obsidian_export.configure_vault(name=name, root_path=root_path)
         except DiandianError as error:
             raise ApiProblem(422, "VALIDATION", str(error)) from error
-        return serializers.envelope(
-            {"vault": {"id": vault.id, "name": vault.name, "root_path": vault.root_path}}
-        )
+        return serializers.envelope({"vault": _vault_view(vault)})
 
     @app.post("/api/books/{book_id}/obsidian-export", status_code=200)
     async def export_book_to_obsidian(book_id: str, request: Request) -> dict[str, object]:
@@ -1155,6 +1162,12 @@ async def _submit_local_import(runtime: WebRuntime, request: Request) -> Job:
         if descriptor >= 0:
             os.close(descriptor)
         temporary.unlink(missing_ok=True)
+
+
+def _vault_view(vault: VaultConfig | None) -> dict[str, object] | None:
+    if vault is None:
+        return None
+    return {"id": vault.id, "name": vault.name, "root_path": vault.root_path}
 
 
 def _submit_zlibrary_import(runtime: WebRuntime, payload: dict[str, object]) -> Job:

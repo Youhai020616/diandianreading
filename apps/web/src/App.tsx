@@ -132,7 +132,7 @@ export function App({ controller, bootstrapTask, pdfEngine }: AppProps): ReactEl
               aria-expanded={state.chatOpen}
               onClick={(event) => controller.openChat(event.currentTarget)}
             >
-              <span aria-hidden="true">05</span>AI Chat / 对话
+              <span aria-hidden="true">06</span>AI Chat / 对话
             </button>
           </nav>
 

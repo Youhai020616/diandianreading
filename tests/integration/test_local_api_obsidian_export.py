@@ -125,3 +125,18 @@ def test_vault_configuration_requires_write_credentials(tmp_path: Path) -> None:
             headers=api.read_headers(),
         )
         assert response.status_code in {401, 403}
+
+
+def test_reports_no_vault_before_configuration_and_the_active_one_after(tmp_path: Path) -> None:
+    vault = tmp_path / "Vault"
+    vault.mkdir()
+    with open_harness(tmp_path / "app") as api:
+        empty = api.client.get("/api/obsidian/vault", headers=api.read_headers())
+        assert empty.status_code == 200, empty.text
+        assert empty.json()["data"]["vault"] is None
+
+        configure(api, vault)
+        active = api.client.get("/api/obsidian/vault", headers=api.read_headers())
+        assert active.status_code == 200, active.text
+        assert active.json()["data"]["vault"]["name"] == "My Vault"
+        assert active.json()["data"]["vault"]["root_path"] == str(vault.resolve())
