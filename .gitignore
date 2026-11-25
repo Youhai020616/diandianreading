@@ -1,50 +1,37 @@
-# Operating system and editor files
+# OS and editor files
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
 
-# Local environment and credentials
+# Local environment and secrets
 .env
 .env.*
 !.env.example
 *.pem
 *.key
-*.p12
-*.pfx
 
-# Python environments, caches, coverage, and builds
+# Node / Electron / Vite build artifacts
+node_modules/
+dist/
+dist-electron/
+release/
+*.tsbuildinfo
+.vite/
+
+# Local runtime state, caches, and logs
+*.log
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+.tmp/
+tmp/
+.claude/
 .venv/
 __pycache__/
-*.py[cod]
+*.pyc
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
-.coverage.*
-htmlcov/
-build/
-dist/
-*.egg-info/
-
-# Node / frontend workspaces (apps/web)
-node_modules/
-*.tsbuildinfo
-.vite/
-
-# Local application state, credentials, SQLite sidecars, and logs
-*.log
-*.db
-*.db-*
-*.sqlite
-*.sqlite-*
-*.sqlite3
-*.sqlite3-*
-storage_state.json
-master_token.json
-.diandianreading/
-.tmp/
-tmp/
-
-# Claude Code agent worktrees and session state
-.claude/
+source/

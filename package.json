@@ -1,0 +1,45 @@
+{
+  "name": "diandianreading",
+  "productName": "点点读书",
+  "version": "2.0.0-alpha.0",
+  "private": true,
+  "description": "Local-first AI reading, personal voice writing, and visual card studio (Electron + DeepSeek Harness)",
+  "main": "dist-electron/main.js",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev:renderer": "vite",
+    "build:electron": "tsc -p tsconfig.electron.json && node scripts/copy-electron-assets.mjs",
+    "build:renderer": "tsc -p tsconfig.json --noEmit && vite build",
+    "build": "pnpm run build:electron && pnpm run build:renderer",
+    "dev": "pnpm run build:electron && node scripts/dev-electron.mjs",
+    "start": "pnpm run build && electron .",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-sdk-client": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.5",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.5",
+    "electron": "45.4.1",
+    "typescript": "~5.9.2",
+    "vite": "^8.2.0",
+    "vitest": "^4.1.10"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
+  }
+}
