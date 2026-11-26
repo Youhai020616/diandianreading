@@ -1,23 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { canonicalIsbn } from "../../electron/isbn";
 import type {
-  BookMetadataSource,
   BookRecord,
   HighlightRecord,
-  WeReadNotebookBook,
 } from "../types/desktop";
 import { ObsidianExportAction } from "./ObsidianExportAction";
 import { LibraryBookCover } from "./LibraryBookCover";
 import { ActionMenu } from "./ActionMenu";
 import { ListPicker } from "./ListPicker";
-import { formatUserError } from "../utils/formatError";
-import { CustomSelect } from "./CustomSelect";
 import { ReadingPosterModal } from "./ReadingPosterModal";
+import { ImportNotesModal } from "./library/ImportNotesModal";
+import { MetadataLookupModal } from "./library/MetadataLookupModal";
+import { NewBookModal } from "./library/NewBookModal";
+import { WeReadSyncModal } from "./library/WeReadSyncModal";
 import {
   IconBookOpen,
   IconCard,
-  IconCheck,
-  IconClose,
   IconEye,
   IconMoreHorizontal,
   IconPenLine,
@@ -57,31 +54,6 @@ interface LibraryViewProps {
 }
 
 const SUGGESTED_THEMES = ["习惯", "系统", "自由", "激励", "长期", "认知", "关系", "决策"];
-
-const METADATA_SOURCES: Record<BookMetadataSource, string> = {
-  weread: "微信读书",
-  "google-books": "Google Books",
-  openlibrary: "Open Library",
-};
-
-type MetadataResult = Awaited<ReturnType<typeof window.diandian.library.lookupMetadata>>;
-
-function metadataSearchNotice({ candidates, issues, invalidIsbn }: MetadataResult): string {
-  if (invalidIsbn) return "ISBN 校验未通过，请核对书上的 10 位或 13 位书号。";
-  const messages: string[] = [];
-  if (candidates.length === 0) {
-    const failed = new Set(issues.map(issue => METADATA_SOURCES[issue.source]));
-    const available = Object.values(METADATA_SOURCES).filter(name => !failed.has(name));
-    messages.push(available.length
-      ? `${available.join("、")} 未找到匹配的书籍。可以只输入书名，或用 ISBN 再查一次。`
-      : "所有书源暂时都无法完成查询，请稍后重试。");
-  }
-  for (const issue of issues) {
-    const reason = issue.reason === "rate-limited" ? "暂时限制了查询次数" : "暂时无法访问";
-    messages.push(`${METADATA_SOURCES[issue.source]}${reason}。`);
-  }
-  return messages.join(" ");
-}
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
   onOpenOriginal,
@@ -140,34 +112,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState("");
 
-  // Modals
+  // Modals (their form state lives in src/components/library/*)
   const [importModalOpen, setImportModalOpen] = useState(false);
-  const [importError, setImportError] = useState("");
-  const [importText, setImportText] = useState("");
-  const [importFormat, setImportFormat] = useState<"auto" | "kindle" | "weread">("auto");
-  const [importTitle, setImportTitle] = useState("");
-
   const [newBookModalOpen, setNewBookModalOpen] = useState(false);
-  const [newBookTitle, setNewBookTitle] = useState("");
-  const [newBookAuthor, setNewBookAuthor] = useState("");
-
   const [metaModalOpen, setMetaModalOpen] = useState(false);
-  const [metaQuery, setMetaQuery] = useState("");
-  const [metaSearch, setMetaSearch] = useState<
-    { status: "loading" | "error" } | { status: "done"; result: MetadataResult }
-  >({ status: "loading" });
-  const [applyingEdition, setApplyingEdition] = useState<number | null>(null);
-  const metaRequest = useRef(0);
-  const metaResult = metaSearch.status === "done" ? metaSearch.result : undefined;
-  const metaNotice = metaResult && metadataSearchNotice(metaResult);
-
-  // WeRead full-shelf sync modal
   const [wereadModalOpen, setWeReadModalOpen] = useState(false);
-  const [wereadLoading, setWeReadLoading] = useState(false);
-  const [wereadSyncing, setWeReadSyncing] = useState(false);
-  const [wereadBooks, setWeReadBooks] = useState<WeReadNotebookBook[]>([]);
-  const [selectedWeReadIds, setSelectedWeReadIds] = useState<string[]>([]);
-  const [wereadError, setWeReadError] = useState("");
 
   // Monthly reading poster modal
   const [posterModalOpen, setPosterModalOpen] = useState(false);
@@ -257,44 +206,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
   const selectedBook = books.find((b) => b.id === selectedBookId) ?? null;
 
-  const handleOpenWeReadSync = async () => {
-    setWeReadModalOpen(true);
-    setWeReadError("");
-    setWeReadLoading(true);
-    try {
-      const list = await window.diandian.library.listWeReadNotebooks();
-      setWeReadBooks(list);
-      setSelectedWeReadIds(list.slice(0, 10).map((b) => b.bookId));
-    } catch (error) {
-      setWeReadBooks([]);
-      setWeReadError(error instanceof Error ? error.message : "读取微信读书笔记书单失败");
-    } finally {
-      setWeReadLoading(false);
-    }
-  };
+  const handleOpenWeReadSync = () => setWeReadModalOpen(true);
 
-  const handleSyncSelectedWeRead = async () => {
-    const chosen = wereadBooks.filter((b) => selectedWeReadIds.includes(b.bookId));
-    if (chosen.length === 0) return;
-    setWeReadSyncing(true);
-    setWeReadError("");
-    try {
-      const res = await window.diandian.library.syncWeReadBooks(chosen);
-      setWeReadModalOpen(false);
-      await loadBooks();
-      onDataChanged?.();
-      if (res.details[0]?.localBookId) {
-        setSelectedBookId(res.details[0].localBookId);
-      }
-      onNotify(
-        `微信读书同步完成：共 ${res.booksSynced} 本书，新增 ${res.importedCount} 条划线/想法，自动去重 ${res.deduplicatedCount} 条`,
-        "success",
-      );
-    } catch (error) {
-      setWeReadError(error instanceof Error ? error.message : "同步微信读书失败");
-    } finally {
-      setWeReadSyncing(false);
-    }
+  /** After a modal added or changed books: refresh, tell the app, and focus the affected book. */
+  const afterLibraryChange = async (focusBookId: string | undefined, message: string) => {
+    await loadBooks();
+    onDataChanged?.();
+    if (focusBookId) setSelectedBookId(focusBookId);
+    onNotify(message, "success");
   };
 
   const handleCaptureBrowser = async () => {
@@ -318,71 +237,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     }
   };
 
-  const openImport = () => {
-    setImportError("");
-    setImportModalOpen(true);
-  };
-
-  const handleImportFile = async () => {
-    setImportError("");
-    try {
-      const res = await window.diandian.library.importNotesFile({
-        format: importFormat,
-        fallbackTitle: importTitle || undefined,
-      });
-      if (res.canceled) return;
-      setImportModalOpen(false);
-      await loadBooks();
-      onDataChanged?.();
-      if (res.bookIds[0]) setSelectedBookId(res.bookIds[0]);
-      onNotify(
-        `导入完成（${res.format}）：新增 ${res.importedCount} 条，去重 ${res.deduplicatedCount} 条（涉及 ${res.booksTouched} 本书）`,
-        "success",
-      );
-    } catch (error) {
-      setImportError(formatUserError(error, "导入失败"));
-    }
-  };
-
-  const handleImportTextSubmit = async () => {
-    if (!importText.trim()) return;
-    setImportError("");
-    try {
-      const res = await window.diandian.library.importNotesText({
-        rawText: importText,
-        format: importFormat,
-        fallbackTitle: importTitle || undefined,
-      });
-      setImportText("");
-      setImportModalOpen(false);
-      await loadBooks();
-      onDataChanged?.();
-      if (res.bookIds[0]) setSelectedBookId(res.bookIds[0]);
-      onNotify(`已导入 ${res.importedCount} 条划线（去重 ${res.deduplicatedCount} 条）`, "success");
-    } catch (error) {
-      setImportError(formatUserError(error, "解析失败"));
-    }
-  };
-
-  const handleCreateBook = async () => {
-    if (!newBookTitle.trim()) return;
-    try {
-      const book = await window.diandian.library.createBook({
-        title: newBookTitle.trim(),
-        author: newBookAuthor.trim(),
-        source: "manual",
-      });
-      setNewBookTitle("");
-      setNewBookAuthor("");
-      setNewBookModalOpen(false);
-      await loadBooks();
-      onDataChanged?.();
-      setSelectedBookId(book.id);
-      onNotify(`已新建书目《${book.title}》`, "success");
-    } catch (error) {
-      onNotify(error instanceof Error ? error.message : "创建失败", "error");
-    }
-  };
+  const openImport = () => setImportModalOpen(true);
 
   const handleAddHighlight = async () => {
     if (!selectedBook || !newQuote.trim()) return;
@@ -417,46 +272,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     }
   };
 
-  const searchMetadata = async (query: string) => {
-    const q = query.trim();
-    if (!q || !selectedBookId) return;
-    const request = ++metaRequest.current;
-    setMetaSearch({ status: "loading" });
-    try {
-      const result = await window.diandian.library.lookupMetadata(q, selectedBookId);
-      if (request === metaRequest.current) setMetaSearch({ status: "done", result });
-    } catch {
-      if (request === metaRequest.current) setMetaSearch({ status: "error" });
-    }
-  };
-
   const handleOpenMetaLookup = () => {
-    if (!selectedBook) return;
-    const q = canonicalIsbn(selectedBook.isbn) || [selectedBook.title, selectedBook.author].filter(Boolean).join(" ");
-    setMetaQuery(q);
-    setMetaModalOpen(true);
-    void searchMetadata(q);
-  };
-
-  const closeMetaLookup = () => {
-    ++metaRequest.current;
-    setMetaModalOpen(false);
-  };
-
-  const handleApplyMeta = async (index: number) => {
-    if (!selectedBook || !metaResult?.lookupId || applyingEdition !== null) return;
-    setApplyingEdition(index);
-    try {
-      const { coverUnavailable } = await window.diandian.library.applyMetadata(selectedBook.id, metaResult.lookupId, index);
-      closeMetaLookup();
-      await loadBooks();
-      onNotify(coverUnavailable ? "已保存书籍资料。这个版本的封面暂时无法下载。" : "已补全书籍信息",
-        coverUnavailable ? "info" : "success");
-    } catch (error) {
-      onNotify(formatUserError(error, "保存书籍信息失败"), "error");
-    } finally {
-      setApplyingEdition(null);
-    }
+    if (selectedBook) setMetaModalOpen(true);
   };
 
   const handleDeleteBook = async () => {
@@ -915,294 +732,48 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         </div>
       )}
 
-      {/* WeRead Full-Shelf Highlights Sync Modal */}
       {wereadModalOpen && (
-        <div className="modal-backdrop" onClick={() => setWeReadModalOpen(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 560 }}>
-            <div className="modal-header">
-              <h3>一键同步微信读书整书划线与想法</h3>
-              <button type="button" className="btn icon-only ghost" onClick={() => setWeReadModalOpen(false)}>
-                <IconClose size={16} />
-              </button>
-            </div>
-
-            <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "var(--ink-secondary)", lineHeight: 1.55 }}>
-              直接复用你右侧内置浏览器的微信读书登录态，批量拉取整本书的章节划线与个人想法（自动 SHA-256 指纹去重，后续增量更新不重复）。
-            </p>
-
-            {wereadLoading ? (
-              <div className="muted-box">正在读取你的微信读书笔记书单…</div>
-            ) : wereadError ? (
-              <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--danger-soft)", color: "var(--danger)", fontSize: 12.5, lineHeight: 1.6 }}>
-                {wereadError}
-              </div>
-            ) : wereadBooks.length === 0 ? (
-              <div className="muted-box">你的微信读书账号下暂无带划线或想法的书目。</div>
-            ) : (
-              <>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>
-                    共检测到 {wereadBooks.length} 本带笔记书籍，已选 {selectedWeReadIds.length} 本
-                  </span>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button
-                      type="button"
-                      className="btn sm ghost"
-                      onClick={() => setSelectedWeReadIds(wereadBooks.map((b) => b.bookId))}
-                    >
-                      全选
-                    </button>
-                    <button
-                      type="button"
-                      className="btn sm ghost"
-                      onClick={() => setSelectedWeReadIds([])}
-                    >
-                      清空
-                    </button>
-                  </div>
-                </div>
-
-                <div className="cookie-domain-list" style={{ maxHeight: 320 }}>
-                  {wereadBooks.map((b) => {
-                    const checked = selectedWeReadIds.includes(b.bookId);
-                    return (
-                      <label key={b.bookId} className={`cookie-domain-row ${checked ? "selected" : ""}`}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() =>
-                            setSelectedWeReadIds((prev) =>
-                              prev.includes(b.bookId)
-                                ? prev.filter((id) => id !== b.bookId)
-                                : [...prev, b.bookId],
-                            )
-                          }
-                        />
-                        <div className="book-cover-box" style={{ width: 32, height: 44, fontSize: 13 }}>
-                          <LibraryBookCover title={b.title} coverUrl={b.coverUrl} />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {b.title}
-                          </div>
-                          <div style={{ fontSize: 11.5, color: "var(--ink-muted)" }}>
-                            {b.author || "未知作者"}
-                          </div>
-                        </div>
-                        <span className="badge mono">{b.bookmarkCount || b.noteCount} 划线</span>
-                        {b.reviewCount > 0 && <span className="badge accent">{b.reviewCount} 想法</span>}
-                      </label>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-
-            <div className="modal-footer">
-              <button type="button" className="btn" onClick={() => setWeReadModalOpen(false)}>
-                关闭
-              </button>
-              <button
-                type="button"
-                className="btn primary"
-                disabled={wereadSyncing || selectedWeReadIds.length === 0}
-                onClick={() => void handleSyncSelectedWeRead()}
-              >
-                <IconCheck size={14} />
-                <span>{wereadSyncing ? "正在拉取入库…" : `同步选中的 ${selectedWeReadIds.length} 本书`}</span>
-              </button>
-            </div>
-          </div>
-        </div>
+        <WeReadSyncModal
+          onClose={() => setWeReadModalOpen(false)}
+          onSynced={(bookId, summary) => {
+            setWeReadModalOpen(false);
+            void afterLibraryChange(bookId, summary);
+          }}
+        />
       )}
 
-      {/* Import Notes Modal */}
       {importModalOpen && (
-        <div className="modal-backdrop" onClick={() => setImportModalOpen(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>导入 Kindle / 微信读书笔记</h3>
-              <button type="button" className="btn icon-only ghost" onClick={() => setImportModalOpen(false)}>
-                <IconClose size={16} />
-              </button>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div className="field-group">
-                <label className="field-label">格式识别</label>
-                <CustomSelect
-                  value={importFormat}
-                  onChange={(val) => setImportFormat(val as "auto" | "kindle" | "weread")}
-                  ariaLabel="导入格式识别"
-                  options={[
-                    { value: "auto", label: "自动识别（推荐）", description: "智能判断 Kindle 或微信读书导出格式" },
-                    { value: "kindle", label: "Kindle My Clippings.txt", description: "标准 Kindle 设备标注文本" },
-                    { value: "weread", label: "微信读书导出笔记 / Markdown", description: "支持微信读书复制或导出笔记" },
-                  ]}
-                />
-              </div>
-              <div className="field-group">
-                <label className="field-label">默认书名（微信读书粘贴时可选）</label>
-                <input
-                  className="input"
-                  value={importTitle}
-                  onChange={(e) => setImportTitle(e.target.value)}
-                  placeholder="留空则自动从首行提取"
-                />
-              </div>
-            </div>
-
-            <div className="field-group">
-              <button type="button" className="btn soft" onClick={() => void handleImportFile()}>
-                <IconUpload size={14} />
-                选择本机文件（My Clippings.txt / .md / .txt）
-              </button>
-            </div>
-
-            <div className="field-group">
-              <label className="field-label">或直接粘贴导出的划线文本</label>
-              <textarea
-                className="textarea"
-                rows={7}
-                value={importText}
-                onChange={(e) => setImportText(e.target.value)}
-                placeholder={"例如微信读书 App「导出笔记 -> 复制」后的文本：\n◆ 第一章\n>> 这是一条划线金句…"}
-              />
-            </div>
-
-            {importError && <div className="muted-box" role="alert">{importError}</div>}
-
-            <div className="modal-footer">
-              <button type="button" className="btn" onClick={() => setImportModalOpen(false)}>
-                取消
-              </button>
-              <button
-                type="button"
-                className="btn primary"
-                onClick={() => void handleImportTextSubmit()}
-                disabled={!importText.trim()}
-              >
-                解析并去重入库
-              </button>
-            </div>
-          </div>
-        </div>
+        <ImportNotesModal
+          onClose={() => setImportModalOpen(false)}
+          onImported={(bookIds, summary) => {
+            setImportModalOpen(false);
+            void afterLibraryChange(bookIds[0], summary);
+          }}
+        />
       )}
 
-      {/* New Book Modal */}
       {newBookModalOpen && (
-        <div className="modal-backdrop" onClick={() => setNewBookModalOpen(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ width: 420 }}>
-            <div className="modal-header">
-              <h3>新建书籍档案</h3>
-              <button type="button" className="btn icon-only ghost" onClick={() => setNewBookModalOpen(false)}>
-                <IconClose size={16} />
-              </button>
-            </div>
-            <div className="field-group">
-              <label className="field-label">书名</label>
-              <input
-                className="input"
-                value={newBookTitle}
-                onChange={(e) => setNewBookTitle(e.target.value)}
-                placeholder="例如：置身事内"
-              />
-            </div>
-            <div className="field-group">
-              <label className="field-label">作者（可选）</label>
-              <input
-                className="input"
-                value={newBookAuthor}
-                onChange={(e) => setNewBookAuthor(e.target.value)}
-                placeholder="例如：兰小欢"
-              />
-            </div>
-            <div className="modal-footer">
-              <button type="button" className="btn" onClick={() => setNewBookModalOpen(false)}>
-                取消
-              </button>
-              <button
-                type="button"
-                className="btn primary"
-                onClick={() => void handleCreateBook()}
-                disabled={!newBookTitle.trim()}
-              >
-                创建
-              </button>
-            </div>
-          </div>
-        </div>
+        <NewBookModal
+          onClose={() => setNewBookModalOpen(false)}
+          onCreated={(book) => {
+            setNewBookModalOpen(false);
+            void afterLibraryChange(book.id, `已新建书目《${book.title}》`);
+          }}
+          onError={(message) => onNotify(message, "error")}
+        />
       )}
 
-      {/* Metadata Lookup Modal */}
-      {metaModalOpen && (
-        <div className="modal-backdrop" onClick={applyingEdition === null ? closeMetaLookup : undefined}>
-          <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="meta-lookup-title"
-            onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 id="meta-lookup-title">在线补全书籍信息</h3>
-              <button type="button" className="btn icon-only ghost" aria-label="关闭" onClick={closeMetaLookup} disabled={applyingEdition !== null}>
-                <IconClose size={16} />
-              </button>
-            </div>
-            <div className="search-row" style={{ marginBottom: 12 }}>
-              <input
-                className="input"
-                value={metaQuery}
-                onChange={(e) => setMetaQuery(e.target.value)}
-                placeholder="输入书名、作者或 ISBN…"
-                aria-label="书名、作者或 ISBN"
-                disabled={applyingEdition !== null}
-                onKeyDown={(e) => {
-                  // keyCode 229 covers IMEs that report the confirming Enter without isComposing.
-                  if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229
-                    && metaSearch.status !== "loading") {
-                    void searchMetadata(metaQuery);
-                  }
-                }}
-              />
-              <button type="button" className="btn primary" onClick={() => void searchMetadata(metaQuery)}
-                disabled={metaSearch.status === "loading" || applyingEdition !== null || !metaQuery.trim()}>
-                {metaSearch.status === "loading" ? "查询中…" : "查询"}
-              </button>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {metaSearch.status === "loading" && (
-                <div className="muted-box" role="status">正在查询微信读书、Google Books 和 Open Library…</div>
-              )}
-              {metaSearch.status === "error" && (
-                <div className="muted-box" role="alert">查询未完成，请重试。</div>
-              )}
-              {metaNotice && (
-                <div className={metaResult?.candidates.length ? "metadata-source-notice" : "muted-box"} role="status">
-                  {metaNotice}
-                </div>
-              )}
-              {metaResult?.candidates.map((c, idx) => (
-                  <div
-                    key={`${c.source}-${idx}`}
-                    className="editorial-card"
-                    style={{ padding: 12, display: "flex", gap: 12, alignItems: "center" }}
-                  >
-                    <div className="book-cover-box" style={{ width: 42, height: 60, fontSize: 15 }}>
-                      <LibraryBookCover title={c.title} coverUrl={c.coverUrl} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontFamily: "var(--font-serif)" }}>{c.title}</div>
-                      <div style={{ fontSize: 12, color: "var(--ink-secondary)" }}>
-                        {[c.author, c.publisher, c.publishedYear, c.isbn].filter(Boolean).join(" · ")}
-                      </div>
-                      <span className="badge" style={{ marginTop: 4 }}>{METADATA_SOURCES[c.source]}</span>
-                    </div>
-                    <button type="button" className="btn sm primary" onClick={() => void handleApplyMeta(idx)}
-                      disabled={applyingEdition !== null}>
-                      {applyingEdition === idx ? "保存中…" : "应用"}
-                    </button>
-                  </div>
-                ))}
-            </div>
-          </div>
-        </div>
+      {metaModalOpen && selectedBook && (
+        <MetadataLookupModal
+          book={selectedBook}
+          onClose={() => setMetaModalOpen(false)}
+          onApplied={(coverUnavailable) => {
+            void loadBooks();
+            onNotify(coverUnavailable ? "已保存书籍资料。这个版本的封面暂时无法下载。" : "已补全书籍信息",
+              coverUnavailable ? "info" : "success");
+          }}
+          onError={(message) => onNotify(message, "error")}
+        />
       )}
 
       <ReadingPosterModal
