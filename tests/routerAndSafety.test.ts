@@ -185,5 +185,8 @@ describe("Zlib CLI validation & multi-plugin overlay", () => {
     expect(yaml).toContain("diandian-reading-browser");
     expect(yaml).toContain("diandian-reading-studio");
     expect(yaml).not.toContain("sk-must-not-leak");
+    for (const id of ["office-kit", "tool-office", "skill-office"]) {
+      expect(yaml).toContain(`- id: ${id}\n  disabled: true`);
+    }
   });
 });

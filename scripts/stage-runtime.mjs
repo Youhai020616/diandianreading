@@ -16,6 +16,14 @@ import { hostTarget } from "./fetch-binaries.mjs";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+/**
+ * LibreOffice engines for the Harness's Office tools (native per platform plus a WASM fallback, ~300MB).
+ * 点点读书 turns those tools off (DISABLED_HARNESS_PLUGINS in electron/agent/overlay.ts), so the engines are
+ * dropped; the small @deepseek-ai/libreoffice-kit adapter stays because dsh-office-kit imports it.
+ */
+const DROPPED_SCOPE = "@deepseek-ai";
+const DROPPED_PREFIX = "libreoffice-kit-";
+
 /** Packages the app cannot start without; checked after the install. */
 const REQUIRED = ["@deepseek-ai/dsh", "@deepseek-ai/dsh-sdk-client", "@deepseek-ai/dsh-sdk-protocol", "@deepseek-ai/dsh-tools", "sharp", "yauzl"];
 
@@ -40,6 +48,11 @@ export function stageRuntime(target) {
   );
 
   const nodeModules = path.join(stageDir, "node_modules");
+  for (const name of fs.readdirSync(path.join(nodeModules, DROPPED_SCOPE))) {
+    if (!name.startsWith(DROPPED_PREFIX)) continue;
+    fs.rmSync(path.join(nodeModules, DROPPED_SCOPE, name), { recursive: true, force: true });
+    console.log(`[stage-runtime] dropped ${DROPPED_SCOPE}/${name}`);
+  }
   const missing = REQUIRED.filter((name) => !fs.existsSync(path.join(nodeModules, name, "package.json")));
   if (missing.length > 0) throw new Error(`[stage-runtime] staged node_modules is missing ${missing.join(", ")}`);
   return nodeModules;

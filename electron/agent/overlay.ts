@@ -13,6 +13,13 @@ export const READING_PERSONA = [
 
 export const ROUTE_PROVIDER_ID = "diandian-openai";
 
+/**
+ * Harness plugins the SDK profile loads that 点点读书 turns off. The Office tools and skill need the
+ * LibreOffice engine (~300MB), which the installer leaves out (scripts/stage-runtime.mjs); the app has no
+ * Office workflow, so the model should not be offered tools that can only fail.
+ */
+export const DISABLED_HARNESS_PLUGINS = ["office-kit", "tool-office", "skill-office"] as const;
+
 export interface PluginOverlayEntry {
   id: string;
   entryPath: string;
@@ -61,6 +68,7 @@ export function buildOverlayYaml(options: OverlayOptions): string {
     `    provider: ${JSON.stringify(ROUTE_PROVIDER_ID)}`,
     `    model: ${JSON.stringify(settings.model)}`,
     ``,
+    ...DISABLED_HARNESS_PLUGINS.flatMap((id) => [`- id: ${id}`, `  disabled: true`, ``]),
   ];
 
   if (existingPlugins.length > 0) {
