@@ -4,7 +4,7 @@ import path from "node:path";
 import * as readline from "node:readline";
 import type { ModelSettings } from "../security/secretStore";
 import { resolveNodeRuntime } from "./nodeRuntime";
-import { ROUTE_PROVIDER_ID, writeOverlayPatch } from "./overlay";
+import { harnessAttachmentsDir, harnessSpillDir, ROUTE_PROVIDER_ID, writeOverlayPatch } from "./overlay";
 
 export type AgentEvent =
   | { kind: "engine-state"; state: "idle" | "booting" | "ready" | "error"; detail?: string }
@@ -196,6 +196,10 @@ export class AgentSupervisor {
       },
     ];
     const overlayPath = writeOverlayPatch({ dshHome, pluginEntries, settings });
+    // The only directories the agent's file tools may read (plugins/runtime-safety/read-scope.mjs).
+    const spillDir = harnessSpillDir(dshHome);
+    fs.mkdirSync(spillDir, { recursive: true, mode: 0o700 });
+    const readRoots = [workspaceDir, spillDir, harnessAttachmentsDir(dshHome)];
 
     const bridgeScript = path.join(this.options.projectRoot, "dist-electron", "agent", "sdkBridge.mjs");
     const runtime = resolveNodeRuntime(this.options.packaged
@@ -211,6 +215,7 @@ export class AgentSupervisor {
       DIANDIAN_BRIDGE_TOKEN: this.options.bridgeToken,
       DIANDIAN_TWIN_DIR: this.options.twinDir,
       DIANDIAN_SAFETY_STATE_FILE: this.options.safetyStateFile,
+      DIANDIAN_AGENT_READ_ROOTS: JSON.stringify(readRoots),
     };
 
     const child = spawn(runtime.bin, [bridgeScript], {

@@ -29,7 +29,26 @@ export const DISABLED_HARNESS_PLUGINS = [
   // plugin_manager installs and toggles Harness plugins. Each call needs an approval channel the app does
   // not provide, and letting the model change the agent's own plugins is not a reading feature.
   "tool-plugin-manager",
+  // The rest keep file access inside the agent's own directories (issue #55, see
+  // plugins/runtime-safety/read-scope.mjs). workflow runs model-written JavaScript in a Node process whose
+  // reads and network are unrestricted; working_directory moves the base that relative paths resolve
+  // against; skill-filesystem pulls the skills of whoever runs the app (~/.agents/skills, ~/.dsh/skills)
+  // into every request, and the app ships no skills of its own.
+  "tool-workflow",
+  "tool-working-directory",
+  "skill-filesystem",
+  "tool-skill",
 ] as const;
+
+/** Where the Harness saves oversized tool output for the model to read back (an allowed read root). */
+export function harnessSpillDir(dshHome: string): string {
+  return path.join(dshHome, "spill");
+}
+
+/** Where the Harness keeps image attachments (dsh-attachment-local: <DSH_HOME>/attachments/v1). */
+export function harnessAttachmentsDir(dshHome: string): string {
+  return path.join(dshHome, "attachments");
+}
 
 /** tool-fs keeps read and read_image; its write and edit tools are always denied by runtime-safety. */
 const READ_ONLY_FS_PATCH = ["- id: tool-fs", "  config:", "    write: false", "    edit: false", ""];
@@ -84,6 +103,10 @@ export function buildOverlayYaml(options: OverlayOptions): string {
     ``,
     ...DISABLED_HARNESS_PLUGINS.flatMap((id) => [`- id: ${id}`, `  disabled: true`, ``]),
     ...READ_ONLY_FS_PATCH,
+    `- id: spill-local`,
+    `  config:`,
+    `    root: ${JSON.stringify(harnessSpillDir(options.dshHome))}`,
+    ``,
   ];
 
   if (existingPlugins.length > 0) {

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { checkReadScope, parseReadRoots } from "./read-scope.mjs";
 
 export const name = "diandian-runtime-safety";
 export const inject = ["tools", "systemPrompt"];
@@ -8,6 +9,8 @@ const policy = JSON.parse(fs.readFileSync(new URL("./tool-policy.json", import.m
 const ALWAYS_DENIED = new Set(policy.alwaysDenied);
 const PLAN_DENIED = new Set(policy.planDenied);
 const CONFIRM_DENIED = new Set(policy.confirmDenied);
+// Directories the agent may read (workspace, spill, attachments), set by electron/agent/supervisor.ts.
+const READ_ROOTS = parseReadRoots(process.env.DIANDIAN_AGENT_READ_ROOTS);
 
 function readCurrentMode() {
   const stateFile = (process.env.DIANDIAN_SAFETY_STATE_FILE || "").trim();
@@ -38,6 +41,9 @@ export function apply(ctx) {
         reason: `安全守卫已禁用底层系统工具 "${toolName}"，请使用点点读书内置阅读/知识库/草稿工具。`,
       };
     }
+
+    const outOfScope = checkReadScope(toolName, exec.arguments, { roots: READ_ROOTS });
+    if (outOfScope) return { reason: outOfScope };
 
     const mode = readCurrentMode();
     if (mode === "plan" && PLAN_DENIED.has(toolName)) {

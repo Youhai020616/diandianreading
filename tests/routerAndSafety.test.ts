@@ -187,9 +187,11 @@ describe("Zlib CLI validation & multi-plugin overlay", () => {
     expect(yaml).toContain("diandian-reading-browser");
     expect(yaml).toContain("diandian-reading-studio");
     expect(yaml).not.toContain("sk-must-not-leak");
-    for (const id of ["office-kit", "tool-office", "skill-office", "tool-bash", "tool-pwsh", "tool-plugin-manager"]) {
+    for (const id of ["office-kit", "tool-office", "skill-office", "tool-bash", "tool-pwsh", "tool-plugin-manager",
+      "tool-workflow", "tool-working-directory", "skill-filesystem", "tool-skill"]) {
       expect(yaml).toContain(`- id: ${id}\n  disabled: true`);
     }
     expect(yaml).toContain("- id: tool-fs\n  config:\n    write: false\n    edit: false");
+    expect(yaml).toContain(`- id: spill-local\n  config:\n    root: ${JSON.stringify(path.join(dir, "spill"))}`);
   });
 });

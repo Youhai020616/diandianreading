@@ -62,7 +62,11 @@
 ### AI 引擎与工具守卫
 
 - DeepSeek Harness 始终运行在独立的 Node 子进程（`electron/agent/sdkBridge.mjs`）。模型密钥只通过环境变量注入该子进程，不写入日志、overlay 配置文件或对话上下文。
-- 模型拿不到用不上或不允许的工具：overlay（`electron/agent/overlay.ts`）关掉了 Harness 的 shell 工具（`bash`、Windows 上的 `pwsh`）、插件管理工具 `plugin_manager` 和 Office 工具，文件工具只保留 `read`、`read_image`（去掉 `write`、`edit`）。
+- 模型拿不到用不上或不允许的工具：overlay（`electron/agent/overlay.ts`）关掉了 Harness 的 shell 工具（`bash`、Windows 上的 `pwsh`）、插件管理工具 `plugin_manager`、Office 工具、`workflow`（会在不受限的 Node 进程里运行模型写的 JavaScript）、`working_directory` 和技能（`skill`；Harness 默认会扫描运行者的 `~/.agents/skills`、`~/.dsh/skills`）。文件工具只保留 `read`、`read_image`，去掉了 `write`、`edit`。
+- 读取范围：Harness 的沙箱策略只限制写，不限制读。`plugins/runtime-safety/read-scope.mjs` 在守卫里校验 `read`、`read_image`、`glob`、`grep`、`present` 的路径参数，只允许以下三个目录：Agent 的工作目录（`<userData>/workspace`）、过长输出另存的 spill 目录、附件目录（后两者都在 `<userData>/harness-home` 下）。具体规则：
+  - 展开 `~`，拒绝含 `..` 的路径，按解析符号链接后的真实路径判断；
+  - `glob` 的 pattern 和 `grep` 的 include 只能是相对写法；
+  - 没有配置允许目录时一律拒绝。
 - `plugins/runtime-safety` 在 Harness 内用 `ctx.tools.guard` 拦截工具调用，作为第二道防线：底层系统工具（`bash`、`pwsh`、`shell`、`write`、`edit`、`plugin_manager` 等）在所有模式下禁用；`plan` 模式禁止写入和导航，`confirm` 模式禁止 Obsidian 外部写入。名单只有一份：`plugins/runtime-safety/tool-policy.json`，主进程的 `safetyPolicy.ts` 读取同一文件，测试会检查名单里的工具确实已注册。
 - 电子书下载不是 AI 工具，只能由用户在界面上触发。
 
@@ -100,4 +104,5 @@
 
 - **同用户进程：** 与应用同一用户运行的程序可以读取 Harness 子进程的环境变量（拿到本地桥 token 和模型密钥），也可以直接读写应用数据目录。这超出了本地优先应用能防护的范围。
 - **明文密钥：** 用户同意明文保存后，密钥以明文存在配置文件中，直到系统钥匙串恢复可用并重新保存。
+- **AI 已经拿到的内容仍可能被发出去：** 读取范围限制挡住的是本地文件。AI 本来就能看到的右侧页面正文、阅读笔记和划线，在提示注入下仍可能经 `web_fetch`（任意公网地址）或打开网页发到外部。`web_fetch` 的结果已标注为不可信内容，但没有域名限制。
 - **停止回复会重启引擎：** Harness SDK（`@deepseek-ai/dsh-sdk-client@0.2.2-rc.5`）没有中途取消正在进行的回复的接口，点「停止」时只能结束子进程，并在后台重新启动引擎。
