@@ -200,9 +200,9 @@ export const BookDetailSheet: React.FC<BookDetailSheetProps> = ({
             onClick={() => {
               const title = cleanShortTitle(book.title);
               onClose();
+              // Prefill the composer; the user reviews or edits the question and sends it.
               onSendToChat(
                 `我对《${title}》${book.author ? `（${book.author}）` : ""}很感兴趣，请结合我的阅读画像为我拆解它的核心观点、推荐阅读路径，以及它和我已读过的书有什么关联。`,
-                true,
               );
             }}
           >

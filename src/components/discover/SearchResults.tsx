@@ -155,9 +155,9 @@ export const SearchResults: React.FC<SearchResultsProps> = ({
                     type="button"
                     className="btn sm ghost"
                     onClick={() => {
+                      // Prefill the composer; the user reviews or edits the question and sends it.
                       onSendToChat(
                         `我对《${cleanShortTitle(book.title)}》${book.author ? `（${book.author}）` : ""}很感兴趣，请结合我的阅读画像简介核心观点、最值得优先读的章节，以及值不值得读。`,
-                        true,
                       );
                     }}
                     title="和 AI 聊聊这本书"
