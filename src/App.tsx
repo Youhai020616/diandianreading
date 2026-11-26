@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { flushSync } from "react-dom";
 import type {
   BookRecord,
   BrowserStateSnapshot,
@@ -15,25 +14,18 @@ import { CookieImportModal } from "./components/CookieImportModal";
 import { DiscoverView, WEREAD_SHELF_URL } from "./components/DiscoverView";
 import { DownloadedBooksView } from "./components/DownloadedBooksView";
 import { useDownloadedBooks } from "./hooks/useDownloadedBooks";
-import { usePaneDrag } from "./hooks/usePaneDrag";
+import { useAppTheme } from "./hooks/useAppTheme";
+import { useBrowserNavigation } from "./hooks/useBrowserNavigation";
+import { useWorkspaceLayout } from "./hooks/useWorkspaceLayout";
 import { useToasts } from "./hooks/useToasts";
 import { ZlibHistoryImport } from "./components/ZlibHistoryImport";
 import type { ContextAttachment } from "./components/DockedAskBar";
 import {
   IconBookOpen,
-  IconChevronRight,
-  IconClose,
   IconCompass,
-  IconPanelLeft,
-  IconPanelRight,
-  IconPaw,
   IconPenLine,
-  IconPlus,
   IconSearch,
-  IconSettings,
-  IconSparkles,
   IconSquarePen,
-  SiteBrandIcon,
 } from "./components/Icons";
 import { LeftWorkspace, type PendingPromptPayload } from "./components/LeftWorkspace";
 import { LibraryView } from "./components/LibraryView";
@@ -43,93 +35,13 @@ import { RouterView } from "./components/RouterView";
 import { SettingsModal } from "./components/SettingsModal";
 import { StudioView } from "./components/StudioView";
 import { PullCordLamp } from "./components/ui/pull-cord-lamp";
+import { SurfRail, type SurfRailNavItem } from "./components/SurfRail";
+import { WorkspaceTopbar } from "./components/WorkspaceTopbar";
+import {
+  buildNotebookPromptSummary, DEFAULT_AI_WIDTH, DEFAULT_RAIL_WIDTH, isStartPageTabUrl, TAB_LABELS, type StudioTab,
+} from "./app/workspace";
 import { cleanQuoteDraftTitle, prepareDraftFromAssistantReply } from "./lib/draftCleanup";
-import brandLogoUrl from "./assets/brand/logo-small.svg";
 import { formatUserError } from "./utils/formatError";
-
-type StudioTab = "discover" | "library" | "notes" | "studio" | "notebook" | "router";
-type AppTheme = "light" | "dark";
-
-const THEME_STORAGE_KEY = "diandian.theme";
-
-function readInitialTheme(): AppTheme {
-  try {
-    return window.localStorage.getItem(THEME_STORAGE_KEY) === "dark" ? "dark" : "light";
-  } catch {
-    return "light";
-  }
-}
-
-const DEFAULT_RAIL_WIDTH = 196;
-const MIN_RAIL_WIDTH = 160;
-const MAX_RAIL_WIDTH = 340;
-const DEFAULT_AI_WIDTH = 396;
-const MIN_AI_WIDTH = 320;
-const MAX_AI_WIDTH = 560;
-const SPLIT_HANDLE_WIDTH = 5;
-const MIN_LEFT_WIDTH = 440;
-const MIN_LEFT_WIDTH_TRIPLE = 360;
-const MIN_BROWSER_WIDTH = 340;
-const MIN_BROWSER_WIDTH_TRIPLE = 290;
-
-const QUICK_WEB_LINKS = [
-  { label: "微信读书", url: "https://weread.qq.com", matchHosts: ["weread.qq.com"] },
-  { label: "豆瓣", url: "https://book.douban.com", matchHosts: ["douban.com"] },
-  { label: "小红书", url: "https://creator.xiaohongshu.com/publish/publish", matchHosts: ["xiaohongshu.com"] },
-  { label: "公众号", url: "https://mp.weixin.qq.com", matchHosts: ["mp.weixin.qq.com"] },
-] as const;
-
-function isStartPageTabUrl(url?: string | null): boolean {
-  return typeof url === "string" && url.startsWith("data:text/html");
-}
-
-function tabMatchesSite(tabUrl: string, matchHosts: readonly string[]): boolean {
-  try {
-    const host = new URL(tabUrl).hostname.toLowerCase();
-    return matchHosts.some((target) => host === target || host.endsWith(`.${target}`));
-  } catch {
-    return false;
-  }
-}
-
-const TAB_LABELS: Record<StudioTab, string> = {
-  discover: "搜书发现",
-  library: "本地书库",
-  notes: "阅读笔记",
-  studio: "创作草稿",
-  notebook: "主题空间",
-  router: "连接与偏好",
-};
-
-function clampLeftWidth(
-  desired: number,
-  viewportWidth: number,
-  railOpen: boolean,
-  railWidth: number,
-  aiOpen = false,
-  aiWidth = DEFAULT_AI_WIDTH,
-): number {
-  const railW = railOpen ? railWidth : 0;
-  const aiReserved = aiOpen ? aiWidth + SPLIT_HANDLE_WIDTH : 0;
-  const minLeft = aiOpen ? MIN_LEFT_WIDTH_TRIPLE : MIN_LEFT_WIDTH;
-  const minBrowser = aiOpen ? MIN_BROWSER_WIDTH_TRIPLE : MIN_BROWSER_WIDTH;
-  const usable = Math.max(minLeft + minBrowser, viewportWidth - railW - aiReserved - SPLIT_HANDLE_WIDTH);
-  const maxLeft = Math.max(minLeft, usable - minBrowser);
-  return Math.max(minLeft, Math.min(maxLeft, desired));
-}
-
-function applyThemeToDocument(theme: AppTheme): void {
-  const root = document.documentElement;
-  root.dataset.theme = theme;
-  root.classList.toggle("dark", theme === "dark");
-  root.classList.toggle("light", theme === "light");
-  try {
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-  } catch {
-    // Ignore storage quota errors
-  }
-  void window.diandian?.app?.setTheme?.(theme).catch(() => {});
-}
 
 export const App: React.FC = () => {
   const [activeTab, setWorkspaceTab] = useState<StudioTab>("discover");
@@ -146,25 +58,17 @@ export const App: React.FC = () => {
     setReaderTarget(null);
     setWorkspaceTab(tab);
   }, []);
-  const [theme, setTheme] = useState<AppTheme>(() => readInitialTheme());
-  const [lampPulse, setLampPulse] = useState<{ id: number; mode: "on" | "off" } | null>(null);
-  const lampDockRef = useRef<HTMLDivElement | null>(null);
-  const activeViewTransitionRef = useRef<{ skipTransition?: () => void } | null>(null);
+  const { theme, lampPulse, lampDockRef, handleLampThemeChange } = useAppTheme();
   const [routerInitialSection, setRouterInitialSection] = useState<"twin" | "obsidian" | "router">("router");
   const [modelSettings, setModelSettings] = useState<PublicModelSettings | null>(null);
   const [safetyMode, setSafetyMode] = useState<SafetyMode>("confirm");
   const [browserState, setBrowserState] = useState<BrowserStateSnapshot | null>(null);
 
   // Surf layout visibility & resizable widths
-  const [railOpen, setRailOpen] = useState(true);
-  const [railWidth, setRailWidth] = useState(DEFAULT_RAIL_WIDTH);
-  const [workspaceOpen, setWorkspaceOpen] = useState(true);
-  const [browserOpen, setBrowserOpen] = useState(true);
-  const [aiOpen, setAiOpen] = useState(false);
-  const [aiWidth, setAiWidth] = useState(DEFAULT_AI_WIDTH);
-  const [viewportWidth, setViewportWidth] = useState(() =>
-    typeof window !== "undefined" ? window.innerWidth : 1440,
-  );
+  const {
+    railOpen, setRailOpen, railWidth, setRailWidth, workspaceOpen, setWorkspaceOpen, browserOpen, setBrowserOpen,
+    aiOpen, setAiOpen, aiWidth, setAiWidth, leftWidth, effectiveLeftWidth, resetLeftWidth, railDrag, splitDrag, aiDrag,
+  } = useWorkspaceLayout();
 
   const [petVisible, setPetVisible] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -177,8 +81,6 @@ export const App: React.FC = () => {
   const [drafts, setDrafts] = useState<DraftRecord[]>([]);
   const [notebooks, setNotebooks] = useState<NotebookRecord[]>([]);
   const [activeNotebookId, setActiveNotebookId] = useState<string | null>(null);
-  const [creatingNotebook, setCreatingNotebook] = useState(false);
-  const [newNotebookName, setNewNotebookName] = useState("");
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [libraryMode, setLibraryMode] = useState<"shelf" | "collision">("shelf");
   const [libraryMenuCommand, setLibraryMenuCommand] = useState<
@@ -186,8 +88,6 @@ export const App: React.FC = () => {
   >(null);
   const clearLibraryMenuCommand = useCallback(() => setLibraryMenuCommand(null), []);
 
-  // Split width (center workspace width in px when right browser is open)
-  const [leftWidth, setLeftWidth] = useState(660);
 
   // Cross-view handoff states
   const [pendingPrompt, setPendingPrompt] = useState<PendingPromptPayload | null>(null);
@@ -372,81 +272,6 @@ export const App: React.FC = () => {
     });
   }, [notify]);
 
-  // Ensure initial theme class/attribute stays synced on mount
-  useEffect(() => {
-    applyThemeToDocument(theme);
-  }, [theme]);
-
-  // Clear temporary warm tungsten bloom pulse after animation finishes
-  useEffect(() => {
-    if (!lampPulse) return;
-    const timer = window.setTimeout(() => setLampPulse(null), 1080);
-    return () => window.clearTimeout(timer);
-  }, [lampPulse]);
-
-  // Cinematic slow, feathered radial light-wave transition originating from the exact pendant bulb
-  const handleLampThemeChange = useCallback((lit: boolean) => {
-    const nextTheme: AppTheme = lit ? "light" : "dark";
-
-    const reducedMotion =
-      typeof window.matchMedia === "function"
-      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const docWithVT = document as Document & {
-      startViewTransition?: (cb: () => void) => {
-        ready: Promise<void>;
-        finished: Promise<void>;
-        skipTransition?: () => void;
-      };
-    };
-
-    if (reducedMotion || typeof docWithVT.startViewTransition !== "function") {
-      applyThemeToDocument(nextTheme);
-      setTheme(nextTheme);
-      setLampPulse({ id: Date.now(), mode: lit ? "on" : "off" });
-      return;
-    }
-
-    // Cancel any overlapping transition cleanly if user pulls rapidly
-    try {
-      activeViewTransitionRef.current?.skipTransition?.();
-    } catch {
-      // Ignore already finished transitions
-    }
-
-    const rect = lampDockRef.current?.getBoundingClientRect();
-    const bx = rect ? rect.left + rect.width * 0.5 : window.innerWidth - 40;
-    const by = rect ? rect.top + rect.height * 0.52 : 112;
-    // Add 240px headroom so the 220px soft-feathered edge clears the farthest corner completely
-    const maxR =
-      Math.hypot(
-        Math.max(bx, window.innerWidth - bx),
-        Math.max(by, window.innerHeight - by),
-      ) + 240;
-
-    const root = document.documentElement;
-    root.style.setProperty("--vt-x", `${bx.toFixed(1)}px`);
-    root.style.setProperty("--vt-y", `${by.toFixed(1)}px`);
-    root.style.setProperty("--vt-max-r", `${maxR.toFixed(1)}px`);
-    root.classList.remove("theme-to-light", "theme-to-dark");
-    root.classList.add("theme-transitioning", lit ? "theme-to-light" : "theme-to-dark");
-
-    const vt = docWithVT.startViewTransition(() => {
-      applyThemeToDocument(nextTheme);
-      flushSync(() => {
-        setTheme(nextTheme);
-        setLampPulse({ id: Date.now(), mode: lit ? "on" : "off" });
-      });
-    });
-    activeViewTransitionRef.current = vt;
-
-    void vt.finished.finally(() => {
-      if (activeViewTransitionRef.current === vt) {
-        activeViewTransitionRef.current = null;
-      }
-      root.classList.remove("theme-transitioning", "theme-to-light", "theme-to-dark");
-    });
-  }, []);
-
   // Native WebContentsView always sits above HTML overlays; suppress whenever ANY modal opens.
   useEffect(() => {
     void window.diandian.browser.setSuppressed(reading || settingsOpen || cookieModalOpen || childModalOpen || historyImportOpen);
@@ -491,67 +316,6 @@ export const App: React.FC = () => {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [browserOpen, reading]);
-
-  const railDrag = usePaneDrag((clientX, start, end) => {
-    const desired = start.width + (clientX - start.x);
-    if (desired < 108) {
-      end();
-      setRailWidth(DEFAULT_RAIL_WIDTH);
-      setRailOpen(false);
-      return;
-    }
-    const maxAllowed = Math.min(MAX_RAIL_WIDTH, Math.max(MIN_RAIL_WIDTH, window.innerWidth - MIN_LEFT_WIDTH - (browserOpen ? MIN_BROWSER_WIDTH : 0) - 20));
-    setRailWidth(Math.max(MIN_RAIL_WIDTH, Math.min(maxAllowed, Math.round(desired))));
-  });
-
-  const splitDrag = usePaneDrag((clientX, start, end) => {
-    const railW = railOpen ? railWidth : 0;
-    const aiReserved = aiOpen ? aiWidth + SPLIT_HANDLE_WIDTH : 0;
-    const desiredLeft = start.width + (clientX - start.x);
-    if (desiredLeft < 200) {
-      end();
-      setWorkspaceOpen(false);
-      return;
-    }
-    const remainingRight = window.innerWidth - railW - aiReserved - SPLIT_HANDLE_WIDTH - desiredLeft;
-    if (remainingRight < 170) {
-      end();
-      setLeftWidth(clampLeftWidth(Math.min(start.width, 640), window.innerWidth, railOpen, railWidth, aiOpen, aiWidth));
-      setBrowserOpen(false);
-      setWorkspaceOpen(true);
-      return;
-    }
-    setLeftWidth(clampLeftWidth(desiredLeft, window.innerWidth, railOpen, railWidth, aiOpen, aiWidth));
-  }, { endWhenHidden: true });
-
-  const aiDrag = usePaneDrag((clientX, start, end) => {
-    const desired = start.width - (clientX - start.x);
-    if (desired < 220) {
-      end();
-      setAiWidth(DEFAULT_AI_WIDTH);
-      setAiOpen(false);
-      return;
-    }
-    const railW = railOpen ? railWidth : 0;
-    const minOther = browserOpen
-      ? workspaceOpen
-        ? MIN_LEFT_WIDTH_TRIPLE + MIN_BROWSER_WIDTH_TRIPLE + SPLIT_HANDLE_WIDTH
-        : MIN_BROWSER_WIDTH
-      : MIN_LEFT_WIDTH;
-    const maxAllowed = Math.min(MAX_AI_WIDTH, Math.max(MIN_AI_WIDTH, window.innerWidth - railW - minOther - SPLIT_HANDLE_WIDTH));
-    setAiWidth(Math.max(MIN_AI_WIDTH, Math.min(maxAllowed, Math.round(desired))));
-  });
-
-  // Keep split width clamped on window resize or side-panel toggles
-  useEffect(() => {
-    const syncClamp = () => {
-      setViewportWidth(window.innerWidth);
-      setLeftWidth((curr) => clampLeftWidth(curr, window.innerWidth, railOpen, railWidth, aiOpen, aiWidth));
-    };
-    syncClamp();
-    window.addEventListener("resize", syncClamp);
-    return () => window.removeEventListener("resize", syncClamp);
-  }, [railOpen, railWidth, aiOpen, aiWidth]);
 
   const handleSaveReplyAsDraft = async (content: string): Promise<string | null> => {
     const activeTabNow = browserState?.tabs.find((t) => t.id === browserState.activeTabId) ?? null;
@@ -633,67 +397,16 @@ export const App: React.FC = () => {
     setAiOpen(true);
   };
 
-  const handleOpenBrowserUrl = async (url?: string, newTab = false) => {
-    setReaderTarget(null);
-    setBrowserOpen(true);
-    try {
-      await window.diandian.browser.openUrl(url, newTab);
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "打开网页失败", "error");
-    }
-  };
-
-  // Open a URL in a tab dedicated to its site (reuse the blank tab, an existing tab of that site,
-  // or a fresh one) instead of overwriting whatever the user is currently reading.
-  const handleOpenSiteUrl = async (url: string) => {
-    setBrowserOpen(true);
-    const site = QUICK_WEB_LINKS.find((s) => tabMatchesSite(url, s.matchHosts));
-    const tabs = browserState?.tabs ?? [];
-    const current = tabs.find((t) => t.id === browserState?.activeTabId) ?? null;
-    if (!site || !current || isStartPageTabUrl(current.url) || tabMatchesSite(current.url, site.matchHosts)) {
-      await handleOpenBrowserUrl(url, false);
-      return;
-    }
-    const existing = tabs.find((t) => tabMatchesSite(t.url, site.matchHosts));
-    if (existing) {
-      try {
-        await window.diandian.browser.selectTab(existing.id);
-      } catch (error) {
-        notify(error instanceof Error ? error.message : "切换标签页失败", "error");
-        return;
-      }
-      await handleOpenBrowserUrl(url, false);
-      return;
-    }
-    await handleOpenBrowserUrl(url, true);
-  };
-
-  const handleOpenQuickSite = async (site: (typeof QUICK_WEB_LINKS)[number]) => {
-    setReaderTarget(null);
-    setBrowserOpen(true);
-    const tabs = browserState?.tabs ?? [];
-    const current = tabs.find((t) => t.id === browserState?.activeTabId) ?? null;
-
-    // 1. If currently sitting on a blank "新标签页", open directly inside it without leaving an empty tab behind.
-    if (current && isStartPageTabUrl(current.url)) {
-      await handleOpenBrowserUrl(site.url, false);
-      return;
-    }
-
-    // 2. If this site is already open in a tab, switch straight to it instead of duplicating or overwriting.
-    const existing = tabs.find((t) => tabMatchesSite(t.url, site.matchHosts));
-    if (existing) {
-      try {
-        await window.diandian.browser.selectTab(existing.id);
-      } catch (error) {
-        notify(error instanceof Error ? error.message : "切换标签页失败", "error");
-      }
-      return;
-    }
-
-    // 3. Otherwise open in a fresh tab so the current reading page stays intact.
-    await handleOpenBrowserUrl(site.url, true);
-  };
+  const {
+    openUrl: handleOpenBrowserUrl, openSiteUrl: handleOpenSiteUrl, openQuickSite: handleOpenQuickSite,
+  } = useBrowserNavigation({
+    browserState,
+    showBrowser: () => {
+      setReaderTarget(null);
+      setBrowserOpen(true);
+    },
+    notify,
+  });
 
   const selectedBook = useMemo(
     () => books.find((b) => b.id === selectedBookId) ?? null,
@@ -710,23 +423,18 @@ export const App: React.FC = () => {
     [notebooks, activeNotebookId],
   );
 
-  const handleCreateNotebook = async () => {
-    const clean = newNotebookName.trim();
-    if (!clean) {
-      setCreatingNotebook(false);
-      return;
-    }
+  const handleCreateNotebook = async (name: string): Promise<boolean> => {
     try {
-      const created = await window.diandian.notebooks.create({ name: clean, icon: "✦" });
+      const created = await window.diandian.notebooks.create({ name, icon: "✦" });
       await refreshWorkspaceData();
       setActiveNotebookId(created.id);
       setActiveTab("notebook");
       setWorkspaceOpen(true);
-      setNewNotebookName("");
-      setCreatingNotebook(false);
       notify(`已新建主题空间「${created.name}」`, "success");
+      return true;
     } catch (error) {
       notify(error instanceof Error ? error.message : "新建主题空间失败", "error");
+      return false;
     }
   };
 
@@ -762,24 +470,6 @@ export const App: React.FC = () => {
       notify(error instanceof Error ? error.message : "删除失败", "error");
     }
   };
-
-  const buildNotebookPromptSummary = useCallback((nb: NotebookRecord): string => {
-    const bList = nb.items
-      .filter((i) => i.itemKind === "book")
-      .map((i) => `《${i.title}》(bookId: ${i.itemRef})`);
-    const dList = nb.items
-      .filter((i) => i.itemKind === "draft")
-      .map((i) => `「${i.title}」(draftId: ${i.itemRef})`);
-    const wList = nb.items
-      .filter((i) => i.itemKind === "web")
-      .map((i) => `${i.title} (${i.itemRef})`);
-    const parts = [
-      bList.length ? `关联书目：${bList.join("、")}` : "",
-      dList.length ? `关联草稿：${dList.join("、")}` : "",
-      wList.length ? `收录网页：${wList.join("、")}` : "",
-    ].filter(Boolean);
-    return `- [主题空间] 「${nb.name}」${parts.length ? `（${parts.join("；")}，请综合调取这些书的划线与草稿上下文回答）` : ""}`;
-  }, []);
 
   const breadcrumbDetail = useMemo(() => {
     if (activeTab === "notes") {
@@ -851,14 +541,13 @@ export const App: React.FC = () => {
     workspaceOpen,
     activeTab,
     selectedNotebook,
-    buildNotebookPromptSummary,
     selectedDraft,
     selectedBook,
     browserOpen,
     activeBrowserTab,
   ]);
 
-  const navItems: Array<{ id: StudioTab; label: string; icon: React.ReactNode; count?: number }> = [
+  const navItems: SurfRailNavItem[] = [
     { id: "discover", label: "搜书发现", icon: <IconSearch size={15} /> },
     { id: "library", label: TAB_LABELS.library, icon: <IconBookOpen size={15} />, count: downloadError ? undefined : downloadFiles?.length },
     { id: "notes", label: TAB_LABELS.notes, icon: <IconSquarePen size={15} />, count: books.length || undefined },
@@ -866,230 +555,47 @@ export const App: React.FC = () => {
     { id: "router", label: "连接与偏好", icon: <IconCompass size={15} /> },
   ];
 
-  const effectiveLeftWidth = clampLeftWidth(leftWidth, viewportWidth, railOpen, railWidth, aiOpen, aiWidth);
 
   return (
     <div className="app-shell">
       {/* 1. Far-Left Resizable Frosted Cloud-Blue Surf Sidebar */}
       {railOpen && (
-        <>
-          <aside
-            className="surf-rail"
-            aria-label="主导航与网页标签"
-            style={{ width: `${railWidth}px`, minWidth: `${railWidth}px` }}
-          >
-          <div className="surf-brand-row">
-            <div className="surf-brand-left">
-              <img className="surf-brand-mark" src={brandLogoUrl} alt="" aria-hidden="true" />
-              <span className="surf-brand-name">点点读书</span>
-            </div>
-          </div>
-
-          <nav className="surf-nav-list">
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`surf-nav-item ${!reading && workspaceOpen && activeTab === item.id ? "active" : ""}`}
-                onClick={() => openWorkspaceTab(item.id)}
-              >
-                {item.icon}
-                <span className="surf-nav-label">{item.label}</span>
-                {item.count !== undefined && <span className="surf-nav-count">{item.count}</span>}
-              </button>
-            ))}
-          </nav>
-
-          <div className="surf-rail-divider" />
-
-          {/* Deta Surf-Style Topic Notebooks */}
-          <div className="surf-section-head">
-            <span>主题空间</span>
-            <button
-              type="button"
-              className="btn icon-only ghost"
-              style={{ width: 22, height: 22 }}
-              onClick={() => setCreatingNotebook((v) => !v)}
-              title="新建主题空间（把书目、草稿与网页打包共读）"
-            >
-              <IconPlus size={12} />
-            </button>
-          </div>
-
-          {creatingNotebook && (
-            <form
-              className="surf-nb-create"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void handleCreateNotebook();
-              }}
-            >
-              <input
-                className="surf-nb-input"
-                autoFocus
-                value={newNotebookName}
-                onChange={(e) => setNewNotebookName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    setCreatingNotebook(false);
-                    setNewNotebookName("");
-                  }
-                }}
-                placeholder="输入主题名，回车创建…"
-              />
-            </form>
-          )}
-
-          {notebooks.length > 0 && (
-            <div className="surf-nb-list">
-              {notebooks.map((nb) => {
-                const isNbActive = !reading && workspaceOpen && activeTab === "notebook" && activeNotebookId === nb.id;
-                return (
-                  <button
-                    key={nb.id}
-                    type="button"
-                    className={`surf-tab-item ${isNbActive ? "active" : ""}`}
-                    onClick={() => {
-                      setActiveNotebookId(nb.id);
-                      setActiveTab("notebook");
-                      setWorkspaceOpen(true);
-                    }}
-                    title={`${nb.name}（${nb.items.length} 项素材）`}
-                  >
-                    <span className="surf-nb-icon">{nb.icon || "✦"}</span>
-                    <span className="surf-nav-label">{nb.name}</span>
-                    {nb.items.length > 0 && <span className="surf-nav-count">{nb.items.length}</span>}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="surf-rail-divider" />
-
-          {/* Vertical Browser Tabs unified into Left Surf Sidebar */}
-          <div className="surf-section-head">
-            <span>阅读标签</span>
-            <button
-              type="button"
-              className="btn icon-only ghost"
-              style={{ width: 22, height: 22 }}
-              onClick={() => void handleOpenBrowserUrl(undefined, true)}
-              title="新建空白标签页（可选择站点或输入网址）"
-            >
-              <IconPlus size={12} />
-            </button>
-          </div>
-
-          <div className="surf-rail-tabs">
-            {readerTabs.map(file => {
-              const title = file.title || file.fileName.replace(/\.epub$/i, "");
-              const current = readerTarget?.file.filePath === file.filePath;
-              return (
-                <div key={file.filePath} className={`surf-tab-item local-book-tab ${current ? "active" : ""}`}>
-                  <button type="button" className="local-book-tab-select" aria-pressed={current}
-                    title={title} aria-label={`阅读《${title}》`} onClick={() => readLocalBook(file)}>
-                    <IconBookOpen size={14} /><span className="surf-nav-label">{title}</span>
-                  </button>
-                  <button type="button" className="surf-tab-close" aria-label={`关闭《${title}》标签`}
-                    onClick={() => {
-                      setReaderTabs(tabs => tabs.filter(tab => tab.filePath !== file.filePath));
-                      if (current) openWorkspaceTab("library");
-                    }}><IconClose size={11} /></button>
-                </div>
-              );
-            })}
-            {(browserState?.tabs ?? []).map((tab) => {
-              const isCurrent = !reading && browserOpen && tab.id === browserState?.activeTabId;
-              const isStart = isStartPageTabUrl(tab.url);
-              const displayTitle = isStart ? "新标签页" : tab.title || "加载中…";
-              return (
-                <div
-                  key={tab.id}
-                  className={`surf-tab-item ${isCurrent ? "active" : ""}`}
-                  onClick={() => {
-                    setReaderTarget(null);
-                    setBrowserOpen(true);
-                    void window.diandian.browser.selectTab(tab.id);
-                  }}
-                  title={isStart ? "新标签页" : tab.title || tab.url}
-                >
-                  <SiteBrandIcon url={tab.url} faviconUrl={tab.faviconUrl} size={14} />
-                  <span className="surf-nav-label">{displayTitle}</span>
-                  {(browserState?.tabs.length ?? 0) > 1 && (
-                    <button
-                      type="button"
-                      className="surf-tab-close"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void window.diandian.browser.closeTab(tab.id);
-                      }}
-                      title="关闭标签页"
-                    >
-                      <IconClose size={11} />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-
-            <div className="surf-quick-links">
-              {QUICK_WEB_LINKS.map((site) => {
-                const alreadyOpen = (browserState?.tabs ?? []).some((t) =>
-                  tabMatchesSite(t.url, site.matchHosts),
-                );
-                const onStartPage = Boolean(activeBrowserTab && isStartPageTabUrl(activeBrowserTab.url));
-                const tooltip = onStartPage
-                  ? `在当前新标签页打开${site.label}`
-                  : alreadyOpen
-                    ? `切换到已打开的${site.label}标签页`
-                    : `在新标签页打开${site.label}`;
-                return (
-                  <button
-                    key={site.label}
-                    type="button"
-                    className="surf-quick-pill"
-                    onClick={() => void handleOpenQuickSite(site)}
-                    title={tooltip}
-                  >
-                    <SiteBrandIcon url={site.url} size={14} />
-                    <span>{site.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="surf-rail-footer">
-            <button
-              type="button"
-              className="surf-footer-btn"
-              onClick={() => void window.diandian.pet.toggle()}
-              title={petVisible ? "隐藏桌面伴读小金毛" : "召唤桌面伴读小金毛"}
-            >
-              <IconPaw size={14} />
-              <span>小金毛</span>
-              {petVisible && <span className="surf-status-dot" />}
-            </button>
-
-            <button
-              type="button"
-              className="surf-footer-btn"
-              onClick={() => setSettingsOpen(true)}
-              title="模型与 API Key 设置"
-            >
-              <IconSettings size={14} />
-              <span>模型</span>
-            </button>
-          </div>
-        </aside>
-        <div
-          {...railDrag.handleProps(railWidth)}
-          className={`rail-resize-handle ${railDrag.dragging ? "dragging" : ""}`}
-          onDoubleClick={() => setRailWidth(DEFAULT_RAIL_WIDTH)}
-          title="拖动调整左侧栏宽度（拖至最左自动收起，双击重置）"
+        <SurfRail
+          width={railWidth}
+          drag={railDrag}
+          onResetWidth={() => setRailWidth(DEFAULT_RAIL_WIDTH)}
+          navItems={navItems}
+          activeTab={!reading && workspaceOpen ? activeTab : null}
+          onOpenTab={openWorkspaceTab}
+          notebooks={notebooks}
+          activeNotebookId={!reading && workspaceOpen && activeTab === "notebook" ? activeNotebookId : null}
+          onSelectNotebook={(id) => {
+            setActiveNotebookId(id);
+            setActiveTab("notebook");
+            setWorkspaceOpen(true);
+          }}
+          onCreateNotebook={handleCreateNotebook}
+          readerTabs={readerTabs}
+          currentReaderPath={readerTarget?.file.filePath ?? null}
+          onReadBook={(file) => readLocalBook(file)}
+          onCloseReaderTab={(file) => {
+            setReaderTabs(tabs => tabs.filter(tab => tab.filePath !== file.filePath));
+            if (readerTarget?.file.filePath === file.filePath) openWorkspaceTab("library");
+          }}
+          browserState={browserState}
+          currentBrowserTabId={!reading && browserOpen ? browserState?.activeTabId ?? null : null}
+          onSelectBrowserTab={(id) => {
+            setReaderTarget(null);
+            setBrowserOpen(true);
+            void window.diandian.browser.selectTab(id);
+          }}
+          onCloseBrowserTab={(id) => void window.diandian.browser.closeTab(id)}
+          onNewBrowserTab={() => void handleOpenBrowserUrl(undefined, true)}
+          onOpenQuickSite={(site) => void handleOpenQuickSite(site)}
+          petVisible={petVisible}
+          onTogglePet={() => void window.diandian.pet.toggle()}
+          onOpenModelSettings={() => setSettingsOpen(true)}
         />
-        </>
       )}
 
       {/* 2. Main Split Stage */}
@@ -1101,78 +607,18 @@ export const App: React.FC = () => {
             ...(browserOpen ? { width: `${effectiveLeftWidth}px`, flex: "0 0 auto" } : {}),
           }}
         >
-          {/* Razor-Thin 38px Surf Breadcrumb Topbar */}
-          <div className={`surf-topbar ${railOpen ? "" : "rail-collapsed"}`}>
-            <div className="surf-topbar-left">
-              <button
-                type="button"
-                className="btn icon-only ghost"
-                onClick={() => setRailOpen((v) => !v)}
-                title={railOpen ? "收起左侧栏（⌘B）" : "展开左侧栏（⌘B）"}
-              >
-                <IconPanelLeft size={14} />
-              </button>
-
-              <div className="surf-breadcrumbs">
-                <span className="surf-crumb-root">点点读书</span>
-                <span className="surf-crumb-sep">
-                  <IconChevronRight size={12} />
-                </span>
-                <span className="surf-crumb-mid" onClick={() => setActiveTab(activeTab)}>
-                  {TAB_LABELS[activeTab]}
-                </span>
-                {breadcrumbDetail && (
-                  <>
-                    <span className="surf-crumb-sep">
-                      <IconChevronRight size={12} />
-                    </span>
-                    <span className="surf-crumb-current">{breadcrumbDetail}</span>
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="surf-topbar-drag" />
-
-            <div className="surf-topbar-right">
-              {browserOpen && (
-                <button
-                  type="button"
-                  className="btn sm ghost"
-                  style={{ height: 25, padding: "0 8px", fontSize: 11.5 }}
-                  onClick={() => setWorkspaceOpen(false)}
-                  title="收起左侧工作台，专注大视野阅读右侧网页（快捷键 ⌘⇧B）"
-                >
-                  <IconPanelLeft size={12} />
-                  <span>收起</span>
-                </button>
-              )}
-              {!browserOpen && (
-                <button
-                  type="button"
-                  className="btn sm soft"
-                  onClick={() => setBrowserOpen(true)}
-                  title="展开右侧阅读浏览器（快捷键 ⌘\）"
-                >
-                  <IconPanelRight size={13} />
-                  <span>展开阅读窗</span>
-                </button>
-              )}
-              {!browserOpen && !aiOpen && (
-                <button
-                  type="button"
-                  className="surf-ask-pill"
-                  onClick={() => setAiOpen(true)}
-                  title="打开右侧「问点点」AI 共读面板（快捷键 ⌘L）"
-                >
-                  <span className="surf-ask-pill-badge">
-                    <IconSparkles size={12} />
-                  </span>
-                  <span>问点点</span>
-                </button>
-              )}
-            </div>
-          </div>
+          <WorkspaceTopbar
+            railOpen={railOpen}
+            browserOpen={browserOpen}
+            aiOpen={aiOpen}
+            activeTab={activeTab}
+            breadcrumbDetail={breadcrumbDetail}
+            onToggleRail={() => setRailOpen((v) => !v)}
+            onSelectTab={setActiveTab}
+            onCollapseWorkspace={() => setWorkspaceOpen(false)}
+            onOpenBrowser={() => setBrowserOpen(true)}
+            onOpenAi={() => setAiOpen(true)}
+          />
 
           {/* Body Row: Full-Width Active Canvas */}
           <div className="surf-body-row">
@@ -1342,9 +788,7 @@ export const App: React.FC = () => {
               <div
                 {...splitDrag.handleProps(leftWidth)}
                 className={`split-handle ${splitDrag.dragging ? "dragging" : ""}`}
-                onDoubleClick={() =>
-                  setLeftWidth(clampLeftWidth(660, window.innerWidth, railOpen, railWidth, aiOpen, aiWidth))
-                }
+                onDoubleClick={resetLeftWidth}
                 title="拖动调整左右宽度（拖至最左收起工作台，拖至最右收起阅读窗，双击重置）"
               />
             )}
