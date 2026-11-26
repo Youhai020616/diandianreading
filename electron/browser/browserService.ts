@@ -27,6 +27,10 @@ export { normalizeAllowedWebUrl };
 
 const DESKTOP_LAYOUT_WIDTH = 1120;
 const DEFAULT_ACCOUNT_ID = "default";
+/** After the new document commits, reveal the tab at most this long later (dom-ready may come sooner). */
+const TAB_REVEAL_AFTER_COMMIT_MS = 450;
+/** Safety net if a navigation never commits (hung network); keeps the stale page hidden meanwhile. */
+const TAB_REVEAL_SAFETY_MS = 8000;
 
 export interface BrowserAccount {
   id: string;
@@ -84,6 +88,8 @@ interface InternalTab {
   faviconUrl?: string;
   isLoading: boolean;
   readyToShow: boolean;
+  /** True between starting a deferred navigation and the new document committing (did-navigate). */
+  awaitingCommit: boolean;
   revealTimer?: NodeJS.Timeout;
 }
 
@@ -558,9 +564,10 @@ export class BrowserService {
       url: initialUrl,
       isLoading: !startPage,
       readyToShow: startPage,
+      awaitingCommit: !startPage,
     };
     if (!startPage) {
-      this.scheduleTabRevealFallback(record);
+      this.scheduleTabRevealFallback(record, TAB_REVEAL_SAFETY_MS);
     }
 
     const wc = view.webContents;
@@ -586,15 +593,20 @@ export class BrowserService {
       record.isLoading = true;
       sync();
     });
+    // Readiness signals only count once the *new* document has committed; otherwise the
+    // old page's abort/stop events would briefly re-reveal it (e.g. WeRead flashing before Douban).
     wc.on("dom-ready", () => {
-      this.markTabReady(record);
+      if (!record.awaitingCommit) this.markTabReady(record);
     });
-    wc.on("did-fail-load", () => {
+    wc.on("did-fail-load", (_e, errorCode, _desc, _url, isMainFrame) => {
+      // ERR_ABORTED (-3) is the previous navigation being cancelled by the new one.
+      if (!isMainFrame || errorCode === -3) return;
+      record.awaitingCommit = false;
       this.markTabReady(record);
     });
     wc.on("did-stop-loading", () => {
       record.isLoading = false;
-      this.markTabReady(record);
+      if (!record.awaitingCommit) this.markTabReady(record);
       this.updateZoom(record);
       sync();
     });
@@ -609,6 +621,12 @@ export class BrowserService {
         record.faviconUrl = undefined;
       }
       record.url = nextUrl || record.url;
+      if (record.awaitingCommit) {
+        // New document committed: reveal shortly after (or sooner on dom-ready) instead of
+        // waiting for the whole page to parse.
+        record.awaitingCommit = false;
+        if (!record.readyToShow) this.scheduleTabRevealFallback(record, TAB_REVEAL_AFTER_COMMIT_MS);
+      }
       sync();
     });
     wc.on("page-title-updated", (_e, title) => {
@@ -708,18 +726,20 @@ export class BrowserService {
     this.updateZoom(active);
   }
 
-  private scheduleTabRevealFallback(tab: InternalTab): void {
+  private scheduleTabRevealFallback(tab: InternalTab, delayMs: number): void {
     if (tab.revealTimer) clearTimeout(tab.revealTimer);
     tab.revealTimer = setTimeout(() => {
+      tab.awaitingCommit = false;
       this.markTabReady(tab);
-    }, 2200);
+    }, delayMs);
   }
 
   private deferTabReveal(tab: InternalTab, nextUrl: string): void {
     tab.readyToShow = false;
+    tab.awaitingCommit = true;
     tab.isLoading = true;
     tab.url = nextUrl;
-    this.scheduleTabRevealFallback(tab);
+    this.scheduleTabRevealFallback(tab, TAB_REVEAL_SAFETY_MS);
     this.applyViewVisibility();
     this.pushState();
   }

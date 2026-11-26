@@ -35,6 +35,8 @@ const WEREAD_SHELF_URL = "https://weread.qq.com/web/shelf";
 interface DiscoverViewProps {
   onSendToChat: (prompt: string, autoSend?: boolean) => void;
   onOpenBrowserUrl: (url: string, newTab?: boolean) => void;
+  /** Open in a tab dedicated to that site (keeps the current reading tab intact). */
+  onOpenSiteUrl?: (url: string) => void;
   onEnsureBrowserOpen: () => void;
   onOpenRouterSettings: () => void;
   onNotify: (msg: string, tone?: "info" | "success" | "error") => void;
@@ -148,6 +150,7 @@ const BookCoverMedia: React.FC<BookCoverMediaProps> = ({ book, size = "tile" }) 
 export const DiscoverView: React.FC<DiscoverViewProps> = ({
   onSendToChat,
   onOpenBrowserUrl,
+  onOpenSiteUrl,
   onEnsureBrowserOpen,
   onOpenRouterSettings,
   onNotify,
@@ -395,11 +398,12 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
 
   const handleOpenDoubanReview = (book: ZlibBookItem) => {
     const { url, directIsbn } = buildDoubanBookUrl(book);
-    onOpenBrowserUrl(url, false);
+    if (onOpenSiteUrl) onOpenSiteUrl(url);
+    else onOpenBrowserUrl(url, false);
     onNotify(
       directIsbn
-        ? `已在右侧按 ISBN 直达《${cleanShortTitle(book.title)}》豆瓣页面`
-        : `已在右侧打开《${cleanShortTitle(book.title)}》豆瓣评分与书评检索`,
+        ? `正在右侧按 ISBN 打开《${cleanShortTitle(book.title)}》豆瓣页面…`
+        : `正在右侧打开《${cleanShortTitle(book.title)}》豆瓣评分与书评检索…`,
       "info",
     );
   };
@@ -649,7 +653,8 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                 className="discover-search-pill"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  void runSearch(queryInput);
+                  // Read the live DOM value: React state can lag behind the last IME-committed character.
+                  void runSearch(searchInputRef.current?.value ?? queryInput);
                 }}
               >
                 <span className="discover-search-icon">
@@ -661,6 +666,11 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   value={queryInput}
                   onChange={(e) => setQueryInput(e.target.value)}
                   onKeyDown={(e) => {
+                    // Enter that confirms an IME candidate must not submit a half-composed query.
+                    if (e.key === "Enter" && (e.nativeEvent.isComposing || e.keyCode === 229)) {
+                      e.preventDefault();
+                      return;
+                    }
                     if (e.key === "Escape" && queryInput) {
                       e.preventDefault();
                       handleClearInput();

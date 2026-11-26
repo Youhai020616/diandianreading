@@ -56,7 +56,11 @@ interface ToastItem {
   id: number;
   message: string;
   tone: "info" | "success" | "error";
+  action?: { label: string; onClick: () => void };
 }
+
+/** Main-process error thrown when an Obsidian action runs before a vault is configured. */
+const OBSIDIAN_VAULT_MISSING_RE = /尚未设置 Obsidian Vault/;
 
 const DEFAULT_RAIL_WIDTH = 196;
 const MIN_RAIL_WIDTH = 160;
@@ -170,6 +174,10 @@ export const App: React.FC = () => {
   const [newNotebookName, setNewNotebookName] = useState("");
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [libraryMode, setLibraryMode] = useState<"shelf" | "collision">("shelf");
+  const [libraryMenuCommand, setLibraryMenuCommand] = useState<
+    { kind: "new-book" | "import-notes"; nonce: number } | null
+  >(null);
+  const clearLibraryMenuCommand = useCallback(() => setLibraryMenuCommand(null), []);
 
   // Split width (center workspace width in px when right browser is open)
   const [leftWidth, setLeftWidth] = useState(660);
@@ -186,14 +194,28 @@ export const App: React.FC = () => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const toastIdRef = useRef(1);
 
+  const openObsidianSettingsRef = useRef<() => void>(() => undefined);
   const notify = useCallback((message: string, tone: "info" | "success" | "error" = "info") => {
     const cleanMsg = tone === "error" ? formatUserError(message, message) : message;
     const id = toastIdRef.current++;
-    setToasts((prev) => [...prev.slice(-3), { id, message: cleanMsg, tone }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, tone === "error" ? 5200 : 3600);
+    const dismiss = () => setToasts((prev) => prev.filter((t) => t.id !== id));
+    const action = OBSIDIAN_VAULT_MISSING_RE.test(cleanMsg)
+      ? {
+          label: "去设置",
+          onClick: () => {
+            dismiss();
+            openObsidianSettingsRef.current();
+          },
+        }
+      : undefined;
+    setToasts((prev) => [...prev.slice(-3), { id, message: cleanMsg, tone, ...(action ? { action } : {}) }]);
+    setTimeout(dismiss, action ? 9000 : tone === "error" ? 5200 : 3600);
   }, []);
+  openObsidianSettingsRef.current = () => {
+    setRouterInitialSection("obsidian");
+    setActiveTab("router");
+    setWorkspaceOpen(true);
+  };
 
   const refreshWorkspaceData = useCallback(async () => {
     try {
@@ -300,6 +322,40 @@ export const App: React.FC = () => {
       offQuick();
     };
   }, [notify, handleSendQuoteToDraft]);
+
+  // Native app menu (文件 / 偏好设置) → existing renderer actions.
+  const selectedBookIdRef = useRef(selectedBookId);
+  selectedBookIdRef.current = selectedBookId;
+  useEffect(() => {
+    return window.diandian.app.onMenuAction(({ action }) => {
+      if (action === "preferences") {
+        setRouterInitialSection("router");
+        setActiveTab("router");
+        setWorkspaceOpen(true);
+      } else if (action === "new-book" || action === "import-notes") {
+        setActiveTab("library");
+        setLibraryMode("shelf");
+        setWorkspaceOpen(true);
+        setLibraryMenuCommand({ kind: action, nonce: Date.now() });
+      } else if (action === "sync-obsidian") {
+        const bookId = selectedBookIdRef.current;
+        if (!bookId) {
+          setActiveTab("library");
+          setWorkspaceOpen(true);
+          notify("请先在「我的书库」中选中一本书，再同步到 Obsidian", "info");
+          return;
+        }
+        void window.diandian.obsidian
+          .exportBook(bookId)
+          .then((res) => notify(res.message, res.status === "conflict" ? "info" : "success"))
+          .catch((error: unknown) => notify(error instanceof Error ? error.message : "同步到 Obsidian 失败", "error"));
+      } else if (action === "open-downloads") {
+        void window.diandian.router
+          .openDownloadDir()
+          .catch((error: unknown) => notify(error instanceof Error ? error.message : "打开下载目录失败", "error"));
+      }
+    });
+  }, [notify]);
 
   // Ensure initial theme class/attribute stays synced on mount
   useEffect(() => {
@@ -722,6 +778,31 @@ export const App: React.FC = () => {
     } catch (error) {
       notify(error instanceof Error ? error.message : "打开网页失败", "error");
     }
+  };
+
+  // Open a URL in a tab dedicated to its site (reuse the blank tab, an existing tab of that site,
+  // or a fresh one) instead of overwriting whatever the user is currently reading.
+  const handleOpenSiteUrl = async (url: string) => {
+    setBrowserOpen(true);
+    const site = QUICK_WEB_LINKS.find((s) => tabMatchesSite(url, s.matchHosts));
+    const tabs = browserState?.tabs ?? [];
+    const current = tabs.find((t) => t.id === browserState?.activeTabId) ?? null;
+    if (!site || !current || isStartPageTabUrl(current.url) || tabMatchesSite(current.url, site.matchHosts)) {
+      await handleOpenBrowserUrl(url, false);
+      return;
+    }
+    const existing = tabs.find((t) => tabMatchesSite(t.url, site.matchHosts));
+    if (existing) {
+      try {
+        await window.diandian.browser.selectTab(existing.id);
+      } catch (error) {
+        notify(error instanceof Error ? error.message : "切换标签页失败", "error");
+        return;
+      }
+      await handleOpenBrowserUrl(url, false);
+      return;
+    }
+    await handleOpenBrowserUrl(url, true);
   };
 
   const handleOpenQuickSite = async (site: (typeof QUICK_WEB_LINKS)[number]) => {
@@ -1262,6 +1343,7 @@ export const App: React.FC = () => {
                 <DiscoverView
                   onSendToChat={(prompt, autoSend) => handleSendToChat(prompt, autoSend)}
                   onOpenBrowserUrl={(url, newTab) => void handleOpenBrowserUrl(url, newTab)}
+                  onOpenSiteUrl={(url) => void handleOpenSiteUrl(url)}
                   onEnsureBrowserOpen={() => setBrowserOpen(true)}
                   onOpenRouterSettings={() => {
                     setRouterInitialSection("router");
@@ -1284,6 +1366,8 @@ export const App: React.FC = () => {
                     onSendToChat={(p) => handleSendToChat(p, false)}
                     onSendToDraft={(data) => void handleSendQuoteToDraft(data)}
                     onNotify={notify}
+                    menuCommand={libraryMenuCommand}
+                    onMenuCommandHandled={clearLibraryMenuCommand}
                   />
                 </div>
               )}
@@ -1483,7 +1567,12 @@ export const App: React.FC = () => {
         <div className="toast-stack" role="status" aria-live="polite">
           {toasts.map((t) => (
             <div key={t.id} className={`toast-item ${t.tone}`}>
-              {t.message}
+              <span>{t.message}</span>
+              {t.action && (
+                <button type="button" className="toast-action" onClick={t.action.onClick}>
+                  {t.action.label}
+                </button>
+              )}
             </div>
           ))}
         </div>

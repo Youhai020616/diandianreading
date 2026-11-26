@@ -37,6 +37,9 @@ interface LibraryViewProps {
   onSendToChat: (prompt: string) => void;
   onSendToDraft: (payload: { quote: string; comment: string; bookTitle: string; author: string }) => void;
   onNotify: (msg: string, tone?: "info" | "success" | "error") => void;
+  /** One-shot command from the native app menu (文件 → 新建书目 / 导入笔记). */
+  menuCommand?: { kind: "new-book" | "import-notes"; nonce: number } | null;
+  onMenuCommandHandled?: () => void;
 }
 
 const SUGGESTED_THEMES = ["习惯", "系统", "自由", "激励", "长期", "认知", "关系", "决策"];
@@ -52,6 +55,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onSendToChat,
   onSendToDraft,
   onNotify,
+  menuCommand,
+  onMenuCommandHandled,
 }) => {
   const [internalViewMode, setInternalViewMode] = useState<"shelf" | "collision">("shelf");
   const viewMode = controlledViewMode ?? internalViewMode;
@@ -128,6 +133,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
   // Monthly reading poster modal
   const [posterModalOpen, setPosterModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuCommand) return;
+    if (menuCommand.kind === "new-book") setNewBookModalOpen(true);
+    else setImportModalOpen(true);
+    onMenuCommandHandled?.();
+  }, [menuCommand, onMenuCommandHandled]);
 
   const anyModalOpen = importModalOpen || newBookModalOpen || metaModalOpen || wereadModalOpen || posterModalOpen;
   useEffect(() => {
@@ -1160,7 +1172,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 onChange={(e) => setMetaQuery(e.target.value)}
                 placeholder="输入书名、作者或 ISBN…"
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") void handleSearchMeta();
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) void handleSearchMeta();
                 }}
               />
               <button type="button" className="btn primary" onClick={() => void handleSearchMeta()} disabled={metaLoading}>

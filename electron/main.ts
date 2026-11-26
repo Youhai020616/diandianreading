@@ -9,12 +9,14 @@ import {
   ClipboardItem,
   dialog,
   globalShortcut,
+  Menu,
   nativeTheme,
   safeStorage,
   shell,
 } from "electron";
 import { BridgeRejection, LocalBridgeServer } from "./agent/bridgeServer";
 import { AgentSupervisor } from "./agent/supervisor";
+import { APP_REPO_URL, buildAppMenuTemplate, type AppMenuAction } from "./appMenu";
 import { BrowserMenuWindowController } from "./browser/browserMenuWindow";
 import { BrowserService, type BrowserBounds } from "./browser/browserService";
 import {
@@ -169,7 +171,7 @@ function requireDb(): KnowledgeDatabase {
 function requireObsidianVault(): string {
   const vault = requireDb().getSetting("obsidian.vaultPath")?.trim() || "";
   if (!vault) {
-    throw new Error("尚未设置 Obsidian Vault 目录，请先在「工具与设置」中选择你的 Obsidian 仓库文件夹。");
+    throw new Error("尚未设置 Obsidian Vault 目录，请先在「连接与偏好 → Obsidian 联动」中选择你的 Obsidian 仓库文件夹。");
   }
   return vault;
 }
@@ -1565,6 +1567,35 @@ function resolveAppIconPath(): string | undefined {
   return candidates.find((candidate) => fs.existsSync(candidate));
 }
 
+const APP_DISPLAY_NAME = "点点读书";
+
+function installAppMenu(): void {
+  app.setAboutPanelOptions({
+    applicationName: APP_DISPLAY_NAME,
+    applicationVersion: app.getVersion(),
+    website: APP_REPO_URL,
+    ...(resolveAppIconPath() ? { iconPath: resolveAppIconPath() } : {}),
+  });
+  const template = buildAppMenuTemplate({
+    appName: APP_DISPLAY_NAME,
+    isMac: process.platform === "darwin",
+    sendAction: (action: AppMenuAction) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+        sendToMain("app:menu-action", { action });
+      } else {
+        void createMainWindow();
+      }
+    },
+    openExternal: (url) => {
+      void shell.openExternal(url);
+    },
+  });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 async function createMainWindow(): Promise<void> {
   const entryUrl = resolveAppEntryUrl();
   const appIconPath = resolveAppIconPath();
@@ -1984,6 +2015,7 @@ app.whenReady().then(() => {
     const dockIcon = resolveAppIconPath();
     if (dockIcon) app.dock.setIcon(dockIcon);
   }
+  installAppMenu();
   void bootstrap();
 
   app.on("activate", () => {

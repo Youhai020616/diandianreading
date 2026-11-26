@@ -30,7 +30,7 @@ export const OrbitalLoader: React.FC<OrbitalLoaderProps> = ({ url, suppressed = 
   const phrases = useMemo(
     () => [
       `正在连接 ${site.name}…`,
-      "正在同步隔离账号阅读态…",
+      "正在加载页面内容…",
       "正在为你铺开沉浸阅读页…",
     ],
     [site.name],

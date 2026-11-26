@@ -18,6 +18,13 @@ const desktopApi = {
         ipcRenderer.removeListener("app:quick-action", listener);
       };
     },
+    onMenuAction: (callback: (payload: unknown) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload);
+      ipcRenderer.on("app:menu-action", listener);
+      return () => {
+        ipcRenderer.removeListener("app:menu-action", listener);
+      };
+    },
   },
   settings: {
     getModel: () => ipcRenderer.invoke("settings:get-model"),

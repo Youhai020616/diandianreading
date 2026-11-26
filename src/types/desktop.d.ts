@@ -500,6 +500,10 @@ export interface AppQuickActionEvent {
   deduplicated?: boolean;
 }
 
+export interface AppMenuActionEvent {
+  action: "preferences" | "new-book" | "import-notes" | "sync-obsidian" | "open-downloads";
+}
+
 export interface PetQuickQuoteEvent {
   text: string;
   title: string;
@@ -528,6 +532,7 @@ export interface DesktopBridgeApi {
     setTheme(theme: "light" | "dark"): Promise<{ theme: "light" | "dark" }>;
     onThemeChanged(callback: (payload: { theme: "light" | "dark" }) => void): () => void;
     onQuickAction(callback: (payload: AppQuickActionEvent) => void): () => void;
+    onMenuAction(callback: (payload: AppMenuActionEvent) => void): () => void;
   };
   settings: {
     getModel(): Promise<PublicModelSettings>;

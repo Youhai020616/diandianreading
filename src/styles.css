@@ -3219,6 +3219,22 @@ body.is-dragging-split * {
   background: #186a49;
 }
 
+.toast-action {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.14);
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toast-action:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+
 .muted-box {
   padding: 22px 20px;
   border-radius: 12px;
@@ -6790,6 +6806,8 @@ body.pet-mode #root {
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.14), 0 2px 8px rgba(15, 23, 42, 0.06);
   overflow: hidden;
   animation: discoverSheetIn 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+  /* Overlaps the draggable drawer header; keep clicks from being eaten as window drags. */
+  -webkit-app-region: no-drag;
 }
 
 .ai-history-head {
