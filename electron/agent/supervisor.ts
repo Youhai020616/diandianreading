@@ -35,6 +35,7 @@ export class AgentSupervisor {
   private running = false;
   private activeSessionId: string | null = null;
   private lastSettingsFingerprint = "";
+  private reloadWhenIdle = false;
   private stderrTail: string[] = [];
 
   constructor(options: AgentSupervisorOptions) {
@@ -108,6 +109,26 @@ export class AgentSupervisor {
     } else {
       this.options.onEvent({ kind: "session-reset" });
     }
+  }
+
+  /**
+   * Development: pick up edited Harness plugins or SDK bridge code (electron/devReload.ts). A running
+   * reply finishes first; an engine that never booted loads the new code on the next message anyway.
+   */
+  reloadForCodeChange(): void {
+    if (this.running) {
+      this.reloadWhenIdle = true;
+      return;
+    }
+    void this.restartForCodeChange();
+  }
+
+  private async restartForCodeChange(): Promise<void> {
+    this.reloadWhenIdle = false;
+    if (!this.child) return;
+    await this.dispose();
+    this.options.onEvent({ kind: "engine-state", state: "idle", detail: "插件代码已更新，正在后台重启引擎…" });
+    this.prewarm();
   }
 
   async reloadForSettingsChange(): Promise<void> {
@@ -269,6 +290,7 @@ export class AgentSupervisor {
         }
         if (msg.kind === "status") {
           this.running = msg.running;
+          if (!msg.running && this.reloadWhenIdle) queueMicrotask(() => void this.restartForCodeChange());
         } else if (msg.kind === "final" && msg.sessionId) {
           this.activeSessionId = msg.sessionId;
         } else if (msg.kind === "error" && !settled) {

@@ -40,6 +40,16 @@ pnpm dev      # 开发模式（Vite HMR + Electron）；首次运行会下载内
 pnpm build && pnpm start
 ```
 
+`pnpm dev` 下改代码不需要手动重启，也不会把应用拉到前台：
+
+| 改动 | 生效方式 |
+|---|---|
+| `src/**`（界面） | Vite 热更新当前窗口 |
+| `plugins/**`、`electron/agent/sdkBridge.mjs`（AI 插件） | 只在后台重启 AI 引擎，窗口不动 |
+| `electron/**/*.ts`（主进程） | `tsc --watch` 编译通过后，在后台隐藏重启 Electron；切回应用时窗口出现（回到默认页面） |
+
+`DIANDIAN_START_HIDDEN=1 pnpm dev` 会让第一次启动也保持隐藏。
+
 ## 打包安装包
 
 ```bash

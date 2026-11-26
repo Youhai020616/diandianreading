@@ -18,3 +18,8 @@ diandianreading v2（`main`）：local-first 个人阅读与表达桌面工作�
 - Electron 渲染层必须保持 `contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`；所有 `ipcMain` 经 `TrustedIpcRegistry` 校验来源帧与精确 URL。
 - DeepSeek Harness 始终运行在独立 Node 子进程（`electron/agent/sdkBridge.mjs`），密钥通过 `safeStorage` 落盘且仅经 env 注入，绝不落日志、overlay 文件或对话上下文。
 - 本地全量验证：`pnpm typecheck && pnpm test && pnpm build`
+
+## 开发与验收（不打扰用户）
+
+- `pnpm dev` 已自带热加载：改界面由 Vite 热更新；改 `plugins/` 或 `sdkBridge.mjs` 只在后台重启 AI 引擎；改主进程代码会在后台隐藏重启 Electron。不要手动杀进程重启开发版。
+- 在后台启动开发版时用 `DIANDIAN_START_HIDDEN=1 pnpm dev`；启动打包版做测试时，也要设置 `DIANDIAN_START_HIDDEN=1`，并且测试数据目录要和用户的分开。窗口要等用户自己切回应用才出现，开发完成后由用户回到应用里验收。

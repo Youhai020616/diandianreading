@@ -19,6 +19,7 @@ import { SafetyModeStore } from "./security/safetyPolicy";
 import { ModelSettingsStore } from "./security/secretStore";
 import { ReaderTranslationSettingsStore } from "./security/readerTranslationSettings";
 import { matchesTrustedAppUrl } from "./security/urlMatch";
+import { revealWhenActivated, shouldStartHidden, watchAgentSources } from "./devReload";
 import { BookCoverCache } from "./storage/bookCoverCache";
 import { KnowledgeDatabase, type BookSource, type DraftKind } from "./storage/database";
 import { TwinStore } from "./twin/twinStore";
@@ -113,10 +114,11 @@ function installAppMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-async function createMainWindow(): Promise<void> {
+async function createMainWindow(options: { hidden?: boolean } = {}): Promise<void> {
   const entryUrl = resolveAppEntryUrl();
   const appIconPath = resolveAppIconPath();
   const win = new BrowserWindow({
+    show: !options.hidden,
     width: 1480,
     height: 940,
     minWidth: 1020,
@@ -520,15 +522,30 @@ async function bootstrap(): Promise<void> {
   });
 
   wireIpcHandlers();
-  await createMainWindow();
+  const startHidden = shouldStartHidden();
+  await createMainWindow({ hidden: startHidden });
+  if (!app.isPackaged) {
+    watchAgentSources(resolveProjectRoot(), () => {
+      console.log("[dev] agent plugins changed; the agent engine reloads in place");
+      state.supervisor?.reloadForCodeChange();
+    });
+  }
 
   app.on("browser-window-blur", () => {
     scheduleAppFocusCheck();
   });
 
   const petEnabled = state.knowledgeDb.getSetting("pet.enabled");
-  if (petEnabled !== "false") {
-    void state.petController.show().then(() => syncPetMainContext());
+  const showPet = () => {
+    if (petEnabled !== "false") void state.petController?.show().then(() => syncPetMainContext());
+  };
+  if (startHidden) {
+    revealWhenActivated(() => {
+      state.mainWindow?.show();
+      showPet();
+    });
+  } else {
+    showPet();
   }
 
   // Global shortcut: Cmd+Shift+D summons the floating golden retriever with active selection / clipboard.
