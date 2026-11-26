@@ -22,4 +22,4 @@ diandianreading v2（`main`）：local-first 个人阅读与表达桌面工作�
 ## 开发与验收（不打扰用户）
 
 - `pnpm dev` 已自带热加载：改界面由 Vite 热更新；改 `plugins/` 或 `sdkBridge.mjs` 只在后台重启 AI 引擎；改主进程代码会在后台隐藏重启 Electron。不要手动杀进程重启开发版。
-- 在后台启动开发版时用 `DIANDIAN_START_HIDDEN=1 pnpm dev`；启动打包版做测试时，也要设置 `DIANDIAN_START_HIDDEN=1`，并且测试数据目录要和用户的分开。窗口要等用户自己切回应用才出现，开发完成后由用户回到应用里验收。
+- 在后台启动开发版时用 `DIANDIAN_START_HIDDEN=1 pnpm dev`；启动打包版做测试时，也要设置 `DIANDIAN_START_HIDDEN=1`，并且用 `DIANDIAN_USER_DATA_DIR`、`DIANDIAN_DOWNLOAD_DIR`、`--user-data-dir` 把测试数据和用户的完全分开。窗口要等用户自己切回应用才出现，开发完成后由用户回到应用里验收。

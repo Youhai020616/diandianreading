@@ -455,7 +455,8 @@ async function bootstrap(): Promise<void> {
   state.twinStore = new TwinStore(userDataDir);
   state.cardBaker = new CardBakerService();
   state.cardBaker.installProtocol();
-  state.zlibService = new ZlibCliService(path.join(app.getPath("downloads"), "diandianreading"));
+  // DIANDIAN_DOWNLOAD_DIR, like DIANDIAN_USER_DATA_DIR, lets tests and second instances keep their own books.
+  state.zlibService = new ZlibCliService(process.env.DIANDIAN_DOWNLOAD_DIR || path.join(app.getPath("downloads"), "diandianreading"));
   state.downloadedCovers = new DownloadedBookCovers(state.zlibService, state.bookCovers, state.knowledgeDb);
   const savedZlibDomain = state.knowledgeDb.getSetting("router.zlibDomain");
   if (savedZlibDomain) {
