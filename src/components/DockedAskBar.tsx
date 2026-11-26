@@ -26,6 +26,7 @@ import {
   IconZap,
   ModelBrandIcon,
 } from "./Icons";
+import { trailingMentionQuery } from "../lib/mentions";
 
 export interface ContextAttachment {
   id: string;
@@ -304,10 +305,9 @@ export const DockedAskBar: React.FC<DockedAskBarProps> = ({
 
   const handleTextChange = (next: string) => {
     setText(next);
-    // Chinese text has no spaces before "@"; only skip address-like "name@host".
-    const match = next.match(/(?:^|[^A-Za-z0-9._%+-])@([^\s@]{0,20})$/);
-    if (match) {
-      setMentionFilter(match[1] ?? "");
+    const query = trailingMentionQuery(next);
+    if (query !== null) {
+      setMentionFilter(query);
       setMentionOpen(true);
     } else if (mentionOpen) {
       setMentionOpen(false);
