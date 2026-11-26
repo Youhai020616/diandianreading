@@ -1,4 +1,5 @@
 import { type PetWindowMode } from "../pet/petWindow";
+import { claimDailyRecall, muteRecallToday } from "../pet/recallNudge";
 import { hooks, state, ipc, sendToMain, requireDb } from "../appState";
 
 export function registerPetIpc(): void {
@@ -42,14 +43,10 @@ export function registerPetIpc(): void {
     return state.petController.setMode(mode);
   });
 
-  ipc.handle("pet:get-recall-muted-today", () => {
-    const today = new Date().toISOString().slice(0, 10);
-    return { muted: requireDb().getSetting("pet.recallMutedDate") === today };
-  });
+  ipc.handle("pet:claim-daily-recall", () => ({ allowed: claimDailyRecall(requireDb()) }));
 
   ipc.handle("pet:mute-recall-today", () => {
-    const today = new Date().toISOString().slice(0, 10);
-    requireDb().setSetting("pet.recallMutedDate", today);
+    muteRecallToday(requireDb());
     return { muted: true };
   });
 

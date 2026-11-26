@@ -381,7 +381,8 @@ export interface DesktopBridgeApi {
     hide(): Promise<PetWindowState>;
     setExpanded(expanded: boolean): Promise<PetWindowState>;
     setMode(mode: PetWindowMode): Promise<PetWindowState>;
-    getRecallMutedToday(): Promise<{ muted: boolean }>;
+    /** Whether today's automatic recall nudge may show; claiming it uses up the day. */
+    claimDailyRecall(): Promise<{ allowed: boolean }>;
     muteRecallToday(): Promise<{ muted: boolean }>;
     sendToDraft(payload: {
       quote: string;

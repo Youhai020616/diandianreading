@@ -133,16 +133,17 @@ export const PetOverlayApp: React.FC = () => {
     };
   }, [refreshMilestone]);
 
-  // Gentle daily spaced-recall nudge (once per day when library has highlights and chat is collapsed)
+  // Gentle spaced-recall nudge: at most once a day (claimed in the main process, so app restarts and
+  // pet-window reloads do not repeat it), only while the chat is collapsed and the library has highlights.
   useEffect(() => {
     const timer = setTimeout(async () => {
       try {
         const current = await window.diandian.pet.getState();
         if (current.mode !== "collapsed") return;
-        const muted = await window.diandian.pet.getRecallMutedToday();
-        if (muted.muted) return;
         const hit = await window.diandian.library.randomRecall();
         if (!hit) return;
+        const { allowed } = await window.diandian.pet.claimDailyRecall();
+        if (!allowed) return;
         setRecallItem(hit);
         setOneShot("waving");
         await window.diandian.pet.setMode("nudge");
