@@ -81,12 +81,22 @@ export class AgentSupervisor {
 
   async stopCurrentTurn(): Promise<void> {
     if (!this.child) return;
-    // In M0 (stock npm sdk-app without custom cancel RPC), cleanly restart the bridge
-    // subprocess to immediately abort an in-flight turn and release resources.
+    // @deepseek-ai/dsh-sdk-client 0.2.2-rc.5 has no wire-level cancel: an abandoned run keeps
+    // running (and spending tokens) until the runtime closes. Ending the subprocess is the only
+    // real stop, so the engine is started again in the background and the next message does not
+    // wait for a cold boot. The conversation resumes from the session the SDK persisted.
     this.running = false;
     await this.dispose();
     this.options.onEvent({ kind: "status", running: false });
-    this.options.onEvent({ kind: "engine-state", state: "idle", detail: "已停止当前生成" });
+    this.options.onEvent({ kind: "engine-state", state: "idle", detail: "已停止当前回复，正在后台重新准备引擎…" });
+    this.prewarm();
+  }
+
+  /** Boot the engine ahead of the next message; a failure is reported and retried on send. */
+  private prewarm(): void {
+    const settings = this.options.getSettings();
+    if (!settings.apiKey) return;
+    void this.ensureReady(settings).catch(() => undefined);
   }
 
   resetSession(): void {
