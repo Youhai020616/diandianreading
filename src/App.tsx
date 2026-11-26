@@ -13,7 +13,10 @@ import type {
 import { BrowserPane } from "./components/BrowserPane";
 import { CookieImportModal } from "./components/CookieImportModal";
 import { DiscoverView, WEREAD_SHELF_URL } from "./components/DiscoverView";
-import { DownloadedBooksView, downloadedBookRevision, type WeReadImportStatus } from "./components/DownloadedBooksView";
+import { DownloadedBooksView } from "./components/DownloadedBooksView";
+import { useDownloadedBooks } from "./hooks/useDownloadedBooks";
+import { usePaneDrag } from "./hooks/usePaneDrag";
+import { useToasts } from "./hooks/useToasts";
 import { ZlibHistoryImport } from "./components/ZlibHistoryImport";
 import type { ContextAttachment } from "./components/DockedAskBar";
 import {
@@ -56,16 +59,6 @@ function readInitialTheme(): AppTheme {
     return "light";
   }
 }
-
-interface ToastItem {
-  id: number;
-  message: string;
-  tone: "info" | "success" | "error";
-  action?: { label: string; onClick: () => void };
-}
-
-/** Main-process error thrown when an Obsidian action runs before a vault is configured. */
-const OBSIDIAN_VAULT_MISSING_RE = /请先在「连接与偏好 → Obsidian 联动」中连接/;
 
 const DEFAULT_RAIL_WIDTH = 196;
 const MIN_RAIL_WIDTH = 160;
@@ -165,16 +158,10 @@ export const App: React.FC = () => {
   // Surf layout visibility & resizable widths
   const [railOpen, setRailOpen] = useState(true);
   const [railWidth, setRailWidth] = useState(DEFAULT_RAIL_WIDTH);
-  const [draggingRail, setDraggingRail] = useState(false);
-  const railDragStartRef = useRef<{ x: number; width: number; pointerId: number } | null>(null);
-  const railHandleRef = useRef<HTMLDivElement | null>(null);
   const [workspaceOpen, setWorkspaceOpen] = useState(true);
   const [browserOpen, setBrowserOpen] = useState(true);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiWidth, setAiWidth] = useState(DEFAULT_AI_WIDTH);
-  const [draggingAi, setDraggingAi] = useState(false);
-  const aiDragStartRef = useRef<{ x: number; width: number; pointerId: number } | null>(null);
-  const aiHandleRef = useRef<HTMLDivElement | null>(null);
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth : 1440,
   );
@@ -187,11 +174,6 @@ export const App: React.FC = () => {
 
   // Shared library + draft + Surf notebook summaries
   const [books, setBooks] = useState<BookRecord[]>([]);
-  const [downloadFiles, setDownloadFiles] = useState<DownloadedBookFile[] | null>(null);
-  const [downloadsLoading, setDownloadsLoading] = useState(true);
-  const [downloadError, setDownloadError] = useState("");
-  const [weReadImports, setWeReadImports] = useState<Record<string, WeReadImportStatus | undefined>>({});
-  const downloadRequest = useRef(0);
   const [drafts, setDrafts] = useState<DraftRecord[]>([]);
   const [notebooks, setNotebooks] = useState<NotebookRecord[]>([]);
   const [activeNotebookId, setActiveNotebookId] = useState<string | null>(null);
@@ -206,65 +188,21 @@ export const App: React.FC = () => {
 
   // Split width (center workspace width in px when right browser is open)
   const [leftWidth, setLeftWidth] = useState(660);
-  const [draggingSplit, setDraggingSplit] = useState(false);
-  const dragStartRef = useRef<{ x: number; width: number; pointerId: number } | null>(null);
-  const splitHandleRef = useRef<HTMLDivElement | null>(null);
 
   // Cross-view handoff states
   const [pendingPrompt, setPendingPrompt] = useState<PendingPromptPayload | null>(null);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [libraryRefreshSignal, setLibraryRefreshSignal] = useState(0);
 
-  // Toast stack
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const toastIdRef = useRef(1);
-
-  const openObsidianSettingsRef = useRef<() => void>(() => undefined);
-  const notify = useCallback((message: string, tone: "info" | "success" | "error" = "info") => {
-    const cleanMsg = tone === "error" ? formatUserError(message, message) : message;
-    const id = toastIdRef.current++;
-    const dismiss = () => setToasts((prev) => prev.filter((t) => t.id !== id));
-    const action = OBSIDIAN_VAULT_MISSING_RE.test(cleanMsg)
-      ? {
-          label: "去设置",
-          onClick: () => {
-            dismiss();
-            openObsidianSettingsRef.current();
-          },
-        }
-      : undefined;
-    setToasts((prev) => [...prev.slice(-3), { id, message: cleanMsg, tone, ...(action ? { action } : {}) }]);
-    setTimeout(dismiss, action ? 9000 : tone === "error" ? 5200 : 3600);
-  }, []);
-  openObsidianSettingsRef.current = () => {
+  const { notify, stack: toastStack } = useToasts(() => {
     setRouterInitialSection("obsidian");
     setActiveTab("router");
     setWorkspaceOpen(true);
-  };
-
-  const refreshDownloads = useCallback(async () => {
-    const request = ++downloadRequest.current;
-    setDownloadsLoading(true);
-    setDownloadError("");
-    try {
-      const files = await window.diandian.router.listDownloadedBooks();
-      if (request === downloadRequest.current) setDownloadFiles(files);
-      return files;
-    } catch (error) {
-      if (request === downloadRequest.current) setDownloadError(formatUserError(error, "读取下载目录失败"));
-    } finally {
-      if (request === downloadRequest.current) setDownloadsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshDownloads();
-    window.addEventListener("focus", refreshDownloads);
-    return () => {
-      ++downloadRequest.current;
-      window.removeEventListener("focus", refreshDownloads);
-    };
-  }, [refreshDownloads]);
+  });
+  const {
+    files: downloadFiles, loading: downloadsLoading, error: downloadError, weReadImports,
+    refresh: refreshDownloads, importToWeRead: importDownloadedToWeRead,
+  } = useDownloadedBooks(notify);
 
   const openWorkspaceTab = (tab: StudioTab) => {
     if (tab === "library") void refreshDownloads();
@@ -278,26 +216,6 @@ export const App: React.FC = () => {
     if (!file) return;
     setReaderTabs(tabs => tabs.map(tab => tab.filePath === previousPath ? { ...file, title } : tab));
     setReaderTarget(current => current?.file.filePath === previousPath ? { file } : current);
-  }
-
-  async function importDownloadedToWeRead(file: DownloadedBookFile) {
-    const revision = downloadedBookRevision(file);
-    if (weReadImports[revision] === "uploading") return;
-    const setStatus = (status?: WeReadImportStatus) => setWeReadImports(current => ({ ...current, [revision]: status }));
-    setStatus("uploading");
-    const title = file.fileName.replace(/\.[^.]+$/, "");
-    try {
-      const result = await window.diandian.router.importWeRead(file.filePath, { fromLibrary: true });
-      setStatus("shelf");
-      if (result.alreadyExisted) notify(`微信读书已收录《${title}》，可在微信读书中查找。`, "info");
-      else notify(`《${title}》已导入微信读书书架。`, "success");
-    } catch (cause) {
-      const message = formatUserError(cause, "导入微信读书失败，请重试。");
-      if (message.includes("连接与偏好")) setStatus("settings");
-      else if (message.includes("查看微信读书书架")) setStatus("shelf");
-      else setStatus();
-      notify(message, "error");
-    }
   }
 
   function readLocalBook(file: DownloadedBookFile, cfi?: string) {
@@ -574,218 +492,55 @@ export const App: React.FC = () => {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [browserOpen, reading]);
 
-  const endRailDrag = useCallback(() => {
-    const start = railDragStartRef.current;
-    const handleEl = railHandleRef.current;
-    if (start && handleEl && handleEl.hasPointerCapture(start.pointerId)) {
-      try {
-        handleEl.releasePointerCapture(start.pointerId);
-      } catch {
-        // Ignore
-      }
+  const railDrag = usePaneDrag((clientX, start, end) => {
+    const desired = start.width + (clientX - start.x);
+    if (desired < 108) {
+      end();
+      setRailWidth(DEFAULT_RAIL_WIDTH);
+      setRailOpen(false);
+      return;
     }
-    railDragStartRef.current = null;
-    setDraggingRail(false);
-    document.body.classList.remove("is-dragging-split");
-  }, []);
+    const maxAllowed = Math.min(MAX_RAIL_WIDTH, Math.max(MIN_RAIL_WIDTH, window.innerWidth - MIN_LEFT_WIDTH - (browserOpen ? MIN_BROWSER_WIDTH : 0) - 20));
+    setRailWidth(Math.max(MIN_RAIL_WIDTH, Math.min(maxAllowed, Math.round(desired))));
+  });
 
-  const handleRailPointerMove = useCallback(
-    (clientX: number, buttons: number) => {
-      const start = railDragStartRef.current;
-      if (!start) return;
-      if ((buttons & 1) === 0) {
-        endRailDrag();
-        return;
-      }
-      const desired = start.width + (clientX - start.x);
-      if (desired < 108) {
-        endRailDrag();
-        setRailWidth(DEFAULT_RAIL_WIDTH);
-        setRailOpen(false);
-        return;
-      }
-      const maxAllowed = Math.min(MAX_RAIL_WIDTH, Math.max(MIN_RAIL_WIDTH, window.innerWidth - MIN_LEFT_WIDTH - (browserOpen ? MIN_BROWSER_WIDTH : 0) - 20));
-      const clamped = Math.max(MIN_RAIL_WIDTH, Math.min(maxAllowed, Math.round(desired)));
-      setRailWidth(clamped);
-    },
-    [endRailDrag, browserOpen],
-  );
-
-  useEffect(() => {
-    if (!draggingRail) return;
-    document.body.classList.add("is-dragging-split");
-    const onPointerMove = (e: PointerEvent) => handleRailPointerMove(e.clientX, e.buttons);
-    const onMouseMove = (e: MouseEvent) => handleRailPointerMove(e.clientX, e.buttons);
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") endRailDrag();
-    };
-    window.addEventListener("pointermove", onPointerMove, true);
-    window.addEventListener("mousemove", onMouseMove, true);
-    window.addEventListener("pointerup", endRailDrag, true);
-    window.addEventListener("mouseup", endRailDrag, true);
-    window.addEventListener("pointercancel", endRailDrag, true);
-    window.addEventListener("blur", endRailDrag);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.classList.remove("is-dragging-split");
-      window.removeEventListener("pointermove", onPointerMove, true);
-      window.removeEventListener("mousemove", onMouseMove, true);
-      window.removeEventListener("pointerup", endRailDrag, true);
-      window.removeEventListener("mouseup", endRailDrag, true);
-      window.removeEventListener("pointercancel", endRailDrag, true);
-      window.removeEventListener("blur", endRailDrag);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [draggingRail, endRailDrag, handleRailPointerMove]);
-
-  const endSplitDrag = useCallback(() => {
-    const start = dragStartRef.current;
-    const handleEl = splitHandleRef.current;
-    if (start && handleEl && handleEl.hasPointerCapture(start.pointerId)) {
-      try {
-        handleEl.releasePointerCapture(start.pointerId);
-      } catch {
-        // Ignore if pointer already released
-      }
+  const splitDrag = usePaneDrag((clientX, start, end) => {
+    const railW = railOpen ? railWidth : 0;
+    const aiReserved = aiOpen ? aiWidth + SPLIT_HANDLE_WIDTH : 0;
+    const desiredLeft = start.width + (clientX - start.x);
+    if (desiredLeft < 200) {
+      end();
+      setWorkspaceOpen(false);
+      return;
     }
-    dragStartRef.current = null;
-    setDraggingSplit(false);
-    document.body.classList.remove("is-dragging-split");
-  }, []);
-
-  const handleSplitPointerMove = useCallback(
-    (clientX: number, buttons: number) => {
-      const start = dragStartRef.current;
-      if (!start) return;
-      if ((buttons & 1) === 0) {
-        endSplitDrag();
-        return;
-      }
-      const railW = railOpen ? railWidth : 0;
-      const aiReserved = aiOpen ? aiWidth + SPLIT_HANDLE_WIDTH : 0;
-      const desiredLeft = start.width + (clientX - start.x);
-      if (desiredLeft < 200) {
-        endSplitDrag();
-        setWorkspaceOpen(false);
-        return;
-      }
-      const remainingRight = window.innerWidth - railW - aiReserved - SPLIT_HANDLE_WIDTH - desiredLeft;
-      if (remainingRight < 170) {
-        endSplitDrag();
-        setLeftWidth(clampLeftWidth(Math.min(start.width, 640), window.innerWidth, railOpen, railWidth, aiOpen, aiWidth));
-        setBrowserOpen(false);
-        setWorkspaceOpen(true);
-        return;
-      }
-      setLeftWidth(clampLeftWidth(desiredLeft, window.innerWidth, railOpen, railWidth, aiOpen, aiWidth));
-    },
-    [endSplitDrag, railOpen, railWidth, aiOpen, aiWidth],
-  );
-
-  // Global safety nets so split-handle drag can NEVER stay stuck even when crossing native WebContentsView.
-  useEffect(() => {
-    if (!draggingSplit) return;
-    document.body.classList.add("is-dragging-split");
-
-    const onWindowPointerMove = (e: PointerEvent) => handleSplitPointerMove(e.clientX, e.buttons);
-    const onWindowMouseMove = (e: MouseEvent) => handleSplitPointerMove(e.clientX, e.buttons);
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") endSplitDrag();
-    };
-    const onVisibility = () => {
-      if (document.hidden) endSplitDrag();
-    };
-
-    window.addEventListener("pointermove", onWindowPointerMove, true);
-    window.addEventListener("mousemove", onWindowMouseMove, true);
-    window.addEventListener("pointerup", endSplitDrag, true);
-    window.addEventListener("mouseup", endSplitDrag, true);
-    window.addEventListener("pointercancel", endSplitDrag, true);
-    window.addEventListener("blur", endSplitDrag);
-    window.addEventListener("keydown", onKeyDown);
-    document.addEventListener("visibilitychange", onVisibility);
-
-    return () => {
-      document.body.classList.remove("is-dragging-split");
-      window.removeEventListener("pointermove", onWindowPointerMove, true);
-      window.removeEventListener("mousemove", onWindowMouseMove, true);
-      window.removeEventListener("pointerup", endSplitDrag, true);
-      window.removeEventListener("mouseup", endSplitDrag, true);
-      window.removeEventListener("pointercancel", endSplitDrag, true);
-      window.removeEventListener("blur", endSplitDrag);
-      window.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [draggingSplit, endSplitDrag, handleSplitPointerMove]);
-
-  const endAiDrag = useCallback(() => {
-    const start = aiDragStartRef.current;
-    const handleEl = aiHandleRef.current;
-    if (start && handleEl && handleEl.hasPointerCapture(start.pointerId)) {
-      try {
-        handleEl.releasePointerCapture(start.pointerId);
-      } catch {
-        // Ignore
-      }
+    const remainingRight = window.innerWidth - railW - aiReserved - SPLIT_HANDLE_WIDTH - desiredLeft;
+    if (remainingRight < 170) {
+      end();
+      setLeftWidth(clampLeftWidth(Math.min(start.width, 640), window.innerWidth, railOpen, railWidth, aiOpen, aiWidth));
+      setBrowserOpen(false);
+      setWorkspaceOpen(true);
+      return;
     }
-    aiDragStartRef.current = null;
-    setDraggingAi(false);
-    document.body.classList.remove("is-dragging-split");
-  }, []);
+    setLeftWidth(clampLeftWidth(desiredLeft, window.innerWidth, railOpen, railWidth, aiOpen, aiWidth));
+  }, { endWhenHidden: true });
 
-  const handleAiPointerMove = useCallback(
-    (clientX: number, buttons: number) => {
-      const start = aiDragStartRef.current;
-      if (!start) return;
-      if ((buttons & 1) === 0) {
-        endAiDrag();
-        return;
-      }
-      const desired = start.width - (clientX - start.x);
-      if (desired < 220) {
-        endAiDrag();
-        setAiWidth(DEFAULT_AI_WIDTH);
-        setAiOpen(false);
-        return;
-      }
-      const railW = railOpen ? railWidth : 0;
-      const minOther = browserOpen
-        ? workspaceOpen
-          ? MIN_LEFT_WIDTH_TRIPLE + MIN_BROWSER_WIDTH_TRIPLE + SPLIT_HANDLE_WIDTH
-          : MIN_BROWSER_WIDTH
-        : MIN_LEFT_WIDTH;
-      const maxAllowed = Math.min(MAX_AI_WIDTH, Math.max(MIN_AI_WIDTH, window.innerWidth - railW - minOther - SPLIT_HANDLE_WIDTH));
-      setAiWidth(Math.max(MIN_AI_WIDTH, Math.min(maxAllowed, Math.round(desired))));
-    },
-    [endAiDrag, railOpen, railWidth, browserOpen, workspaceOpen],
-  );
-
-  useEffect(() => {
-    if (!draggingAi) return;
-    document.body.classList.add("is-dragging-split");
-    const onPointerMove = (e: PointerEvent) => handleAiPointerMove(e.clientX, e.buttons);
-    const onMouseMove = (e: MouseEvent) => handleAiPointerMove(e.clientX, e.buttons);
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") endAiDrag();
-    };
-    window.addEventListener("pointermove", onPointerMove, true);
-    window.addEventListener("mousemove", onMouseMove, true);
-    window.addEventListener("pointerup", endAiDrag, true);
-    window.addEventListener("mouseup", endAiDrag, true);
-    window.addEventListener("pointercancel", endAiDrag, true);
-    window.addEventListener("blur", endAiDrag);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.classList.remove("is-dragging-split");
-      window.removeEventListener("pointermove", onPointerMove, true);
-      window.removeEventListener("mousemove", onMouseMove, true);
-      window.removeEventListener("pointerup", endAiDrag, true);
-      window.removeEventListener("mouseup", endAiDrag, true);
-      window.removeEventListener("pointercancel", endAiDrag, true);
-      window.removeEventListener("blur", endAiDrag);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [draggingAi, endAiDrag, handleAiPointerMove]);
+  const aiDrag = usePaneDrag((clientX, start, end) => {
+    const desired = start.width - (clientX - start.x);
+    if (desired < 220) {
+      end();
+      setAiWidth(DEFAULT_AI_WIDTH);
+      setAiOpen(false);
+      return;
+    }
+    const railW = railOpen ? railWidth : 0;
+    const minOther = browserOpen
+      ? workspaceOpen
+        ? MIN_LEFT_WIDTH_TRIPLE + MIN_BROWSER_WIDTH_TRIPLE + SPLIT_HANDLE_WIDTH
+        : MIN_BROWSER_WIDTH
+      : MIN_LEFT_WIDTH;
+    const maxAllowed = Math.min(MAX_AI_WIDTH, Math.max(MIN_AI_WIDTH, window.innerWidth - railW - minOther - SPLIT_HANDLE_WIDTH));
+    setAiWidth(Math.max(MIN_AI_WIDTH, Math.min(maxAllowed, Math.round(desired))));
+  });
 
   // Keep split width clamped on window resize or side-panel toggles
   useEffect(() => {
@@ -1329,26 +1084,8 @@ export const App: React.FC = () => {
           </div>
         </aside>
         <div
-          ref={railHandleRef}
-          className={`rail-resize-handle ${draggingRail ? "dragging" : ""}`}
-          onPointerDown={(e) => {
-            if (e.button !== 0) return;
-            e.preventDefault();
-            try {
-              e.currentTarget.setPointerCapture(e.pointerId);
-            } catch {
-              // Ignore
-            }
-            railDragStartRef.current = { x: e.clientX, width: railWidth, pointerId: e.pointerId };
-            setDraggingRail(true);
-          }}
-          onPointerMove={(e) => {
-            if (!railDragStartRef.current) return;
-            handleRailPointerMove(e.clientX, e.buttons);
-          }}
-          onPointerUp={() => endRailDrag()}
-          onPointerCancel={() => endRailDrag()}
-          onLostPointerCapture={() => endRailDrag()}
+          {...railDrag.handleProps(railWidth)}
+          className={`rail-resize-handle ${railDrag.dragging ? "dragging" : ""}`}
           onDoubleClick={() => setRailWidth(DEFAULT_RAIL_WIDTH)}
           title="拖动调整左侧栏宽度（拖至最左自动收起，双击重置）"
         />
@@ -1603,26 +1340,8 @@ export const App: React.FC = () => {
           <>
             {workspaceOpen && (
               <div
-                ref={splitHandleRef}
-                className={`split-handle ${draggingSplit ? "dragging" : ""}`}
-                onPointerDown={(e) => {
-                  if (e.button !== 0) return;
-                  e.preventDefault();
-                  try {
-                    e.currentTarget.setPointerCapture(e.pointerId);
-                  } catch {
-                    // Ignore if capture unsupported
-                  }
-                  dragStartRef.current = { x: e.clientX, width: leftWidth, pointerId: e.pointerId };
-                  setDraggingSplit(true);
-                }}
-                onPointerMove={(e) => {
-                  if (!dragStartRef.current) return;
-                  handleSplitPointerMove(e.clientX, e.buttons);
-                }}
-                onPointerUp={() => endSplitDrag()}
-                onPointerCancel={() => endSplitDrag()}
-                onLostPointerCapture={() => endSplitDrag()}
+                {...splitDrag.handleProps(leftWidth)}
+                className={`split-handle ${splitDrag.dragging ? "dragging" : ""}`}
                 onDoubleClick={() =>
                   setLeftWidth(clampLeftWidth(660, window.innerWidth, railOpen, railWidth, aiOpen, aiWidth))
                 }
@@ -1662,26 +1381,8 @@ export const App: React.FC = () => {
       {/* 4. Far-Right Floating Deta Surf AI Co-Reading Card (⌘L) */}
       {aiOpen && (
         <div
-          ref={aiHandleRef}
-          className={`ai-split-handle ${draggingAi ? "dragging" : ""}`}
-          onPointerDown={(e) => {
-            if (e.button !== 0) return;
-            e.preventDefault();
-            try {
-              e.currentTarget.setPointerCapture(e.pointerId);
-            } catch {
-              // Ignore
-            }
-            aiDragStartRef.current = { x: e.clientX, width: aiWidth, pointerId: e.pointerId };
-            setDraggingAi(true);
-          }}
-          onPointerMove={(e) => {
-            if (!aiDragStartRef.current) return;
-            handleAiPointerMove(e.clientX, e.buttons);
-          }}
-          onPointerUp={() => endAiDrag()}
-          onPointerCancel={() => endAiDrag()}
-          onLostPointerCapture={() => endAiDrag()}
+          {...aiDrag.handleProps(aiWidth)}
+          className={`ai-split-handle ${aiDrag.dragging ? "dragging" : ""}`}
           onDoubleClick={() => setAiWidth(DEFAULT_AI_WIDTH)}
           title="拖动调整问点点宽度（拖至最右自动收起，双击重置）"
         />
@@ -1737,20 +1438,7 @@ export const App: React.FC = () => {
         onNotify={notify}
       />
 
-      {toasts.length > 0 && (
-        <div className="toast-stack" role="status" aria-live="polite">
-          {toasts.map((t) => (
-            <div key={t.id} className={`toast-item ${t.tone}`}>
-              <span>{t.message}</span>
-              {t.action && (
-                <button type="button" className="toast-action" onClick={t.action.onClick}>
-                  {t.action.label}
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+      {toastStack}
     </div>
   );
 };
