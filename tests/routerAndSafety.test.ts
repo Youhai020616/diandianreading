@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildOverlayYaml } from "../electron/agent/overlay";
+import { buildOverlayYaml, webSearchEndpoint } from "../electron/agent/overlay";
 import {
   bundledZlibCandidates,
   extractDownloadedFilePath,
@@ -193,5 +193,26 @@ describe("Zlib CLI validation & multi-plugin overlay", () => {
     }
     expect(yaml).toContain("- id: tool-fs\n  config:\n    write: false\n    edit: false");
     expect(yaml).toContain(`- id: spill-local\n  config:\n    root: ${JSON.stringify(path.join(dir, "spill"))}`);
+    // DeepSeek: web_search uses the app's own key and endpoint (#54); the key itself never lands in the file.
+    expect(yaml).toContain('- id: web-deepseek-api\n  config:\n    searchBaseURL: "https://api.deepseek.com/v1/tools"\n    searchApiKeyEnv: DIANDIAN_LLM_API_KEY');
+  });
+});
+
+describe("Web search wiring (#54)", () => {
+  const settings = { model: "m", apiKey: "sk-must-not-leak" };
+
+  it("derives the DeepSeek Search API endpoint from the model base URL", () => {
+    expect(webSearchEndpoint({ provider: "deepseek", baseUrl: "https://api.deepseek.com/v1" })).toBe("https://api.deepseek.com/v1/tools");
+    expect(webSearchEndpoint({ provider: "deepseek", baseUrl: "https://proxy.example.com:8443/deepseek/v1" })).toBe("https://proxy.example.com:8443/v1/tools");
+    expect(webSearchEndpoint({ provider: "deepseek", baseUrl: "not a url" })).toBeNull();
+    expect(webSearchEndpoint({ provider: "openai-compatible", baseUrl: "https://api.openai.com/v1" })).toBeNull();
+  });
+
+  it("leaves web search unconfigured for other providers and never writes the key", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-overlay-search-"));
+    tempDirs.push(dir);
+    const yaml = buildOverlayYaml({ dshHome: dir, settings: { ...settings, provider: "openai-compatible", baseUrl: "https://api.openai.com/v1" } });
+    expect(yaml).not.toContain("web-deepseek-api");
+    expect(yaml).not.toContain("sk-must-not-leak");
   });
 });

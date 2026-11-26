@@ -40,6 +40,22 @@ export const DISABLED_HARNESS_PLUGINS = [
   "tool-skill",
 ] as const;
 
+/**
+ * DeepSeek Search API endpoint for web_search (issue #54), or null when the provider is not DeepSeek.
+ * The Harness offers web_search only with a DeepSeek credential; 点点读书 passes the key as
+ * DIANDIAN_LLM_API_KEY rather than DEEPSEEK_API_KEY, so the overlay points web-deepseek-api at it. The
+ * endpoint follows the Harness rule for DeepSeek routes: the model base URL's origin plus /v1/tools.
+ * Billed per successful search ($0.75 per 1,000, DeepSeek pricing as of 2026-11).
+ */
+export function webSearchEndpoint(settings: Pick<ModelSettings, "provider" | "baseUrl">): string | null {
+  if (settings.provider !== "deepseek") return null;
+  try {
+    return `${new URL(settings.baseUrl).origin}/v1/tools`;
+  } catch {
+    return null;
+  }
+}
+
 /** Where the Harness saves oversized tool output for the model to read back (an allowed read root). */
 export function harnessSpillDir(dshHome: string): string {
   return path.join(dshHome, "spill");
@@ -108,6 +124,17 @@ export function buildOverlayYaml(options: OverlayOptions): string {
     `    root: ${JSON.stringify(harnessSpillDir(options.dshHome))}`,
     ``,
   ];
+
+  const searchEndpoint = webSearchEndpoint(settings);
+  if (searchEndpoint) {
+    lines.push(
+      `- id: web-deepseek-api`,
+      `  config:`,
+      `    searchBaseURL: ${JSON.stringify(searchEndpoint)}`,
+      `    searchApiKeyEnv: DIANDIAN_LLM_API_KEY`,
+      ``,
+    );
+  }
 
   if (existingPlugins.length > 0) {
     lines.push(`- insert:`);

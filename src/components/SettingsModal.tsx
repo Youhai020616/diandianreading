@@ -7,6 +7,7 @@ import {
   IconClose,
   IconExternalLink,
   IconEye,
+  IconGlobe,
   IconLink,
   IconShield,
   IconZap,
@@ -304,6 +305,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, initial, onC
                 icon: p.id === "custom" ? <IconLink size={16} /> : <ModelBrandLogo brand={p.id} size={18} />,
               }))}
             />
+            {/* web_search needs a DeepSeek key (electron/agent/overlay.ts webSearchEndpoint, #54). */}
+            <div className="mset-privacy-note">
+              <IconGlobe size={12} />
+              <span>
+                {activePreset.backendProvider === "deepseek"
+                  ? "可联网搜索：AI 需要时会用 DeepSeek 搜索，每 1,000 次 $0.75，从这个密钥扣费"
+                  : "联网搜索只在选择 DeepSeek 时可用；其他服务下 AI 仍能打开你给出的网址"}
+              </span>
+            </div>
           </div>
 
           {/* 2. Human-friendly Model Picker Cards (for preset services) */}
