@@ -7,7 +7,6 @@ import { CustomSelect } from "./CustomSelect";
 import {
   IconCheck,
   IconCompass,
-  IconCopy,
   IconGlobe,
   IconLink,
   IconQrCode,
@@ -262,25 +261,9 @@ export const RouterView: React.FC<RouterViewProps> = ({
             {zlibStatus?.installed === false && (
               <div className="muted-box" style={{ textAlign: "left" }}>
                 <div style={{ fontWeight: 600, color: "var(--ink)", marginBottom: 4 }}>
-                  未检测到本机可选组件 heartleo/zlib CLI（不影响阅读、笔记、创作与卡片核心功能）
+                  书源组件缺失（不影响阅读、笔记、创作与卡片）
                 </div>
-                <div style={{ marginBottom: 8 }}>
-                  如需使用个人自有账号的电子书搜索、Kindle SMTP 推送或微信读书书架上传，可在终端安装后点击上方「刷新状态」：
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span className="code-inline">brew install heartleo/tap/zlib-cli</span>
-                  <button
-                    type="button"
-                    className="btn sm"
-                    onClick={async () => {
-                      await navigator.clipboard.writeText("brew install heartleo/tap/zlib-cli");
-                      onNotify("已复制安装命令", "success");
-                    }}
-                  >
-                    <IconCopy size={12} />
-                    <span>复制命令</span>
-                  </button>
-                </div>
+                <div>{zlibStatus.installHint} 电子书搜索、发送到 Kindle 和导入微信读书书架需要它。</div>
               </div>
             )}
             {zlibStatus?.installed && (

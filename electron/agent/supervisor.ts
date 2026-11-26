@@ -18,6 +18,8 @@ export type AgentEvent =
 export interface AgentSupervisorOptions {
   userDataDir: string;
   projectRoot: string;
+  /** Installed app: run the Harness on the Node.js shipped in resources/node, never a system Node. */
+  packaged?: boolean;
   bridgeEndpoint: string;
   bridgeToken: string;
   twinDir: string;
@@ -195,8 +197,10 @@ export class AgentSupervisor {
     ];
     const overlayPath = writeOverlayPatch({ dshHome, pluginEntries, settings });
 
-    const bridgeScript = path.join(__dirname, "sdkBridge.mjs");
-    const runtime = resolveNodeRuntime();
+    const bridgeScript = path.join(this.options.projectRoot, "dist-electron", "agent", "sdkBridge.mjs");
+    const runtime = resolveNodeRuntime(this.options.packaged
+      ? { allowSystemNode: false, bundledNodeBin: path.join(process.resourcesPath, "node", process.platform === "win32" ? "node.exe" : "node") }
+      : {});
 
     const childEnv: NodeJS.ProcessEnv = {
       ...process.env,

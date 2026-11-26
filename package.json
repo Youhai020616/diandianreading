@@ -4,6 +4,7 @@
   "version": "2.0.0-alpha.0",
   "private": true,
   "description": "Local-first AI reading, personal voice writing, and visual card studio (Electron + DeepSeek Harness)",
+  "author": "点点读书",
   "main": "dist-electron/main.js",
   "engines": {
     "node": ">=24"
@@ -13,8 +14,10 @@
     "build:electron": "tsc -p tsconfig.electron.json && node scripts/copy-electron-assets.mjs",
     "build:renderer": "tsc -p tsconfig.json --noEmit && vite build",
     "build": "pnpm run build:electron && pnpm run build:renderer",
-    "dev": "pnpm run build:electron && node scripts/dev-electron.mjs",
+    "dev": "node scripts/fetch-binaries.mjs zlib --optional && pnpm run build:electron && node scripts/dev-electron.mjs",
     "start": "pnpm run build && electron .",
+    "fetch:zlib": "node scripts/fetch-binaries.mjs zlib",
+    "dist:mac": "pnpm build && electron-builder --mac --arm64",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -24,9 +27,6 @@
     "@deepseek-ai/dsh-sdk-client": "0.2.2-rc.5",
     "@deepseek-ai/dsh-tools": "0.2.2-rc.5",
     "fflate": "0.8.3",
-    "foliate-js": "https://codeload.github.com/johnfactotum/foliate-js/tar.gz/78914aef4466eb960965702401634c2cb348e9b1",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
     "saxes": "^6.0.0",
     "sharp": "0.35.5",
     "yauzl": "^3.4.0"
@@ -38,6 +38,10 @@
     "@types/yauzl": "^3.4.0",
     "@vitejs/plugin-react": "^6.0.5",
     "electron": "45.4.1",
+    "electron-builder": "26.18.0",
+    "foliate-js": "https://codeload.github.com/johnfactotum/foliate-js/tar.gz/78914aef4466eb960965702401634c2cb348e9b1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "typescript": "~5.9.2",
     "vite": "^8.2.0",
     "vitest": "^4.1.10"
@@ -54,17 +58,81 @@
   "build": {
     "appId": "com.diandianreading.app",
     "productName": "点点读书",
+    "copyright": "Copyright © 2026 点点读书",
     "directories": {
-      "buildResources": "build"
+      "buildResources": "build",
+      "output": "release/${version}"
     },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "plugins/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "dist-electron/agent/**",
+      "plugins/**"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/zlib/${os}-${arch}",
+        "to": "zlib",
+        "filter": [
+          "zlib",
+          "zlib.exe",
+          "LICENSE"
+        ]
+      },
+      {
+        "from": "vendor/node/${os}-${arch}",
+        "to": "node",
+        "filter": [
+          "node",
+          "node.exe",
+          "LICENSE"
+        ]
+      },
+      {
+        "from": "vendor/runtime/${os}-${arch}/node_modules",
+        "to": "node_modules",
+        "filter": [
+          "**/*",
+          "!**/.bin",
+          "!.modules.yaml",
+          "!.pnpm",
+          "!.pnpm-workspace-state*.json",
+          "!**/*.d.ts",
+          "!**/*.d.mts",
+          "!**/*.d.cts",
+          "!**/*.map"
+        ]
+      }
+    ],
+    "beforeBuild": "./scripts/before-build.mjs",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "publish": null,
     "mac": {
-      "icon": "build/icons/icon.icns"
+      "icon": "build/icons/icon.icns",
+      "category": "public.app-category.education",
+      "target": [
+        "dmg"
+      ]
+    },
+    "dmg": {
+      "writeUpdateInfo": false
     },
     "win": {
-      "icon": "build/icons/icon.ico"
+      "icon": "build/icons/icon.ico",
+      "target": [
+        "nsis"
+      ]
     },
     "linux": {
-      "icon": "build/icons"
+      "icon": "build/icons",
+      "target": [
+        "AppImage"
+      ],
+      "category": "Education"
     }
   }
 }

@@ -130,8 +130,13 @@ export function resolveAppEntryUrl(): string {
   return pathToFileURL(path.join(__dirname, "../dist/index.html")).href;
 }
 
+/**
+ * Root that holds `plugins/`, `dist-electron/agent/` and `node_modules/` as real files. The Harness runs
+ * in a separate Node process that cannot read app.asar, so an installed app unpacks these
+ * (electron-builder `asarUnpack`) and the agent uses `app.asar.unpacked`.
+ */
 export function resolveProjectRoot(): string {
-  return path.resolve(__dirname, "..");
+  return app.isPackaged ? path.join(process.resourcesPath, "app.asar.unpacked") : path.resolve(__dirname, "..");
 }
 
 export function sendToMain(channel: string, payload: unknown): void {

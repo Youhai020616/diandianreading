@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildOverlayYaml } from "../electron/agent/overlay";
 import {
+  bundledZlibCandidates,
   extractDownloadedFilePath,
   isValidZlibBookRef,
   parseZlibSearchJson,
@@ -67,6 +68,26 @@ describe("Runtime safety policy", () => {
     expect(store.read()).toBe("plan");
     store.write("auto");
     expect(store.read()).toBe("auto");
+  });
+});
+
+describe("Bundled zlib CLI location", () => {
+  it("looks in the installed app's resources first, then the checkout's vendor folder", () => {
+    const [installed, checkout] = bundledZlibCandidates("/Applications/Diandian.app/Contents/Resources", "darwin", "arm64");
+    expect(installed).toBe(path.join("/Applications/Diandian.app/Contents/Resources", "zlib", "zlib"));
+    expect(checkout).toBe(path.resolve(__dirname, "..", "vendor", "zlib", "mac-arm64", "zlib"));
+  });
+
+  it("uses electron-builder's ${os}-${arch} folder names and .exe on Windows", () => {
+    const candidates = bundledZlibCandidates("C:\\App\\resources", "win32", "x64");
+    expect(candidates[0]).toBe(path.join("C:\\App\\resources", "zlib", "zlib.exe"));
+    expect(candidates[1]).toBe(path.resolve(__dirname, "..", "vendor", "zlib", "win-x64", "zlib.exe"));
+  });
+
+  it("skips the resources folder outside Electron", () => {
+    expect(bundledZlibCandidates(undefined, "linux", "x64")).toEqual([
+      path.resolve(__dirname, "..", "vendor", "zlib", "linux-x64", "zlib"),
+    ]);
   });
 });
 

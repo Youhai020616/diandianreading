@@ -5,7 +5,7 @@ export const MIN_NODE_MAJOR = 24;
 export interface ResolvedNodeRuntime {
   bin: string;
   env: Record<string, string>;
-  source: "override" | "system" | "electron-run-as-node";
+  source: "override" | "bundled" | "system" | "electron-run-as-node";
   version?: string;
 }
 
@@ -32,6 +32,13 @@ export function resolveNodeRuntime(
     overridePath?: string;
     systemNodeBin?: string;
     electronExecPath?: string;
+    /**
+     * The Node.js shipped in an installed app (resources/node, see scripts/fetch-binaries.mjs). The
+     * Harness's native addons reject Electron's built-in Node, so an installed app relies on this one.
+     */
+    bundledNodeBin?: string;
+    /** False in an installed app: only the bundled, tested Node is used, never whatever is on PATH. */
+    allowSystemNode?: boolean;
     probe?: (bin: string) => { ok: boolean; version: string };
   } = {},
 ): ResolvedNodeRuntime {
@@ -41,11 +48,19 @@ export function resolveNodeRuntime(
     return { bin: override, env: {}, source: "override" };
   }
 
-  const candidates = options.systemNodeBin
-    ? [options.systemNodeBin]
-    : ["node", "/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"];
-
   let lastVersion = "";
+  if (options.bundledNodeBin) {
+    const probed = probe(options.bundledNodeBin);
+    if (probed.version) lastVersion = probed.version;
+    if (probed.ok) return { bin: options.bundledNodeBin, env: {}, source: "bundled", version: probed.version };
+  }
+
+  const candidates = options.allowSystemNode === false
+    ? []
+    : options.systemNodeBin
+      ? [options.systemNodeBin]
+      : ["node", "/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"];
+
   for (const sysBin of candidates) {
     const probed = probe(sysBin);
     if (probed.version) lastVersion = probed.version;
@@ -59,6 +74,8 @@ export function resolveNodeRuntime(
     }
   }
 
+  // Last resort. node-addon-require-builtin 0.1.10 (loaded by the Harness) only accepts the Electron
+  // versions it lists, and Electron 45.4 is not one of them, so the engine then fails to boot.
   return {
     bin: options.electronExecPath ?? process.execPath,
     env: { ELECTRON_RUN_AS_NODE: "1" },

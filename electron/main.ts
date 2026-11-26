@@ -487,6 +487,7 @@ async function bootstrap(): Promise<void> {
   state.supervisor = new AgentSupervisor({
     userDataDir,
     projectRoot: resolveProjectRoot(),
+    packaged: app.isPackaged,
     bridgeEndpoint: endpoint,
     bridgeToken: state.bridgeServer.token,
     twinDir: state.twinStore.twinDir,

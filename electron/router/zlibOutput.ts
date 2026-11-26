@@ -30,9 +30,28 @@ export function normalizeZlibDomainUrl(raw: string): string {
   return `${parsed.protocol}//${parsed.host}`;
 }
 
+/**
+ * Where the copy of heartleo/zlib that ships with the app lives: `resources/zlib/` in an installed app
+ * (electron-builder `extraResources`), `vendor/zlib/<os>-<arch>/` in a checkout (`pnpm fetch:zlib`).
+ */
+export function bundledZlibCandidates(
+  resourcesPath: string | undefined = process.resourcesPath,
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): string[] {
+  const exe = platform === "win32" ? "zlib.exe" : "zlib";
+  const os = platform === "darwin" ? "mac" : platform === "win32" ? "win" : platform;
+  return [
+    ...(resourcesPath ? [path.join(resourcesPath, "zlib", exe)] : []),
+    path.resolve(__dirname, "..", "..", "vendor", "zlib", `${os}-${arch}`, exe),
+  ];
+}
+
+/** An explicit override, then the bundled copy (the version the parsers are tested with), then a system install. */
 export function locateZlibBinary(): string | null {
   const candidates = [
     process.env.DIANDIAN_ZLIB_BIN,
+    ...bundledZlibCandidates(),
     "/opt/homebrew/bin/zlib",
     "/usr/local/bin/zlib",
     "/usr/bin/zlib",

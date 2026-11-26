@@ -13,7 +13,6 @@ import { WeReadReadyModal } from "./discover/WeReadReadyModal";
 import {
   IconCheck,
   IconClose,
-  IconCopy,
   IconGlobe,
   IconRefresh,
   IconSearch,
@@ -681,27 +680,14 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             />
           )}
 
-          {/* Case 1: zlib CLI not installed */}
+          {/* Case 1: the bundled zlib CLI is missing (damaged install) */}
           {!loadingConn && !zlibInstalled && (
             <section className="discover-onboarding-card">
-              <div className="discover-onboarding-title">安装书源组件后即可全网搜书</div>
+              <div className="discover-onboarding-title">书源组件缺失，暂时无法搜书</div>
               <p className="discover-onboarding-desc">
-                点点读书通过本机可选组件 <span className="code-inline">heartleo/zlib-cli</span>{" "}
-                安全调用你自有 Z-Library 账号检索与下载电子书（未安装不影响共读对话、书库与创作）。
+                {connections?.status.installHint} 共读对话、书库与创作不受影响。
               </p>
               <div className="discover-onboarding-actions">
-                <span className="code-inline">brew install heartleo/tap/zlib-cli</span>
-                <button
-                  type="button"
-                  className="btn sm primary"
-                  onClick={async () => {
-                    await navigator.clipboard.writeText("brew install heartleo/tap/zlib-cli");
-                    onNotify("已复制安装命令", "success");
-                  }}
-                >
-                  <IconCopy size={12} />
-                  <span>复制命令</span>
-                </button>
                 <button
                   type="button"
                   className="btn sm ghost"

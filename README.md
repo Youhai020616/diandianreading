@@ -25,18 +25,40 @@
 4. **不可变创作工作台 + 离线沙盒 3:4 高清卡片工坊**
    - AI 原稿与人工修订按不可变版本链分层保存，支持「对照 AI 原稿」双栏审阅，永不互相覆盖。
    - 5 套温润宣纸/瑞士网格/深夜书房/青苔书笺/灵感刊头 3:4 书摘卡片，基于受控 `htmlcard://` 离线沙盒（禁用外部网络）离屏 2× Retina 烘焙为 `1080×1440` PNG，一键复制剪贴板直贴小红书/公众号。
-5. **Obsidian 单向增量导出 & 可选 `heartleo/zlib` 书源路由**
+5. **Obsidian 单向增量导出 & `heartleo/zlib` 书源路由**
    - 把书籍笔记和草稿单向导出到 Obsidian：通过 frontmatter `diandian_id` 跟踪笔记库里的改名/移动；检测到手工编辑过的笔记时输出 `.diandian-conflict.md` 冲突副本，绝不静默覆盖；支持 `obsidian://open` 深链接直达。在 Obsidian 里的修改不会写回点点。
-   - 可选检测本机 `heartleo/zlib` CLI，支持用用户自有账号检索、下载、推送 Kindle 与导入微信读书书架；未安装时完全不影响核心功能。
+   - 安装包内置 `heartleo/zlib` CLI（MIT），支持用用户自有账号检索、下载、推送 Kindle 与导入微信读书书架；不登录 Z-Library 也不影响其他功能。
 
 ## 快速启动
 
+从源码运行需要 Node.js ≥ 24 和 pnpm：
+
 ```bash
 pnpm install
-pnpm dev      # 开发模式（Vite HMR + Electron）
+pnpm dev      # 开发模式（Vite HMR + Electron）；首次运行会下载内置的 zlib CLI 到 vendor/
 # 或
 pnpm build && pnpm start
 ```
+
+## 打包安装包
+
+```bash
+pnpm dist:mac   # → release/<version>/点点读书-<version>-mac-arm64.dmg
+```
+
+安装包自带运行所需的一切，用户不需要安装 Homebrew、Node.js 或 pnpm。除 `app.asar` 外，`resources/` 下还有：
+
+| 目录 | 内容 | 来源 |
+|---|---|---|
+| `zlib/` | `heartleo/zlib` CLI v0.0.16 | GitHub Release，SHA-256 固定在 `scripts/fetch-binaries.mjs` |
+| `node/` | Node.js v24.22.3，运行 DeepSeek Harness | nodejs.org，SHA-256 同上 |
+| `node_modules/` | 生产依赖（扁平布局） | 按同一份 `pnpm-lock.yaml` 安装，见 `scripts/stage-runtime.mjs` |
+
+说明：
+
+- Harness 依赖的原生模块 `node-addon-require-builtin` 不支持 Electron 45 内置的 Node，所以单独带一份 Node.js；打包后的应用只用这份，不会用到用户机器上的 Node。
+- 依赖由 `scripts/before-build.mjs`（electron-builder 的 `beforeBuild` 钩子）准备。electron-builder 自带的依赖收集器处理不了这棵依赖树（pnpm 收集器内存溢出，回退方案漏掉 peer 依赖）。
+- 目前只能打当前机器的平台和架构；签名与公证尚未配置，未签名的安装包在其他电脑上会被 macOS 拦截。
 
 ## 验证命令
 

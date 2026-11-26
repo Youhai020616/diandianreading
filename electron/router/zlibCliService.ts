@@ -78,7 +78,7 @@ export class ZlibCliService {
 
   async getStatus(): Promise<ZlibStatus> {
     const binaryPath = locateZlibBinary();
-    const installHint = "brew install heartleo/tap/zlib-cli  （可选外部组件，未安装不影响阅读、笔记与创作核心功能）";
+    const installHint = "书源组件随安装包提供，可能已损坏或被安全软件移除，请重新安装点点读书。";
     if (!binaryPath) {
       return {
         installed: false,
@@ -212,7 +212,7 @@ export class ZlibCliService {
   private requireBinary(): string {
     const bin = locateZlibBinary();
     if (!bin) {
-      throw new Error("本机尚未安装可选组件 heartleo/zlib CLI。请先执行 `brew install heartleo/tap/zlib-cli` 并自行登录配置。");
+      throw new Error("找不到书源组件 heartleo/zlib。它随安装包提供，请重新安装点点读书后再试。");
     }
     return bin;
   }

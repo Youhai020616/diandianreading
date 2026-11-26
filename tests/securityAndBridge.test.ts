@@ -149,6 +149,37 @@ describe("Node runtime resolution", () => {
     expect(resolved.bin).toBe("/Applications/Diandian.app/Contents/MacOS/Diandian");
   });
 
+  it("runs an installed app's Harness on the bundled Node, never a system Node", () => {
+    const probed: string[] = [];
+    const resolved = resolveNodeRuntime({
+      overridePath: "",
+      bundledNodeBin: "/Applications/Diandian.app/Contents/Resources/node/node",
+      allowSystemNode: false,
+      probe: (bin) => {
+        probed.push(bin);
+        return { ok: true, version: "24.22.3" };
+      },
+    });
+    expect(resolved).toMatchObject({ source: "bundled", bin: "/Applications/Diandian.app/Contents/Resources/node/node", env: {} });
+    expect(probed).toEqual(["/Applications/Diandian.app/Contents/Resources/node/node"]);
+  });
+
+  it("does not reach for a system Node when the bundled one is unusable", () => {
+    const probed: string[] = [];
+    const resolved = resolveNodeRuntime({
+      overridePath: "",
+      bundledNodeBin: "/broken/node",
+      allowSystemNode: false,
+      electronExecPath: "/Applications/Diandian.app/Contents/MacOS/Diandian",
+      probe: (bin) => {
+        probed.push(bin);
+        return { ok: false, version: "" };
+      },
+    });
+    expect(resolved.source).toBe("electron-run-as-node");
+    expect(probed).toEqual(["/broken/node"]);
+  });
+
   it("uses system node when version >= 24", () => {
     const resolved = resolveNodeRuntime({
       overridePath: "",
