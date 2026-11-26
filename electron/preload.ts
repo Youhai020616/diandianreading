@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { ReaderTranslationInput, ReaderTranslationSettingsInput } from "../src/types/desktop";
 import type { DownloadCoverHint, ReaderAnnotationInput } from "../src/types/desktop";
+import type {
+  AgentEvent, AppMenuActionEvent, AppQuickActionEvent, BrowserStateSnapshot, CarouselDeckPayload, ConceptVisualPayload,
+  DesktopBridgeApi, MonthlyPosterPayload, PetQuickQuoteEvent, PetWindowState, ReadingCardPayload, WeReadQrEvent,
+} from "../src/types/desktop";
 
 const desktopApi = {
   app: {
@@ -13,15 +17,15 @@ const desktopApi = {
         ipcRenderer.removeListener("app:theme-changed", listener);
       };
     },
-    onQuickAction: (callback: (payload: unknown) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload);
+    onQuickAction: (callback: (payload: AppQuickActionEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: AppQuickActionEvent) => callback(payload);
       ipcRenderer.on("app:quick-action", listener);
       return () => {
         ipcRenderer.removeListener("app:quick-action", listener);
       };
     },
-    onMenuAction: (callback: (payload: unknown) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload);
+    onMenuAction: (callback: (payload: AppMenuActionEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: AppMenuActionEvent) => callback(payload);
       ipcRenderer.on("app:menu-action", listener);
       // Deliver a command chosen while this window was still opening or loading.
       void ipcRenderer.invoke("app:take-menu-action").then((payload) => {
@@ -87,8 +91,8 @@ const desktopApi = {
       ipcRenderer.invoke("browser:inspect-local-browser", profileId),
     importLocalBrowser: (input: { profileId: string; groups: string[] }) =>
       ipcRenderer.invoke("browser:import-local-browser", input),
-    onStateChanged: (callback: (snapshot: unknown) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, snapshot: unknown) => callback(snapshot);
+    onStateChanged: (callback: (snapshot: BrowserStateSnapshot) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, snapshot: BrowserStateSnapshot) => callback(snapshot);
       ipcRenderer.on("browser:state", listener);
       return () => {
         ipcRenderer.removeListener("browser:state", listener);
@@ -143,8 +147,8 @@ const desktopApi = {
     getSession: (id: string) => ipcRenderer.invoke("agent:get-session", id),
     saveSession: (input: Record<string, unknown>) => ipcRenderer.invoke("agent:save-session", input),
     deleteSession: (id: string) => ipcRenderer.invoke("agent:delete-session", id),
-    onEvent: (callback: (event: unknown) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload);
+    onEvent: (callback: (event: AgentEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: AgentEvent) => callback(payload);
       ipcRenderer.on("agent:event", listener);
       return () => {
         ipcRenderer.removeListener("agent:event", listener);
@@ -213,22 +217,22 @@ const desktopApi = {
   },
   cards: {
     templates: () => ipcRenderer.invoke("cards:templates"),
-    previewHtml: (payload: Record<string, unknown>) => ipcRenderer.invoke("cards:preview-html", payload),
-    bakeCopyPng: (payload: Record<string, unknown>) => ipcRenderer.invoke("cards:bake-copy-png", payload),
-    bakeSavePng: (payload: Record<string, unknown>) => ipcRenderer.invoke("cards:bake-save-png", payload),
+    previewHtml: (payload: ReadingCardPayload) => ipcRenderer.invoke("cards:preview-html", payload),
+    bakeCopyPng: (payload: ReadingCardPayload) => ipcRenderer.invoke("cards:bake-copy-png", payload),
+    bakeSavePng: (payload: ReadingCardPayload) => ipcRenderer.invoke("cards:bake-save-png", payload),
     splitCarousel: (input: Record<string, unknown>) => ipcRenderer.invoke("cards:split-carousel", input),
     bakeCopyCarouselSlide: (input: Record<string, unknown>) =>
       ipcRenderer.invoke("cards:bake-copy-carousel-slide", input),
-    bakeExportCarouselFolder: (deck: Record<string, unknown>) =>
+    bakeExportCarouselFolder: (deck: CarouselDeckPayload) =>
       ipcRenderer.invoke("cards:bake-export-carousel-folder", deck),
-    bakeCopyPoster: (payload: Record<string, unknown>) => ipcRenderer.invoke("cards:bake-copy-poster", payload),
-    bakeSavePoster: (payload: Record<string, unknown>) => ipcRenderer.invoke("cards:bake-save-poster", payload),
+    bakeCopyPoster: (payload: MonthlyPosterPayload) => ipcRenderer.invoke("cards:bake-copy-poster", payload),
+    bakeSavePoster: (payload: MonthlyPosterPayload) => ipcRenderer.invoke("cards:bake-save-poster", payload),
     extractConcept: (input: { title: string; content: string; bookTitle?: string }) =>
       ipcRenderer.invoke("cards:extract-concept", input),
-    previewConceptHtml: (payload: Record<string, unknown>) =>
+    previewConceptHtml: (payload: ConceptVisualPayload) =>
       ipcRenderer.invoke("cards:preview-concept-html", payload),
-    bakeCopyConcept: (payload: Record<string, unknown>) => ipcRenderer.invoke("cards:bake-copy-concept", payload),
-    bakeSaveConcept: (payload: Record<string, unknown>) => ipcRenderer.invoke("cards:bake-save-concept", payload),
+    bakeCopyConcept: (payload: ConceptVisualPayload) => ipcRenderer.invoke("cards:bake-copy-concept", payload),
+    bakeSaveConcept: (payload: ConceptVisualPayload) => ipcRenderer.invoke("cards:bake-save-concept", payload),
   },
   obsidian: {
     getVault: () => ipcRenderer.invoke("obsidian:get-vault"),
@@ -252,8 +256,8 @@ const desktopApi = {
     startWeReadQr: () => ipcRenderer.invoke("router:start-weread-qr"),
     cancelWeReadQr: () => ipcRenderer.invoke("router:cancel-weread-qr"),
     logoutWeRead: () => ipcRenderer.invoke("router:logout-weread"),
-    onWeReadQrEvent: (callback: (event: unknown) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload);
+    onWeReadQrEvent: (callback: (event: WeReadQrEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: WeReadQrEvent) => callback(payload);
       ipcRenderer.on("router:weread-qr", listener);
       return () => {
         ipcRenderer.removeListener("router:weread-qr", listener);
@@ -307,21 +311,21 @@ const desktopApi = {
     dragMove: (screenX: number, screenY: number) => ipcRenderer.send("pet:drag-move", { screenX, screenY }),
     dragEnd: () => ipcRenderer.send("pet:drag-end"),
     focusMain: () => ipcRenderer.invoke("pet:focus-main"),
-    onStateChanged: (callback: (state: unknown) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, state: unknown) => callback(state);
+    onStateChanged: (callback: (state: PetWindowState) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, state: PetWindowState) => callback(state);
       ipcRenderer.on("pet:state", listener);
       return () => {
         ipcRenderer.removeListener("pet:state", listener);
       };
     },
-    onQuickQuote: (callback: (payload: unknown) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload);
+    onQuickQuote: (callback: (payload: PetQuickQuoteEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: PetQuickQuoteEvent) => callback(payload);
       ipcRenderer.on("pet:quick-quote", listener);
       return () => {
         ipcRenderer.removeListener("pet:quick-quote", listener);
       };
     },
   },
-};
+} satisfies DesktopBridgeApi;
 
 contextBridge.exposeInMainWorld("diandian", desktopApi);
