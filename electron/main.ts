@@ -668,6 +668,7 @@ function wireIpcHandlers(): void {
         id: string;
         title: string;
         harnessSessionId?: string;
+        contextLabel?: string;
         messages: Array<{
           id: string;
           role: "user" | "assistant" | "system";

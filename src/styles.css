@@ -6827,6 +6827,72 @@ body.pet-mode #root {
   cursor: default;
 }
 
+.ai-header-icon-btn.ai-header-new-chat {
+  width: auto;
+  gap: 5px;
+  padding: 0 9px 0 7px;
+  font-size: 12px;
+}
+
+.ai-history-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ai-history-group + .ai-history-group {
+  margin-top: 6px;
+}
+
+.ai-history-group-label {
+  padding: 4px 8px 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ai-context-switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 6px 18px 0;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--ink-secondary);
+  font-size: 12px;
+}
+
+.ai-context-switch span {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.ai-context-switch strong {
+  margin: 0 2px;
+  color: var(--ink);
+}
+
+.ai-context-switch button {
+  padding: 3px 10px;
+  border-radius: 7px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ai-context-switch button.ghost {
+  background: transparent;
+  color: var(--ink-secondary);
+}
+
 .ai-drawer-brand-whisper {
   font-size: 13px;
   font-weight: 500;

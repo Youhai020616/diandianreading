@@ -86,6 +86,8 @@ export interface ChatSessionSummary {
   id: string;
   title: string;
   harnessSessionId: string;
+  /** The book, page or draft the conversation started from; used to group history. */
+  contextLabel: string;
   messageCount: number;
   preview: string;
   createdAt: string;
@@ -720,6 +722,7 @@ export interface DesktopBridgeApi {
       id: string;
       title: string;
       harnessSessionId?: string;
+      contextLabel?: string;
       messages: Array<{
         id: string;
         role: "user" | "assistant" | "system";

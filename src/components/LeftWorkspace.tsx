@@ -26,6 +26,7 @@ import {
   IconTrash,
 } from "./Icons";
 import { MarkdownText } from "./MarkdownText";
+import { contextSubject, groupSessionsByContext } from "../lib/chatSessions";
 
 export interface PendingPromptPayload {
   text: string;
@@ -249,6 +250,10 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  // The book / page / draft the current conversation started from (its history group).
+  const [sessionContext, setSessionContext] = useState("");
+  const sessionContextRef = useRef("");
+  const [dismissedSuggestion, setDismissedSuggestion] = useState("");
   const ctxPickerRef = useRef<HTMLDivElement | null>(null);
   const historyRef = useRef<HTMLDivElement | null>(null);
   const currentSessionIdRef = useRef<string | null>(null);
@@ -266,6 +271,10 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
   const [composerFocusTick, setComposerFocusTick] = useState(0);
 
   currentSessionIdRef.current = currentSessionId;
+  const changeSessionContext = useCallback((label: string) => {
+    sessionContextRef.current = label;
+    setSessionContext(label);
+  }, []);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -294,6 +303,7 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
           id: sid,
           title,
           harnessSessionId: hid,
+          contextLabel: sessionContextRef.current,
           messages: nextMessages.map((m) => ({
             id: m.id,
             role: m.role,
@@ -372,7 +382,7 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
   };
 
   const sendPrompt = useCallback(
-    async (overridePrompt?: string, displayText?: string, contextLabels?: string[]) => {
+    async (overridePrompt?: string, displayText?: string, contextLabels?: string[], subject = "") => {
       const prompt = (overridePrompt ?? input).trim();
       if (!prompt || running || sendingRef.current) return;
       if (!modelSettings?.hasApiKey) {
@@ -387,6 +397,7 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
         currentSessionIdRef.current = sid;
         setCurrentSessionId(sid);
         harnessSessionIdRef.current = null;
+        changeSessionContext(subject);
       }
 
       const shown = (displayText ?? prompt).trim();
@@ -428,7 +439,7 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
         ]);
       }
     },
-    [input, running, modelSettings?.hasApiKey, onOpenSettings, onNotify],
+    [input, running, modelSettings?.hasApiKey, onOpenSettings, onNotify, changeSessionContext],
   );
 
   useEffect(() => {
@@ -436,12 +447,12 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
     const { text, autoSend } = pendingPrompt;
     onConsumePendingPrompt();
     if (autoSend && modelSettings?.hasApiKey && !running) {
-      void sendPrompt(text);
+      void sendPrompt(text, undefined, undefined, contextSubject(autoContext));
     } else {
       setInput(text);
       setComposerFocusTick((n) => n + 1);
     }
-  }, [pendingPrompt, onConsumePendingPrompt, modelSettings?.hasApiKey, running, sendPrompt]);
+  }, [pendingPrompt, onConsumePendingPrompt, modelSettings?.hasApiKey, running, sendPrompt, autoContext]);
 
   useEffect(() => {
     const job = pendingPersistRef.current;
@@ -675,6 +686,8 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
     currentSessionIdRef.current = null;
     harnessSessionIdRef.current = null;
     setCurrentSessionId(null);
+    changeSessionContext("");
+    setDismissedSuggestion("");
     setMessages([]);
     setAttachments([]);
     setDismissedAutoId(null);
@@ -697,6 +710,8 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
       harnessSessionIdRef.current = detail.harnessSessionId || null;
       activeAssistantIdRef.current = null;
       setCurrentSessionId(detail.id);
+      changeSessionContext(detail.contextLabel);
+      setDismissedSuggestion("");
       setMessages(
         detail.messages.map((m) => ({
           id: m.id,
@@ -726,6 +741,7 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
         currentSessionIdRef.current = null;
         harnessSessionIdRef.current = null;
         setCurrentSessionId(null);
+        changeSessionContext("");
         setMessages([]);
       }
       await refreshSessions();
@@ -735,6 +751,10 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
   };
 
   const isEmpty = messages.length === 0;
+  // Suggest (never force) a new conversation when the reader moves to another book or page subject.
+  const activeSubject = contextSubject(activeAutoContext);
+  const suggestedSubject = !isEmpty && !running && sessionContext && activeSubject
+    && activeSubject !== sessionContext && activeSubject !== dismissedSuggestion ? activeSubject : "";
 
   const contextZoneNode = (
     <div className={`ai-surf-context-zone ${isEmpty ? "in-empty" : "docked"}`} ref={ctxPickerRef}>
@@ -918,6 +938,7 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
           composed,
           rawText,
           atts.map((a) => a.label),
+          contextSubject(atts[0]),
         )
       }
     />
@@ -930,12 +951,13 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
         <div className="ai-drawer-header-left" ref={historyRef}>
           <button
             type="button"
-            className="ai-header-icon-btn"
+            className="ai-header-icon-btn ai-header-new-chat"
             onClick={() => void handleReset()}
             disabled={running}
             title="开启新对话（当前记录会自动保存在历史中）"
           >
             <IconSquarePen size={15} />
+            <span>新对话</span>
           </button>
           <button
             type="button"
@@ -977,7 +999,10 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
                 </div>
               ) : (
                 <div className="ai-history-list">
-                  {sessions.map((s) => {
+                  {groupSessionsByContext(sessions).map((group) => (
+                    <div key={group.label} className="ai-history-group">
+                      <div className="ai-history-group-label">{group.label}</div>
+                  {group.sessions.map((s) => {
                     const active = s.id === currentSessionId;
                     return (
                       <div
@@ -1014,6 +1039,8 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
                       </div>
                     );
                   })}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -1053,7 +1080,7 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
                     key={s.title}
                     type="button"
                     className="ai-starter-item"
-                    onClick={() => void sendPrompt(s.prompt, s.title)}
+                    onClick={() => void sendPrompt(s.prompt, s.title, undefined, contextSubject(activeAutoContext))}
                   >
                     <div className="ai-starter-title">{s.title}</div>
                     <div className="ai-starter-desc">{s.desc}</div>
@@ -1196,6 +1223,13 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
                 <IconArrowUp size={14} style={{ transform: "rotate(180deg)" }} />
                 <span>{running ? "查看最新回复" : "回到底部"}</span>
               </button>
+            )}
+            {suggestedSubject && (
+              <div className="ai-context-switch" role="status">
+                <span>正在看<strong>{suggestedSubject}</strong>，要为它开一个新对话吗？</span>
+                <button type="button" onClick={() => void handleReset()}>新对话</button>
+                <button type="button" className="ghost" onClick={() => setDismissedSuggestion(suggestedSubject)}>继续当前</button>
+              </div>
             )}
             {contextZoneNode}
             {askBarNode}

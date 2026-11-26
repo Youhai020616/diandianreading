@@ -137,6 +137,8 @@ export interface ChatSessionSummary {
   id: string;
   title: string;
   harnessSessionId: string;
+  /** The book, page or draft the conversation started from; used to group history. */
+  contextLabel: string;
   messageCount: number;
   preview: string;
   createdAt: string;
@@ -428,6 +430,10 @@ export class KnowledgeDatabase {
       }
       if (!columns.some(column => column.name === "reader_color")) {
         this.db.exec("ALTER TABLE highlights ADD COLUMN reader_color TEXT");
+      }
+      const sessionColumns = this.db.prepare("PRAGMA table_info(chat_sessions)").all();
+      if (!sessionColumns.some(column => column.name === "context_label")) {
+        this.db.exec("ALTER TABLE chat_sessions ADD COLUMN context_label TEXT NOT NULL DEFAULT ''");
       }
       this.db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reader_highlight_location
         ON highlights(reader_document_id, reader_cfi) WHERE reader_document_id IS NOT NULL`);
@@ -1575,7 +1581,7 @@ export class KnowledgeDatabase {
     const cap = Math.max(1, Math.min(100, Math.floor(limit)));
     const rows = this.db
       .prepare(
-        `SELECT s.id, s.title, s.harness_session_id, s.created_at, s.updated_at,
+        `SELECT s.id, s.title, s.harness_session_id, s.context_label, s.created_at, s.updated_at,
                 (SELECT COUNT(*) FROM chat_messages m WHERE m.session_id = s.id) AS message_count,
                 COALESCE(
                   (SELECT m.text FROM chat_messages m WHERE m.session_id = s.id AND m.role = 'assistant' AND length(trim(m.text)) > 0 ORDER BY m.seq DESC LIMIT 1),
@@ -1592,6 +1598,7 @@ export class KnowledgeDatabase {
       id: String(r.id),
       title: String(r.title || "未命名对话"),
       harnessSessionId: String(r.harness_session_id ?? ""),
+      contextLabel: String(r.context_label ?? ""),
       messageCount: Number(r.message_count ?? 0),
       preview: String(r.preview ?? "").replace(/\s+/g, " ").trim().slice(0, 120),
       createdAt: String(r.created_at),
@@ -1602,7 +1609,7 @@ export class KnowledgeDatabase {
   getChatSession(id: string): ChatSessionDetail | null {
     const row = this.db
       .prepare(
-        `SELECT id, title, harness_session_id, created_at, updated_at
+        `SELECT id, title, harness_session_id, context_label, created_at, updated_at
          FROM chat_sessions WHERE id = ?`,
       )
       .get(id) as Record<string, unknown> | undefined;
@@ -1663,6 +1670,7 @@ export class KnowledgeDatabase {
       id: String(row.id),
       title: String(row.title || "未命名对话"),
       harnessSessionId: String(row.harness_session_id ?? ""),
+      contextLabel: String(row.context_label ?? ""),
       messageCount: messages.length,
       preview: lastPreview.replace(/\s+/g, " ").trim().slice(0, 120),
       createdAt: String(row.created_at),
@@ -1675,6 +1683,7 @@ export class KnowledgeDatabase {
     id: string;
     title: string;
     harnessSessionId?: string;
+    contextLabel?: string;
     messages: Array<{
       id: string;
       role: "user" | "assistant" | "system";
@@ -1689,6 +1698,7 @@ export class KnowledgeDatabase {
     const title = (input.title || "新对话").replace(/\s+/g, " ").trim().slice(0, 48) || "新对话";
     const ts = nowIso();
     const incomingHarnessId = (input.harnessSessionId ?? "").trim();
+    const contextLabel = (input.contextLabel ?? "").replace(/\s+/g, " ").trim().slice(0, 60);
 
     this.db.exec("BEGIN");
     try {
@@ -1701,14 +1711,16 @@ export class KnowledgeDatabase {
 
       this.db
         .prepare(
-          `INSERT INTO chat_sessions (id, title, harness_session_id, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?)
+          `INSERT INTO chat_sessions (id, title, harness_session_id, context_label, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              title = excluded.title,
              harness_session_id = CASE WHEN excluded.harness_session_id != '' THEN excluded.harness_session_id ELSE chat_sessions.harness_session_id END,
+             -- The context a conversation started from stays its group.
+             context_label = CASE WHEN chat_sessions.context_label = '' THEN excluded.context_label ELSE chat_sessions.context_label END,
              updated_at = excluded.updated_at`,
         )
-        .run(id, title, harnessId, createdAt, ts);
+        .run(id, title, harnessId, contextLabel, createdAt, ts);
 
       this.db.prepare("DELETE FROM chat_messages WHERE session_id = ?").run(id);
       const insertMsg = this.db.prepare(
