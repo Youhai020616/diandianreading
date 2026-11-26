@@ -448,10 +448,10 @@ export class KnowledgeDatabase {
         );
       `);
       this.ftsAvailable = true;
-      this.backfillHighlightsFts();
     } catch {
       this.ftsAvailable = false;
     }
+    if (this.ftsAvailable) this.installHighlightsFtsTriggers();
   }
 
   transaction<T>(work: () => T): T {
@@ -570,50 +570,50 @@ export class KnowledgeDatabase {
     });
   }
 
-  private backfillHighlightsFts(): void {
-    if (!this.ftsAvailable) return;
-    const totalHighlights = Number(
-      ((this.db.prepare("SELECT COUNT(*) AS c FROM highlights").get() as { c: number } | undefined)?.c) ?? 0,
-    );
-    const totalIndexed = Number(
-      ((this.db.prepare("SELECT COUNT(*) AS c FROM highlights_fts").get() as { c: number } | undefined)?.c) ?? 0,
-    );
-    if (totalHighlights === totalIndexed) return;
+  /**
+   * Keep highlights_fts in step with highlights and book titles inside the same statement, so a
+   * failed index write fails the change itself instead of leaving the search index silently stale.
+   */
+  private installHighlightsFtsTriggers(): void {
+    const titleOf = "COALESCE((SELECT title FROM books WHERE id = new.book_id), '')";
+    this.transaction(() => {
+      this.db.exec(`
+        CREATE TRIGGER IF NOT EXISTS highlights_fts_after_insert AFTER INSERT ON highlights BEGIN
+          INSERT INTO highlights_fts (highlight_id, quote, note, book_title)
+          VALUES (new.id, new.quote, new.note, ${titleOf});
+        END;
+        CREATE TRIGGER IF NOT EXISTS highlights_fts_after_update AFTER UPDATE OF quote, note, book_id ON highlights BEGIN
+          DELETE FROM highlights_fts WHERE highlight_id = old.id;
+          INSERT INTO highlights_fts (highlight_id, quote, note, book_title)
+          VALUES (new.id, new.quote, new.note, ${titleOf});
+        END;
+        CREATE TRIGGER IF NOT EXISTS highlights_fts_after_delete AFTER DELETE ON highlights BEGIN
+          DELETE FROM highlights_fts WHERE highlight_id = old.id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS books_title_fts_after_update AFTER UPDATE OF title ON books BEGIN
+          UPDATE highlights_fts SET book_title = new.title
+          WHERE highlight_id IN (SELECT id FROM highlights WHERE book_id = new.id);
+        END;
+      `);
+      const version = "schema.highlights-fts-triggers.v1";
+      // Indexes built before the triggers may be stale (e.g. book titles were never updated).
+      if (!this.getSetting(version) || !this.highlightsFtsCountsMatch()) {
+        if (this.getSetting(version)) console.warn("[diandian] highlights_fts was out of step; rebuilding the search index.");
+        this.rebuildHighlightsFts();
+        this.setSetting(version, "1");
+      }
+    });
+  }
 
+  private highlightsFtsCountsMatch(): boolean {
+    const count = (table: string) => Number((this.db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get() as { c: number }).c);
+    return count("highlights") === count("highlights_fts");
+  }
+
+  private rebuildHighlightsFts(): void {
     this.db.exec("DELETE FROM highlights_fts");
-    const rows = this.db
-      .prepare(
-        `SELECT h.id, h.quote, h.note, b.title AS book_title
-         FROM highlights h JOIN books b ON b.id = h.book_id`,
-      )
-      .all() as Array<{ id: string; quote: string; note: string; book_title: string }>;
-    const ins = this.db.prepare(
-      "INSERT INTO highlights_fts (highlight_id, quote, note, book_title) VALUES (?, ?, ?, ?)",
-    );
-    for (const r of rows) {
-      ins.run(r.id, r.quote, r.note, r.book_title);
-    }
-  }
-
-  private upsertHighlightFts(highlightId: string, quote: string, note: string, bookTitle: string): void {
-    if (!this.ftsAvailable) return;
-    try {
-      this.db.prepare("DELETE FROM highlights_fts WHERE highlight_id = ?").run(highlightId);
-      this.db
-        .prepare("INSERT INTO highlights_fts (highlight_id, quote, note, book_title) VALUES (?, ?, ?, ?)")
-        .run(highlightId, quote, note, bookTitle);
-    } catch {
-      // Non-fatal index sync error
-    }
-  }
-
-  private deleteHighlightFts(highlightId: string): void {
-    if (!this.ftsAvailable) return;
-    try {
-      this.db.prepare("DELETE FROM highlights_fts WHERE highlight_id = ?").run(highlightId);
-    } catch {
-      // Non-fatal
-    }
+    this.db.exec(`INSERT INTO highlights_fts (highlight_id, quote, note, book_title)
+      SELECT h.id, h.quote, h.note, COALESCE(b.title, '') FROM highlights h LEFT JOIN books b ON b.id = h.book_id`);
   }
 
   getSetting(key: string): string | null {
@@ -752,18 +752,7 @@ export class KnowledgeDatabase {
   }
 
   deleteBook(id: string): void {
-    if (this.ftsAvailable) {
-      try {
-        const hlIds = this.db
-          .prepare("SELECT id FROM highlights WHERE book_id = ?")
-          .all(id) as Array<{ id: string }>;
-        for (const r of hlIds) {
-          this.deleteHighlightFts(r.id);
-        }
-      } catch {
-        // Non-fatal
-      }
-    }
+    // Highlights cascade with the book; the delete trigger removes their index rows.
     this.db.prepare("DELETE FROM notebook_items WHERE item_kind = 'book' AND item_ref = ?").run(id);
     this.db.prepare("DELETE FROM books WHERE id = ?").run(id);
   }
@@ -1049,7 +1038,6 @@ export class KnowledgeDatabase {
       .run(id, book.id, (input.chapter ?? "").trim(), quote, note, input.source ?? book.source, fingerprint, ts,
         anchor?.documentId ?? null, anchor?.cfi ?? null, anchor?.color ?? null);
     this.db.prepare("UPDATE books SET updated_at = ? WHERE id = ?").run(nowIso(), book.id);
-    this.upsertHighlightFts(id, quote, note, book.title);
 
     const inserted = this.db.prepare("SELECT * FROM highlights WHERE id = ?").get(id) as Record<string, unknown>;
     return { record: this.mapHighlightRow(inserted), deduplicated: false };
@@ -1069,16 +1057,13 @@ export class KnowledgeDatabase {
       return null;
     }
     if (nextNote === row.note) return this.mapHighlightRow(row);
-    const book = this.getBook(String(row.book_id));
     const nextFp = row.reader_document_id ? String(row.fingerprint) : bookHighlightFingerprint(String(row.book_id), String(row.quote), nextNote);
     this.db.prepare("UPDATE highlights SET note = ?, fingerprint = ? WHERE id = ?").run(nextNote, nextFp, id);
-    this.upsertHighlightFts(id, String(row.quote), nextNote, book?.title ?? "");
     const updated = this.db.prepare("SELECT * FROM highlights WHERE id = ?").get(id) as Record<string, unknown>;
     return this.mapHighlightRow(updated);
   }
 
   deleteHighlight(id: string): void {
-    this.deleteHighlightFts(id);
     this.db.prepare("DELETE FROM highlights WHERE id = ?").run(id);
   }
 
