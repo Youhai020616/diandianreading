@@ -22,15 +22,12 @@ import {
   START_PAGE_TITLE,
 } from "./startPage";
 import { normalizeAllowedWebUrl } from "./urlPolicy";
+import { TabRevealGate } from "./tabReveal";
 
 export { normalizeAllowedWebUrl };
 
 const DESKTOP_LAYOUT_WIDTH = 1120;
 const DEFAULT_ACCOUNT_ID = "default";
-/** After the new document commits, reveal the tab at most this long later (dom-ready may come sooner). */
-const TAB_REVEAL_AFTER_COMMIT_MS = 450;
-/** Safety net if a navigation never commits (hung network); keeps the stale page hidden meanwhile. */
-const TAB_REVEAL_SAFETY_MS = 8000;
 
 export interface BrowserAccount {
   id: string;
@@ -87,10 +84,8 @@ interface InternalTab {
   url: string;
   faviconUrl?: string;
   isLoading: boolean;
-  readyToShow: boolean;
-  /** True between starting a deferred navigation and the new document committing (did-navigate). */
-  awaitingCommit: boolean;
-  revealTimer?: NodeJS.Timeout;
+  /** Keeps the tab hidden while it navigates to another site (see TabRevealGate). */
+  reveal: TabRevealGate;
 }
 
 function writeJsonAtomic(filePath: string, payload: unknown): void {
@@ -240,6 +235,8 @@ export class BrowserService {
         this.deferTabReveal(active, targetUrl);
       }
       await active.view.webContents.loadURL(targetUrl).catch(() => undefined);
+      // Covers a navigation that ended without committing even if no stop event followed.
+      if (!active.view.webContents.isDestroyed()) active.reveal.stopped(active.view.webContents.isLoading());
     }
     this.visible = true;
     this.applyViewVisibility();
@@ -275,10 +272,7 @@ export class BrowserService {
   closeTab(tabId: string): BrowserStateSnapshot {
     const tab = this.tabs.get(tabId);
     if (!tab) return this.getState();
-    if (tab.revealTimer) {
-      clearTimeout(tab.revealTimer);
-      tab.revealTimer = undefined;
-    }
+    tab.reveal.dispose();
     if (this.attachedView === tab.view) {
       this.detachCurrentView();
     }
@@ -563,12 +557,9 @@ export class BrowserService {
       title: startPage ? START_PAGE_TITLE : "加载中…",
       url: initialUrl,
       isLoading: !startPage,
-      readyToShow: startPage,
-      awaitingCommit: !startPage,
+      reveal: new TabRevealGate(startPage, () => this.applyViewVisibility()),
     };
-    if (!startPage) {
-      this.scheduleTabRevealFallback(record, TAB_REVEAL_SAFETY_MS);
-    }
+    if (!startPage) record.reveal.defer();
 
     const wc = view.webContents;
     wc.setWindowOpenHandler(({ url }) => {
@@ -594,19 +585,12 @@ export class BrowserService {
       sync();
     });
     // Readiness signals only count once the *new* document has committed; otherwise the
-    // old page's abort/stop events would briefly re-reveal it (e.g. WeRead flashing before Douban).
-    wc.on("dom-ready", () => {
-      if (!record.awaitingCommit) this.markTabReady(record);
-    });
-    wc.on("did-fail-load", (_e, errorCode, _desc, _url, isMainFrame) => {
-      // ERR_ABORTED (-3) is the previous navigation being cancelled by the new one.
-      if (!isMainFrame || errorCode === -3) return;
-      record.awaitingCommit = false;
-      this.markTabReady(record);
-    });
+    // old page's events would briefly re-reveal it (e.g. WeRead flashing before Douban).
+    wc.on("dom-ready", () => record.reveal.domReady());
+    wc.on("did-fail-load", (_e, errorCode, _desc, _url, isMainFrame) => record.reveal.failed(errorCode, isMainFrame));
     wc.on("did-stop-loading", () => {
       record.isLoading = false;
-      if (!record.awaitingCommit) this.markTabReady(record);
+      record.reveal.stopped(wc.isLoading());
       this.updateZoom(record);
       sync();
     });
@@ -621,12 +605,7 @@ export class BrowserService {
         record.faviconUrl = undefined;
       }
       record.url = nextUrl || record.url;
-      if (record.awaitingCommit) {
-        // New document committed: reveal shortly after (or sooner on dom-ready) instead of
-        // waiting for the whole page to parse.
-        record.awaitingCommit = false;
-        if (!record.readyToShow) this.scheduleTabRevealFallback(record, TAB_REVEAL_AFTER_COMMIT_MS);
-      }
+      record.reveal.committed();
       sync();
     });
     wc.on("page-title-updated", (_e, title) => {
@@ -726,32 +705,12 @@ export class BrowserService {
     this.updateZoom(active);
   }
 
-  private scheduleTabRevealFallback(tab: InternalTab, delayMs: number): void {
-    if (tab.revealTimer) clearTimeout(tab.revealTimer);
-    tab.revealTimer = setTimeout(() => {
-      tab.awaitingCommit = false;
-      this.markTabReady(tab);
-    }, delayMs);
-  }
-
   private deferTabReveal(tab: InternalTab, nextUrl: string): void {
-    tab.readyToShow = false;
-    tab.awaitingCommit = true;
+    tab.reveal.defer();
     tab.isLoading = true;
     tab.url = nextUrl;
-    this.scheduleTabRevealFallback(tab, TAB_REVEAL_SAFETY_MS);
     this.applyViewVisibility();
     this.pushState();
-  }
-
-  private markTabReady(tab: InternalTab): void {
-    if (tab.revealTimer) {
-      clearTimeout(tab.revealTimer);
-      tab.revealTimer = undefined;
-    }
-    if (tab.readyToShow) return;
-    tab.readyToShow = true;
-    this.applyViewVisibility();
   }
 
   private applyViewVisibility(): void {
@@ -760,7 +719,7 @@ export class BrowserService {
     const shouldShow =
       this.visible
       && !this.suppressed
-      && active.readyToShow
+      && active.reveal.ready
       && this.bounds.width > 0
       && this.bounds.height > 0;
     active.view.setVisible(shouldShow);

@@ -7,8 +7,10 @@ import {
   IconClose,
   IconExternalLink,
   IconEye,
+  IconLink,
   IconShield,
   IconZap,
+  ModelBrandLogo,
 } from "./Icons";
 
 interface SettingsModalProps {
@@ -296,6 +298,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, initial, onC
                 value: p.id,
                 label: p.label,
                 description: p.description,
+                icon: p.id === "custom" ? <IconLink size={16} /> : <ModelBrandLogo brand={p.id} size={18} />,
               }))}
             />
           </div>

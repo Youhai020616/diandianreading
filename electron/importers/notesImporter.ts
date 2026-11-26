@@ -17,6 +17,13 @@ export interface ImportNotesResult {
   bookIds: string[];
 }
 
+interface ImportOptions {
+  format?: "auto" | "kindle" | "weread";
+  fallbackTitle?: string;
+  fallbackAuthor?: string;
+  fileTitle?: string;
+}
+
 /**
  * Parse Kindle `My Clippings.txt` (supports both English and Chinese Kindle headers).
  */
@@ -49,8 +56,9 @@ export function parseKindleClippings(rawText: string): ParsedHighlightItem[] {
     }
 
     const isNote = /Your Note|您的笔记/i.test(metaLine);
-    if (isNote && items.length > 0 && items[items.length - 1]!.bookTitle === bookTitle && !items[items.length - 1]!.note) {
-      items[items.length - 1]!.note = body;
+    const previous = items.at(-1);
+    if (isNote && previous?.bookTitle === bookTitle && previous.bookAuthor === bookAuthor && !previous.note) {
+      previous.note = body;
       continue;
     }
 
@@ -72,12 +80,14 @@ export function parseKindleClippings(rawText: string): ParsedHighlightItem[] {
  */
 export function parseWeReadNotes(
   rawText: string,
-  fallbackTitle = "微信读书笔记",
+  fallbackTitle = "",
   fallbackAuthor = "",
+  fileTitle = "",
 ): ParsedHighlightItem[] {
   const lines = rawText.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").split("\n");
 
-  let bookTitle = fallbackTitle.trim() || "微信读书笔记";
+  let bookTitle = fallbackTitle.trim() || fileTitle.trim() || "微信读书笔记";
+  let hasTitleHeading = false;
   let bookAuthor = fallbackAuthor.trim();
   let currentChapter = "";
   const items: ParsedHighlightItem[] = [];
@@ -96,6 +106,7 @@ export function parseWeReadNotes(
     }
     if (line.startsWith("# ")) {
       bookTitle = line.slice(2).trim() || bookTitle;
+      hasTitleHeading = true;
       i++;
       continue;
     }
@@ -108,14 +119,8 @@ export function parseWeReadNotes(
     if (preamble.length >= 2) break;
   }
 
-  if (preamble.length >= 1 && !fallbackTitle) {
-    bookTitle = preamble[0]!;
-  } else if (preamble.length >= 1 && fallbackTitle === "微信读书笔记") {
-    bookTitle = preamble[0]!;
-  }
-  if (preamble.length >= 2 && !bookAuthor) {
-    bookAuthor = preamble[1]!;
-  }
+  if (!hasTitleHeading && preamble[0] && !fallbackTitle.trim()) bookTitle = preamble[0];
+  if (!bookAuthor) bookAuthor = preamble[hasTitleHeading ? 0 : 1] ?? "";
 
   let pendingThought = "";
   for (; i < lines.length; i++) {
@@ -196,7 +201,7 @@ export function parseWeReadNotes(
 
 export function detectAndParseNotes(
   rawText: string,
-  options: { format?: "auto" | "kindle" | "weread"; fallbackTitle?: string; fallbackAuthor?: string } = {},
+  options: ImportOptions = {},
 ): { format: "kindle" | "weread" | "generic"; items: ParsedHighlightItem[] } {
   const mode = options.format ?? "auto";
   if (mode === "kindle" || (mode === "auto" && /^==========\s*$/m.test(rawText))) {
@@ -206,60 +211,62 @@ export function detectAndParseNotes(
   if (mode === "weread" || hasWeReadMarkers) {
     return {
       format: "weread",
-      items: parseWeReadNotes(rawText, options.fallbackTitle, options.fallbackAuthor),
+      items: parseWeReadNotes(rawText, options.fallbackTitle, options.fallbackAuthor, options.fileTitle),
     };
   }
   return {
     format: "generic",
-    items: parseWeReadNotes(rawText, options.fallbackTitle || "导入笔记", options.fallbackAuthor),
+    items: parseWeReadNotes(rawText, options.fallbackTitle || options.fileTitle || "导入笔记", options.fallbackAuthor),
   };
 }
 
 export function importNotesIntoDatabase(
   db: KnowledgeDatabase,
   rawText: string,
-  options: { format?: "auto" | "kindle" | "weread"; fallbackTitle?: string; fallbackAuthor?: string } = {},
+  options: ImportOptions = {},
 ): ImportNotesResult {
   const { format, items } = detectAndParseNotes(rawText, options);
   if (items.length === 0) {
     throw new Error("未在文本中识别到有效的划线或笔记条目");
   }
 
-  const bookIdByKey = new Map<string, string>();
-  const touchedBooks = new Set<string>();
-  let importedCount = 0;
-  let deduplicatedCount = 0;
+  return db.transaction(() => {
+    const bookIdByKey = new Map<string, string>();
+    const touchedBooks = new Set<string>();
+    let importedCount = 0;
+    let deduplicatedCount = 0;
 
-  for (const item of items) {
-    const key = item.bookTitle.trim().toLowerCase();
-    let bookId = bookIdByKey.get(key);
-    if (!bookId) {
-      const book = db.findOrCreateBook({
-        title: item.bookTitle,
-        author: item.bookAuthor,
+    for (const item of items) {
+      const key = JSON.stringify([item.bookTitle, item.bookAuthor]);
+      let bookId = bookIdByKey.get(key);
+      if (!bookId) {
+        const book = db.findOrCreateBook({
+          title: item.bookTitle,
+          author: item.bookAuthor,
+          source: item.source,
+        });
+        bookId = book.id;
+        bookIdByKey.set(key, bookId);
+      }
+      touchedBooks.add(bookId);
+
+      const added = db.addHighlight({
+        bookId,
+        chapter: item.chapter,
+        quote: item.quote,
+        note: item.note,
         source: item.source,
       });
-      bookId = book.id;
-      bookIdByKey.set(key, bookId);
+      if (added.deduplicated) deduplicatedCount++;
+      else importedCount++;
     }
-    touchedBooks.add(bookId);
 
-    const added = db.addHighlight({
-      bookId,
-      chapter: item.chapter,
-      quote: item.quote,
-      note: item.note,
-      source: item.source,
-    });
-    if (added.deduplicated) deduplicatedCount++;
-    else importedCount++;
-  }
-
-  return {
-    format,
-    booksTouched: touchedBooks.size,
-    importedCount,
-    deduplicatedCount,
-    bookIds: [...touchedBooks],
-  };
+    return {
+      format,
+      booksTouched: touchedBooks.size,
+      importedCount,
+      deduplicatedCount,
+      bookIds: [...touchedBooks],
+    };
+  });
 }

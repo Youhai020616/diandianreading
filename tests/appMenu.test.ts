@@ -6,12 +6,13 @@ function submenuOf(item: MenuItemConstructorOptions | undefined): MenuItemConstr
   return Array.isArray(item?.submenu) ? item.submenu : [];
 }
 
-function build(isMac: boolean) {
+function build(isMac: boolean, developerTools = true) {
   const sent: AppMenuAction[] = [];
   const opened: string[] = [];
   const template = buildAppMenuTemplate({
     appName: "点点读书",
     isMac,
+    developerTools,
     sendAction: (a) => sent.push(a),
     openExternal: (u) => opened.push(u),
   });
@@ -58,5 +59,14 @@ describe("app menu template", () => {
     const accels = template.flatMap((m) => submenuOf(m)).map((i) => i.accelerator).filter(Boolean);
     expect(accels).not.toContain("CmdOrCtrl+Shift+I");
     expect(new Set(accels).size).toBe(accels.length);
+  });
+
+  it("keeps reload and DevTools out of a packaged app", () => {
+    const roles = (developerTools: boolean) =>
+      submenuOf(build(true, developerTools).byLabel("视图")).map((i) => i.role).filter(Boolean);
+    expect(roles(true)).toEqual(expect.arrayContaining(["reload", "toggleDevTools"]));
+    expect(roles(false)).not.toContain("reload");
+    expect(roles(false)).not.toContain("toggleDevTools");
+    expect(roles(false)).toEqual(expect.arrayContaining(["resetZoom", "zoomIn", "zoomOut", "togglefullscreen"]));
   });
 });

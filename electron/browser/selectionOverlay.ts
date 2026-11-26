@@ -98,7 +98,7 @@ export function buildSelectionToolbarScript(nonce: string): string {
     const sep2 = document.createElement("span");
     sep2.className = "sep";
 
-    bar.appendChild(makeBtn("存书库", "save"));
+    bar.appendChild(makeBtn("存入阅读笔记", "save"));
     bar.appendChild(sep1);
     bar.appendChild(makeBtn("问小金毛", "ask"));
     bar.appendChild(sep2);

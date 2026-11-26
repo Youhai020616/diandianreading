@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import type {
   BookRecord,
   BrowserStateSnapshot,
+  DownloadedBookFile,
   DraftRecord,
   NotebookItemKind,
   NotebookRecord,
@@ -11,7 +12,9 @@ import type {
 } from "./types/desktop";
 import { BrowserPane } from "./components/BrowserPane";
 import { CookieImportModal } from "./components/CookieImportModal";
-import { DiscoverView } from "./components/DiscoverView";
+import { DiscoverView, WEREAD_SHELF_URL } from "./components/DiscoverView";
+import { DownloadedBooksView, downloadedBookRevision, type WeReadImportStatus } from "./components/DownloadedBooksView";
+import { ZlibHistoryImport } from "./components/ZlibHistoryImport";
 import type { ContextAttachment } from "./components/DockedAskBar";
 import {
   IconBookOpen,
@@ -26,10 +29,12 @@ import {
   IconSearch,
   IconSettings,
   IconSparkles,
+  IconSquarePen,
   SiteBrandIcon,
 } from "./components/Icons";
 import { LeftWorkspace, type PendingPromptPayload } from "./components/LeftWorkspace";
 import { LibraryView } from "./components/LibraryView";
+import { LocalReader } from "./components/LocalReader";
 import { NotebookView } from "./components/NotebookView";
 import { RouterView } from "./components/RouterView";
 import { SettingsModal } from "./components/SettingsModal";
@@ -39,7 +44,7 @@ import { cleanQuoteDraftTitle, prepareDraftFromAssistantReply } from "./lib/draf
 import brandLogoUrl from "./assets/brand/logo-small.svg";
 import { formatUserError } from "./utils/formatError";
 
-type StudioTab = "discover" | "library" | "studio" | "notebook" | "router";
+type StudioTab = "discover" | "library" | "notes" | "studio" | "notebook" | "router";
 type AppTheme = "light" | "dark";
 
 const THEME_STORAGE_KEY = "diandian.theme";
@@ -60,7 +65,7 @@ interface ToastItem {
 }
 
 /** Main-process error thrown when an Obsidian action runs before a vault is configured. */
-const OBSIDIAN_VAULT_MISSING_RE = /尚未设置 Obsidian Vault/;
+const OBSIDIAN_VAULT_MISSING_RE = /请先在「连接与偏好 → Obsidian 联动」中连接/;
 
 const DEFAULT_RAIL_WIDTH = 196;
 const MIN_RAIL_WIDTH = 160;
@@ -96,7 +101,8 @@ function tabMatchesSite(tabUrl: string, matchHosts: readonly string[]): boolean 
 
 const TAB_LABELS: Record<StudioTab, string> = {
   discover: "搜书发现",
-  library: "我的书库",
+  library: "本地书库",
+  notes: "阅读笔记",
   studio: "创作草稿",
   notebook: "主题空间",
   router: "连接与偏好",
@@ -133,7 +139,20 @@ function applyThemeToDocument(theme: AppTheme): void {
 }
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<StudioTab>("discover");
+  const [activeTab, setWorkspaceTab] = useState<StudioTab>("discover");
+  const [readerTabs, setReaderTabs] = useState<Array<DownloadedBookFile & { title?: string }>>([]);
+  const [readerTarget, setReaderTarget] = useState<{ file: DownloadedBookFile; cfi?: string } | null>(null);
+  const reading = readerTarget !== null;
+  const readerPath = readerTarget?.file.filePath;
+  const readerTitle = readerTabs.find(tab => tab.filePath === readerPath)?.title
+    || readerTarget?.file.fileName.replace(/\.epub$/i, "") || "";
+  const updateReaderTitle = useCallback((title: string) => {
+    if (title) setReaderTabs(tabs => tabs.map(tab => tab.filePath === readerPath ? { ...tab, title } : tab));
+  }, [readerPath]);
+  const setActiveTab = useCallback((tab: StudioTab) => {
+    setReaderTarget(null);
+    setWorkspaceTab(tab);
+  }, []);
   const [theme, setTheme] = useState<AppTheme>(() => readInitialTheme());
   const [lampPulse, setLampPulse] = useState<{ id: number; mode: "on" | "off" } | null>(null);
   const lampDockRef = useRef<HTMLDivElement | null>(null);
@@ -164,9 +183,15 @@ export const App: React.FC = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [cookieModalOpen, setCookieModalOpen] = useState(false);
   const [childModalOpen, setChildModalOpen] = useState(false);
+  const [historyImportOpen, setHistoryImportOpen] = useState(false);
 
   // Shared library + draft + Surf notebook summaries
   const [books, setBooks] = useState<BookRecord[]>([]);
+  const [downloadFiles, setDownloadFiles] = useState<DownloadedBookFile[] | null>(null);
+  const [downloadsLoading, setDownloadsLoading] = useState(true);
+  const [downloadError, setDownloadError] = useState("");
+  const [weReadImports, setWeReadImports] = useState<Record<string, WeReadImportStatus | undefined>>({});
+  const downloadRequest = useRef(0);
   const [drafts, setDrafts] = useState<DraftRecord[]>([]);
   const [notebooks, setNotebooks] = useState<NotebookRecord[]>([]);
   const [activeNotebookId, setActiveNotebookId] = useState<string | null>(null);
@@ -216,6 +241,78 @@ export const App: React.FC = () => {
     setActiveTab("router");
     setWorkspaceOpen(true);
   };
+
+  const refreshDownloads = useCallback(async () => {
+    const request = ++downloadRequest.current;
+    setDownloadsLoading(true);
+    setDownloadError("");
+    try {
+      const files = await window.diandian.router.listDownloadedBooks();
+      if (request === downloadRequest.current) setDownloadFiles(files);
+      return files;
+    } catch (error) {
+      if (request === downloadRequest.current) setDownloadError(formatUserError(error, "读取下载目录失败"));
+    } finally {
+      if (request === downloadRequest.current) setDownloadsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshDownloads();
+    window.addEventListener("focus", refreshDownloads);
+    return () => {
+      ++downloadRequest.current;
+      window.removeEventListener("focus", refreshDownloads);
+    };
+  }, [refreshDownloads]);
+
+  const openWorkspaceTab = (tab: StudioTab) => {
+    if (tab === "library") void refreshDownloads();
+    setActiveTab(tab);
+    setWorkspaceOpen(true);
+  };
+
+  async function handleBookMetadataChanged(previousPath: string, updatedPath: string, title: string) {
+    const files = await refreshDownloads();
+    const file = files?.find(item => item.filePath === updatedPath);
+    if (!file) return;
+    setReaderTabs(tabs => tabs.map(tab => tab.filePath === previousPath ? { ...file, title } : tab));
+    setReaderTarget(current => current?.file.filePath === previousPath ? { file } : current);
+  }
+
+  async function importDownloadedToWeRead(file: DownloadedBookFile) {
+    const revision = downloadedBookRevision(file);
+    if (weReadImports[revision] === "uploading") return;
+    const setStatus = (status?: WeReadImportStatus) => setWeReadImports(current => ({ ...current, [revision]: status }));
+    setStatus("uploading");
+    const title = file.fileName.replace(/\.[^.]+$/, "");
+    try {
+      const result = await window.diandian.router.importWeRead(file.filePath, { fromLibrary: true });
+      setStatus("shelf");
+      if (result.alreadyExisted) notify(`微信读书已收录《${title}》，可在微信读书中查找。`, "info");
+      else notify(`《${title}》已导入微信读书书架。`, "success");
+    } catch (cause) {
+      const message = formatUserError(cause, "导入微信读书失败，请重试。");
+      if (message.includes("连接与偏好")) setStatus("settings");
+      else if (message.includes("查看微信读书书架")) setStatus("shelf");
+      else setStatus();
+      notify(message, "error");
+    }
+  }
+
+  function readLocalBook(file: DownloadedBookFile, cfi?: string) {
+    setReaderTabs(tabs => tabs.some(tab => tab.filePath === file.filePath) ? tabs : [...tabs, file]);
+    setReaderTarget({ file, cfi });
+  }
+
+  async function openHighlightInBook(id: string) {
+    try {
+      const { file, cfi } = await window.diandian.reader.resolveHighlight(id);
+      readLocalBook(file, cfi);
+    } catch (error) {
+      notify(formatUserError(error, "无法定位这条划线的原文"), "error");
+    }
+  }
 
   const refreshWorkspaceData = useCallback(async () => {
     try {
@@ -298,7 +395,7 @@ export const App: React.FC = () => {
         notify(
           ev.deduplicated
             ? `该划线已在《${ev.title}》中，已自动去重`
-            : `已一键存入《${ev.title}》本地书库`,
+            : `已存入《${ev.title}》的阅读笔记`,
           "success",
         );
       } else if (ev.kind === "draft") {
@@ -434,8 +531,8 @@ export const App: React.FC = () => {
 
   // Native WebContentsView always sits above HTML overlays; suppress whenever ANY modal opens.
   useEffect(() => {
-    window.diandian.browser.setSuppressed(settingsOpen || cookieModalOpen || childModalOpen);
-  }, [settingsOpen, cookieModalOpen, childModalOpen]);
+    void window.diandian.browser.setSuppressed(reading || settingsOpen || cookieModalOpen || childModalOpen || historyImportOpen);
+  }, [reading, settingsOpen, cookieModalOpen, childModalOpen, historyImportOpen]);
 
   // Sync browser visibility when user toggles collapse/expand.
   useEffect(() => {
@@ -448,12 +545,22 @@ export const App: React.FC = () => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
         e.preventDefault();
+        if (reading) {
+          setReaderTarget(null);
+          setBrowserOpen(true);
+          return;
+        }
         setBrowserOpen((v) => {
           if (v) setWorkspaceOpen(true);
           return !v;
         });
       } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "b") {
         e.preventDefault();
+        if (reading) {
+          setReaderTarget(null);
+          setWorkspaceOpen(true);
+          return;
+        }
         setWorkspaceOpen((v) => (browserOpen ? !v : true));
       } else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "b") {
         e.preventDefault();
@@ -465,7 +572,7 @@ export const App: React.FC = () => {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [browserOpen]);
+  }, [browserOpen, reading]);
 
   const endRailDrag = useCallback(() => {
     const start = railDragStartRef.current;
@@ -694,8 +801,8 @@ export const App: React.FC = () => {
   const handleSaveReplyAsDraft = async (content: string): Promise<string | null> => {
     const activeTabNow = browserState?.tabs.find((t) => t.id === browserState.activeTabId) ?? null;
     const prepared = prepareDraftFromAssistantReply(content, {
-      bookHint: selectedBook?.title ?? null,
-      pageTitle: activeTabNow && !isStartPageTabUrl(activeTabNow.url) ? activeTabNow.title : null,
+      bookHint: readerTarget ? readerTitle : selectedBook?.title ?? null,
+      pageTitle: !readerTarget && activeTabNow && !isStartPageTabUrl(activeTabNow.url) ? activeTabNow.title : null,
     });
     const matchedBook = prepared.bookTitle
       ? books.find(
@@ -772,6 +879,7 @@ export const App: React.FC = () => {
   };
 
   const handleOpenBrowserUrl = async (url?: string, newTab = false) => {
+    setReaderTarget(null);
     setBrowserOpen(true);
     try {
       await window.diandian.browser.openUrl(url, newTab);
@@ -806,6 +914,7 @@ export const App: React.FC = () => {
   };
 
   const handleOpenQuickSite = async (site: (typeof QUICK_WEB_LINKS)[number]) => {
+    setReaderTarget(null);
     setBrowserOpen(true);
     const tabs = browserState?.tabs ?? [];
     const current = tabs.find((t) => t.id === browserState?.activeTabId) ?? null;
@@ -918,8 +1027,8 @@ export const App: React.FC = () => {
   }, []);
 
   const breadcrumbDetail = useMemo(() => {
-    if (activeTab === "library") {
-      return libraryMode === "collision" ? "跨书观点碰撞" : selectedBook?.title || "书架";
+    if (activeTab === "notes") {
+      return libraryMode === "collision" ? "跨书观点碰撞" : selectedBook?.title || null;
     }
     if (activeTab === "studio") {
       return selectedDraft?.title || "草稿箱";
@@ -937,6 +1046,9 @@ export const App: React.FC = () => {
 
   // Dynamic Surf-style "Active Context" chip automatically attached inside the AI drawer
   const autoContext = useMemo<ContextAttachment | null>(() => {
+    if (readerTarget) {
+      return { id: `reader:${readerTarget.file.filePath}`, kind: "reader", label: `《${readerTitle}》` };
+    }
     if (workspaceOpen && activeTab === "notebook" && selectedNotebook) {
       return {
         id: `notebook:${selectedNotebook.id}`,
@@ -952,7 +1064,7 @@ export const App: React.FC = () => {
         label: `草稿：${selectedDraft.title.slice(0, 16)}`,
       };
     }
-    if (workspaceOpen && activeTab === "library" && selectedBook) {
+    if (workspaceOpen && activeTab === "notes" && selectedBook) {
       return {
         id: `book:${selectedBook.id}`,
         kind: "book",
@@ -979,6 +1091,8 @@ export const App: React.FC = () => {
     }
     return null;
   }, [
+    readerTarget,
+    readerTitle,
     workspaceOpen,
     activeTab,
     selectedNotebook,
@@ -991,7 +1105,8 @@ export const App: React.FC = () => {
 
   const navItems: Array<{ id: StudioTab; label: string; icon: React.ReactNode; count?: number }> = [
     { id: "discover", label: "搜书发现", icon: <IconSearch size={15} /> },
-    { id: "library", label: "我的书库", icon: <IconBookOpen size={15} />, count: books.length || undefined },
+    { id: "library", label: TAB_LABELS.library, icon: <IconBookOpen size={15} />, count: downloadError ? undefined : downloadFiles?.length },
+    { id: "notes", label: TAB_LABELS.notes, icon: <IconSquarePen size={15} />, count: books.length || undefined },
     { id: "studio", label: "创作草稿", icon: <IconPenLine size={15} />, count: drafts.length || undefined },
     { id: "router", label: "连接与偏好", icon: <IconCompass size={15} /> },
   ];
@@ -1020,11 +1135,8 @@ export const App: React.FC = () => {
               <button
                 key={item.id}
                 type="button"
-                className={`surf-nav-item ${workspaceOpen && activeTab === item.id ? "active" : ""}`}
-                onClick={() => {
-                  setActiveTab(item.id);
-                  setWorkspaceOpen(true);
-                }}
+                className={`surf-nav-item ${!reading && workspaceOpen && activeTab === item.id ? "active" : ""}`}
+                onClick={() => openWorkspaceTab(item.id)}
               >
                 {item.icon}
                 <span className="surf-nav-label">{item.label}</span>
@@ -1076,7 +1188,7 @@ export const App: React.FC = () => {
           {notebooks.length > 0 && (
             <div className="surf-nb-list">
               {notebooks.map((nb) => {
-                const isNbActive = workspaceOpen && activeTab === "notebook" && activeNotebookId === nb.id;
+                const isNbActive = !reading && workspaceOpen && activeTab === "notebook" && activeNotebookId === nb.id;
                 return (
                   <button
                     key={nb.id}
@@ -1115,8 +1227,25 @@ export const App: React.FC = () => {
           </div>
 
           <div className="surf-rail-tabs">
+            {readerTabs.map(file => {
+              const title = file.title || file.fileName.replace(/\.epub$/i, "");
+              const current = readerTarget?.file.filePath === file.filePath;
+              return (
+                <div key={file.filePath} className={`surf-tab-item local-book-tab ${current ? "active" : ""}`}>
+                  <button type="button" className="local-book-tab-select" aria-pressed={current}
+                    title={title} aria-label={`阅读《${title}》`} onClick={() => readLocalBook(file)}>
+                    <IconBookOpen size={14} /><span className="surf-nav-label">{title}</span>
+                  </button>
+                  <button type="button" className="surf-tab-close" aria-label={`关闭《${title}》标签`}
+                    onClick={() => {
+                      setReaderTabs(tabs => tabs.filter(tab => tab.filePath !== file.filePath));
+                      if (current) openWorkspaceTab("library");
+                    }}><IconClose size={11} /></button>
+                </div>
+              );
+            })}
             {(browserState?.tabs ?? []).map((tab) => {
-              const isCurrent = browserOpen && tab.id === browserState?.activeTabId;
+              const isCurrent = !reading && browserOpen && tab.id === browserState?.activeTabId;
               const isStart = isStartPageTabUrl(tab.url);
               const displayTitle = isStart ? "新标签页" : tab.title || "加载中…";
               return (
@@ -1124,6 +1253,7 @@ export const App: React.FC = () => {
                   key={tab.id}
                   className={`surf-tab-item ${isCurrent ? "active" : ""}`}
                   onClick={() => {
+                    setReaderTarget(null);
                     setBrowserOpen(true);
                     void window.diandian.browser.selectTab(tab.id);
                   }}
@@ -1230,7 +1360,7 @@ export const App: React.FC = () => {
         <div
           className={`workspace-column ${browserOpen ? "" : "full-width"}`}
           style={{
-            display: workspaceOpen ? "flex" : "none",
+            display: workspaceOpen && !reading ? "flex" : "none",
             ...(browserOpen ? { width: `${effectiveLeftWidth}px`, flex: "0 0 auto" } : {}),
           }}
         >
@@ -1341,6 +1471,9 @@ export const App: React.FC = () => {
 
               <div style={{ display: activeTab === "discover" ? "flex" : "none", flexDirection: "column", height: "100%" }}>
                 <DiscoverView
+                  onDownloadComplete={refreshDownloads}
+                  onBookMetadataChanged={handleBookMetadataChanged}
+                  onOpenDownloadLibrary={() => openWorkspaceTab("library")}
                   onSendToChat={(prompt, autoSend) => handleSendToChat(prompt, autoSend)}
                   onOpenBrowserUrl={(url, newTab) => void handleOpenBrowserUrl(url, newTab)}
                   onOpenSiteUrl={(url) => void handleOpenSiteUrl(url)}
@@ -1354,8 +1487,29 @@ export const App: React.FC = () => {
               </div>
 
               {activeTab === "library" && (
+                <DownloadedBooksView
+                  onRead={readLocalBook}
+                  files={downloadFiles ?? []}
+                  loading={downloadsLoading}
+                  error={downloadError}
+                  onRefresh={refreshDownloads}
+                  onDiscover={() => setActiveTab("discover")}
+                  onOpenHistoryImport={() => setHistoryImportOpen(true)}
+                  imports={weReadImports}
+                  onImport={importDownloadedToWeRead}
+                  onOpenWeReadShelf={() => void handleOpenBrowserUrl(WEREAD_SHELF_URL)}
+                  onOpenConnections={() => {
+                    setRouterInitialSection("router");
+                    openWorkspaceTab("router");
+                  }}
+                  onNotify={notify}
+                />
+              )}
+
+              {activeTab === "notes" && (
                 <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
                   <LibraryView
+                    onOpenOriginal={openHighlightInBook}
                     refreshSignal={libraryRefreshSignal}
                     selectedBookId={selectedBookId}
                     onSelectBookId={setSelectedBookId}
@@ -1399,7 +1553,7 @@ export const App: React.FC = () => {
                     onOpenBook={(bookId) => {
                       setSelectedBookId(bookId);
                       setLibraryMode("shelf");
-                      setActiveTab("library");
+                      setActiveTab("notes");
                     }}
                     onOpenDraft={(draftId) => {
                       setActiveDraftId(draftId);
@@ -1419,6 +1573,7 @@ export const App: React.FC = () => {
               {activeTab === "router" && (
                 <RouterView
                   initialSection={routerInitialSection}
+                  onBookMetadataChanged={handleBookMetadataChanged}
                   onModalToggle={setChildModalOpen}
                   onEnsureBrowserOpen={() => setBrowserOpen(true)}
                   onNotify={notify}
@@ -1429,7 +1584,22 @@ export const App: React.FC = () => {
         </div>
 
         {/* 3. Right Native Split Browser (38px matching chrome) */}
-        {browserOpen && (
+        {readerTarget && (
+          <LocalReader
+            key={readerTarget.file.filePath}
+            file={readerTarget.file}
+            railOpen={railOpen}
+            onToggleRail={() => setRailOpen(open => !open)}
+            modelSettings={modelSettings}
+            onOpenModelSettings={() => setSettingsOpen(true)}
+            initialLocator={readerTarget.cfi}
+            onTitle={updateReaderTitle}
+            onBack={() => openWorkspaceTab("library")}
+            onAsk={(quote, title) => handleSendToChat(`我在读《${title}》时选中了这段话：\n\n「${quote}」\n\n请帮我解读这段话。`, false)}
+            onNotesChanged={() => setLibraryRefreshSignal(n => n + 1)}
+          />
+        )}
+        {browserOpen && !reading && (
           <>
             {workspaceOpen && (
               <div
@@ -1528,7 +1698,7 @@ export const App: React.FC = () => {
         <LeftWorkspace
           books={books}
           drafts={drafts}
-          browserState={browserState}
+          browserState={reading ? null : browserState}
           modelSettings={modelSettings}
           safetyMode={safetyMode}
           autoContext={autoContext}
@@ -1553,6 +1723,10 @@ export const App: React.FC = () => {
           notify("模型设置已保存", "success");
         }}
       />
+
+      {historyImportOpen && (
+        <ZlibHistoryImport onClose={() => setHistoryImportOpen(false)} onImported={refreshDownloads} />
+      )}
 
       <CookieImportModal
         open={cookieModalOpen}

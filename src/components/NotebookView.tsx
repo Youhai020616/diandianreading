@@ -83,7 +83,7 @@ export const NotebookView: React.FC<NotebookViewProps> = ({
             type="button"
             className="btn icon-only ghost"
             onClick={() => void onDeleteNotebook(notebook.id)}
-            title="删除该主题空间（不会删除书库和草稿本身）"
+            title="删除该主题空间，保留原阅读笔记和草稿"
           >
             <IconTrash size={14} />
           </button>
@@ -131,13 +131,13 @@ export const NotebookView: React.FC<NotebookViewProps> = ({
           {pickerMode === "book" && (
             <div className="nb-picker-card">
               <div className="nb-picker-head">
-                <span>选择要加入此主题的本地书目</span>
+                <span>从阅读笔记中选择要关联的书目</span>
                 <button type="button" className="btn icon-only ghost" onClick={() => setPickerMode(null)}>
                   <IconClose size={13} />
                 </button>
               </div>
               {availableBooks.length === 0 ? (
-                <div className="nb-picker-empty">书库里的书目都已收录或暂为空。</div>
+                <div className="nb-picker-empty">阅读笔记中暂无可关联的书目。</div>
               ) : (
                 <div className="nb-picker-list">
                   {availableBooks.map((b) => (

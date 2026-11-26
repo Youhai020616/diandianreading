@@ -3,7 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { CARD_TEMPLATES, renderReadingCardHtml } from "../electron/cards/cardTemplates";
-import { exportBookToObsidian, exportDraftToObsidian } from "../electron/export/obsidianExporter";
+import { buildObsidianDeepLink, exportBookToObsidian, exportDraftToObsidian } from "../electron/export/obsidianExporter";
+import { availableObsidianVault, listObsidianVaults } from "../electron/export/obsidianVaults";
 import { KnowledgeDatabase } from "../electron/storage/database";
 import { TwinStore } from "../electron/twin/twinStore";
 
@@ -21,7 +22,56 @@ afterEach(() => {
   }
 });
 
+describe("Obsidian vault discovery", () => {
+  it("lists only available registered folders, ordered by their latest recorded use", async () => {
+    const root = fs.realpathSync(makeTempDir("diandian-vaults-"));
+    const config = path.join(root, "obsidian");
+    const personal = path.join(root, "personal", "笔记");
+    const work = path.join(root, "work", "笔记");
+    for (const dir of [config, personal, work]) fs.mkdirSync(dir, { recursive: true });
+    const registryPath = path.join(config, "obsidian.json");
+    fs.writeFileSync(registryPath, JSON.stringify({ vaults: {
+      old: { path: personal, ts: 100 },
+      second: { path: work, ts: 200 },
+      recent: { path: personal + path.sep, ts: 300 },
+      stale: { path: path.join(root, "gone"), ts: 900 },
+      file: { path: registryPath },
+      relative: { path: "personal" },
+      malformed: null,
+    } }));
+
+    expect(await listObsidianVaults(root)).toEqual([
+      { name: "笔记", path: personal, lastOpened: 300 },
+      { name: "笔记", path: work, lastOpened: 200 },
+    ]);
+  });
+
+  it("allows manual or legacy bindings without a readable registry and ignores unavailable bindings", async () => {
+    const root = fs.realpathSync(makeTempDir("diandian-vaults-"));
+    expect(await listObsidianVaults(root)).toEqual([]);
+    fs.mkdirSync(path.join(root, "obsidian"));
+    fs.writeFileSync(path.join(root, "obsidian", "obsidian.json"), "{");
+    await expect(listObsidianVaults(root)).rejects.toThrow("无法读取");
+    expect(availableObsidianVault(root)).toBe(root);
+    expect(availableObsidianVault(path.join(root, "moved"))).toBe("");
+  });
+});
+
 describe("Obsidian incremental exporter", () => {
+  it("opens the exact note when multiple vaults have the same name", () => {
+    const root = makeTempDir("diandian-vaults-");
+    const rel = "读书笔记/第一章 #1.md";
+    const links = ["工作 空间", "私人 空间"].map((parent) => {
+      const vault = path.join(root, parent, "我的笔记");
+      const uri = new URL(buildObsidianDeepLink(vault, rel));
+      expect(uri.protocol).toBe("obsidian:");
+      expect(uri.hostname).toBe("open");
+      expect(uri.searchParams.get("path")).toBe(path.join(vault, rel));
+      return uri.href;
+    });
+    expect(links[0]).not.toBe(links[1]);
+  });
+
   it("tracks user renames via diandian_id and protects manual edits with conflict copy", () => {
     const dir = makeTempDir("diandian-obs-");
     const vault = path.join(dir, "MyVault");
@@ -42,7 +92,9 @@ describe("Obsidian incremental exporter", () => {
       // 1. Initial write
       const r1 = exportBookToObsidian(db, vault, book.id);
       expect(r1.status).toBe("written");
-      expect(r1.deepLink.startsWith("obsidian://open?vault=MyVault&file=")).toBe(true);
+      expect(new URL(r1.deepLink).searchParams.get("path")).toBe(
+        path.join(fs.realpathSync(vault), r1.writtenRelativePath),
+      );
 
       // 2. Unchanged skip
       const r2 = exportBookToObsidian(db, vault, book.id);

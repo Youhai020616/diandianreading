@@ -5,13 +5,15 @@ import { defineConfig, type PluginOption } from "vite";
 const CSP_META =
   "default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; "
   + "script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; "
-  + "font-src 'self' data:; connect-src 'self'; frame-src 'none'";
+  + "font-src 'self' data:; connect-src 'self'; frame-src 'self'";
 
 function injectCspMeta(): PluginOption {
   return {
     name: "diandian:inject-csp-meta",
     apply: "build",
-    transformIndexHtml(html) {
+    transformIndexHtml(html, context) {
+      // The offline EPUB frame has its own stricter network and chapter policy.
+      if (context.path.endsWith("/src/reader/frame.html")) return html;
       return {
         html,
         tags: [
@@ -31,6 +33,7 @@ export default defineConfig({
   base: "./",
   build: {
     target: "es2022",
+    rolldownOptions: { input: ["index.html", "src/reader/frame.html"] },
     outDir: "dist",
     sourcemap: false,
   },

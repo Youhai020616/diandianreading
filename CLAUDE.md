@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-diandianreading v2 (`feat/v2-m0-desktop`)：local-first 个人阅读与表达桌面工作台（Electron + 原生 `WebContentsView` + DeepSeek Harness SDK 插件架构）。原 v1 Python/FastAPI 版本完整保留在 `main` 分支。
+diandianreading v2（`main`）：local-first 个人阅读与表达桌面工作台（Electron + 原生 `WebContentsView` + DeepSeek Harness SDK 插件架构）。v1 Python/FastAPI 版本已从工作树移除，仅存于 git 历史（最后提交 `9e9328f`）。
 
 ## 身份（必须遵守）
 

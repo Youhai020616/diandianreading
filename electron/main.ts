@@ -42,6 +42,7 @@ import {
 } from "./cards/conceptVisualTemplates";
 import type { MonthlyPosterPayload } from "./cards/posterTemplates";
 import { exportBookToObsidian, exportDraftToObsidian } from "./export/obsidianExporter";
+import { availableObsidianVault, listObsidianVaults, resolveObsidianVaultRoot } from "./export/obsidianVaults";
 import { importNotesIntoDatabase } from "./importers/notesImporter";
 import {
   listWeReadNotebooks,
@@ -55,12 +56,22 @@ import {
   verifyKindleSmtp,
   type KindleSmtpSecurity,
 } from "./router/kindleSmtpService";
-import { searchOnlineBookMetadata } from "./router/metadataService";
+import { searchOnlineBookMetadata, type BookMetadataCandidate } from "./router/metadataService";
+import { importBookText, importResult, importSelectedBooks } from "./router/localBookImport";
+import { ROUTER_EBOOK_EXTENSIONS, BOOK_FILE_EXTENSIONS, listDownloadedBooks, resolveDownloadedBook } from "./router/downloadedBooks";
+import { DownloadedBookCovers } from "./router/downloadedBookCovers";
+import { openReaderBook, resolveReaderHighlight, updateReaderMetadata } from "./router/localReader";
+import { ReaderTranslationService } from "./router/readerTranslation";
+import type { ReaderTranslationInput, ReaderTranslationSettingsInput } from "../src/types/desktop";
+import type { DownloadCoverHint, ReaderAnnotationInput } from "../src/types/desktop";
 import { ZlibCliService, type ConnectionsSnapshot } from "./router/zlibCliService";
 import { SafetyModeStore, normalizeSafetyMode, type SafetyMode } from "./security/safetyPolicy";
 import { fetchAvailableModels } from "./security/modelCatalog";
 import { ModelSettingsStore, normalizeBaseUrl } from "./security/secretStore";
+import { ReaderTranslationSettingsStore } from "./security/readerTranslationSettings";
 import { TrustedIpcRegistry } from "./security/trustedIpc";
+import { matchesTrustedAppUrl } from "./security/urlMatch";
+import { BookCoverCache } from "./storage/bookCoverCache";
 import {
   KnowledgeDatabase,
   type BookSource,
@@ -112,12 +123,17 @@ let settingsStore: ModelSettingsStore | null = null;
 let kindleStore: KindleSettingsStore | null = null;
 let safetyStore: SafetyModeStore | null = null;
 let knowledgeDb: KnowledgeDatabase | null = null;
+let readerTranslations: ReaderTranslationService;
+let readerTranslationSettings: ReaderTranslationSettingsStore;
+let bookCovers: BookCoverCache;
+let downloadedCovers: DownloadedBookCovers;
 let twinStore: TwinStore | null = null;
 let cardBaker: CardBakerService | null = null;
 let zlibService: ZlibCliService | null = null;
 let petController: PetWindowController | null = null;
 
 const ipc = new TrustedIpcRegistry();
+const metadataLookups = new WeakMap<BrowserWindow, { id: string; bookId: string; candidates: BookMetadataCandidate[] }>();
 const pendingCookieImports = new Map<string, ParsedCookieBundle>();
 
 function stashPendingCookieImport(bundle: ParsedCookieBundle): string {
@@ -168,15 +184,32 @@ function requireDb(): KnowledgeDatabase {
   return knowledgeDb;
 }
 
+function getObsidianVault(): string {
+  return availableObsidianVault(requireDb().getSetting("obsidian.vaultPath") ?? "");
+}
+
+function setObsidianVault(selected: string): string {
+  const vaultPath = selected ? resolveObsidianVaultRoot(selected) : "";
+  requireDb().setSetting("obsidian.vaultPath", vaultPath);
+  return vaultPath;
+}
+
 function requireObsidianVault(): string {
-  const vault = requireDb().getSetting("obsidian.vaultPath")?.trim() || "";
+  const vault = getObsidianVault();
   if (!vault) {
-    throw new Error("尚未设置 Obsidian Vault 目录，请先在「连接与偏好 → Obsidian 联动」中选择你的 Obsidian 仓库文件夹。");
+    // The renderer offers a "去设置" shortcut when it sees this message; keep the two in sync.
+    throw new Error("请先在「连接与偏好 → Obsidian 联动」中连接一个可用的 Obsidian 笔记库。");
   }
   return vault;
 }
 
 function wireIpcHandlers(): void {
+  ipc.handle("app:take-menu-action", () => {
+    const action = pendingMenuAction;
+    pendingMenuAction = null;
+    return action ? { action } : null;
+  });
+
   ipc.handle("app:info", () => ({
     name: app.getName(),
     version: app.getVersion(),
@@ -770,7 +803,8 @@ function wireIpcHandlers(): void {
       const stem = path.basename(filePath, path.extname(filePath));
       const outcome = importNotesIntoDatabase(requireDb(), rawText, {
         format: input?.format ?? "auto",
-        fallbackTitle: input?.fallbackTitle || (stem.toLowerCase() === "my clippings" ? undefined : stem),
+        fallbackTitle: input?.fallbackTitle,
+        fileTitle: stem.toLowerCase() === "my clippings" ? undefined : stem,
       });
       return { canceled: false as const, fileName: path.basename(filePath), ...outcome };
     },
@@ -812,7 +846,44 @@ function wireIpcHandlers(): void {
     };
   });
 
-  ipc.handle("library:lookup-metadata", async (_win, query: string) => searchOnlineBookMetadata(query));
+  ipc.handle("library:lookup-metadata", async (win, query: string, bookId?: string) => {
+    if (!bookId) return searchOnlineBookMetadata(query);
+    const book = requireDb().getBook(bookId);
+    if (!book) throw new Error("找不到这本书，请重新打开书库。");
+    const lookup = { id: crypto.randomUUID(), bookId, candidates: [] as BookMetadataCandidate[] };
+    metadataLookups.set(win, lookup);
+    const result = await searchOnlineBookMetadata(query, book);
+    lookup.candidates = result.candidates;
+    return { ...result, lookupId: lookup.id };
+  });
+
+  ipc.handle("library:apply-metadata", async (win, bookId: string, lookupId: string, index: number) => {
+    const lookup = metadataLookups.get(win);
+    const edition = lookup?.candidates[index];
+    if (!lookup || lookup.id !== lookupId || lookup.bookId !== bookId || !Number.isInteger(index) || !edition) {
+      throw new Error("查询结果已更新，请重新查询并选择版本。");
+    }
+    const coverReady = edition.coverUrl ? await bookCovers.get(edition.coverUrl) : null;
+    if (metadataLookups.get(win) !== lookup) throw new Error("查询结果已更新，请重新选择版本。");
+    const db = requireDb();
+    const book = db.getBook(bookId);
+    if (!book) throw new Error("找不到这本书，请重新打开书库。");
+    db.updateBook(bookId, {
+      author: book.author || edition.author,
+      isbn: edition.isbn || undefined,
+      publisher: edition.publisher || undefined,
+      publishedYear: edition.publishedYear || undefined,
+      description: edition.description || undefined,
+      coverUrl: coverReady ? edition.coverUrl : undefined,
+    }, edition.title);
+    metadataLookups.delete(win);
+    return { coverUnavailable: Boolean(edition.coverUrl && !coverReady) };
+  });
+
+  ipc.handle("library:get-book-cover", (_win, bookId: string) => {
+    const coverUrl = requireDb().getBook(bookId)?.coverUrl;
+    return coverUrl ? bookCovers.get(coverUrl) : null;
+  });
 
   ipc.handle("library:weread-list-notebooks", async () => {
     if (!browserService) throw new Error("内置浏览器未就绪");
@@ -826,7 +897,7 @@ function wireIpcHandlers(): void {
       throw new Error("请至少选择一本书进行同步");
     }
     const cookies = await browserService.exportCookiesForOrigin("https://weread.qq.com");
-    return syncWeReadBooksIntoDatabase(requireDb(), cookies, books);
+    return syncWeReadBooksIntoDatabase(requireDb(), cookies, books, (url) => bookCovers.get(url));
   });
 
   ipc.handle("library:random-recall", (_win, excludeId?: string) =>
@@ -1099,34 +1170,23 @@ function wireIpcHandlers(): void {
 
   // ---------- Obsidian Vault Export & Deep Link ----------
 
-  ipc.handle("obsidian:get-vault", () => ({
-    vaultPath: requireDb().getSetting("obsidian.vaultPath") ?? "",
-  }));
+  ipc.handle("obsidian:get-vault", () => ({ vaultPath: getObsidianVault() }));
+  ipc.handle("obsidian:list-vaults", () => listObsidianVaults(app.getPath("appData")));
 
   ipc.handle("obsidian:set-vault", (_win, vaultPath: string) => {
-    const trimmed = vaultPath.trim();
-    if (trimmed) {
-      if (!path.isAbsolute(trimmed)) throw new Error("请输入绝对目录路径");
-      const st = fs.lstatSync(trimmed);
-      if (st.isSymbolicLink() || !st.isDirectory()) {
-        throw new Error("Obsidian Vault 必须是普通目录（禁止符号链接）");
-      }
-    }
-    requireDb().setSetting("obsidian.vaultPath", trimmed);
-    return { vaultPath: trimmed };
+    return { vaultPath: setObsidianVault(vaultPath) };
   });
 
   ipc.handle("obsidian:pick-vault", async (win) => {
     const res = await dialog.showOpenDialog(win, {
-      title: "选择你的 Obsidian Vault 根目录",
+      title: "选择 Obsidian 笔记库文件夹",
+      defaultPath: getObsidianVault() || app.getPath("documents"),
       properties: ["openDirectory", "createDirectory"],
     });
     if (res.canceled || !res.filePaths[0]) {
-      return { canceled: true as const, vaultPath: requireDb().getSetting("obsidian.vaultPath") ?? "" };
+      return { canceled: true as const, vaultPath: getObsidianVault() };
     }
-    const chosen = res.filePaths[0];
-    requireDb().setSetting("obsidian.vaultPath", chosen);
-    return { canceled: false as const, vaultPath: chosen };
+    return { canceled: false as const, vaultPath: setObsidianVault(res.filePaths[0]) };
   });
 
   ipc.handle("obsidian:export-book", (_win, bookId: string) =>
@@ -1380,9 +1440,83 @@ function wireIpcHandlers(): void {
     return zlibService.getHistory(input?.forceRefresh === true);
   });
 
-  ipc.handle("router:download", async (_win, input: { bookRef: string }) => {
-    if (!zlibService) throw new Error("Router service unavailable");
-    return zlibService.download(input.bookRef);
+  ipc.handle("router:download-history-page", async (_win, input: { page: number; forceRefresh?: boolean }) => {
+    if (!zlibService) throw new Error("书源服务尚未就绪。");
+    const history = await zlibService.getDownloadHistoryPage(input.page, input.forceRefresh === true);
+    const localRefs = await downloadedCovers.localHistoryRefs(history.books);
+    const books = history.books.map(book => {
+      const format = book.extension.trim().toLowerCase().replace(/^\./, "");
+      if (format && !BOOK_FILE_EXTENSIONS.includes(format)) {
+        return { ...book, unavailableReason: `书库暂不支持 ${format.toUpperCase()} 格式` };
+      }
+      return book;
+    });
+    return { books, hasMore: history.hasMore, localRefs };
+  });
+
+  ipc.handle("router:download-history-book", (_win, input: { bookRef: string; hint?: DownloadCoverHint }) =>
+    downloadedCovers.downloadHistoryBook(input.bookRef, input.hint));
+
+  ipc.handle("router:download", async (_win, input: { bookRef: string; hint?: DownloadCoverHint }) => {
+    return downloadedCovers.download(input.bookRef, input.hint);
+  });
+
+  ipc.handle("router:import-local-books", async (win, mode: "files" | "directory") => {
+    if (!zlibService) throw new Error("本地书库尚未就绪。");
+    if (mode !== "files" && mode !== "directory") throw new Error("无效的导入方式。");
+    const choice = await dialog.showOpenDialog(win, mode === "files" ? {
+      title: "选择要导入的电子书", buttonLabel: "导入", properties: ["openFile", "multiSelections"],
+      filters: [{ name: "电子书", extensions: BOOK_FILE_EXTENSIONS }],
+    } : { title: "选择包含电子书的文件夹", buttonLabel: "导入文件夹", properties: ["openDirectory"] });
+    if (choice.canceled || !choice.filePaths.length) return importResult(true);
+    return importSelectedBooks(zlibService.getDownloadDir(), mode, choice.filePaths, downloadedCovers);
+  });
+
+  ipc.handle("router:import-book-text", (_win, input: { title: string; text: string }) => {
+    if (!zlibService) throw new Error("本地书库尚未就绪。");
+    return importBookText(zlibService.getDownloadDir(), input, downloadedCovers);
+  });
+
+  ipc.handle("router:list-downloaded-books", () => {
+    if (!zlibService) throw new Error("下载目录尚未就绪。");
+    return listDownloadedBooks(zlibService.getDownloadDir());
+  });
+
+  ipc.handle("reader:open", (_win, filePath: string) => {
+    if (!zlibService) throw new Error("下载目录尚未就绪。");
+    return openReaderBook(requireDb(), zlibService.getDownloadDir(), filePath);
+  });
+
+  ipc.handle("reader:get-translation-settings", () => readerTranslationSettings.readPublic());
+  ipc.handle("reader:save-translation-settings", (_win, input: ReaderTranslationSettingsInput) => readerTranslationSettings.save(input));
+  ipc.handle("reader:open-deepl-portal", () => shell.openExternal("https://www.deepl.com/your-account/keys"));
+  ipc.handle("reader:translate", (win, input: ReaderTranslationInput) => readerTranslations.translate(win.id, input));
+  ipc.handle("reader:cached-translations", (_win, input: ReaderTranslationInput) => readerTranslations.readCached(input));
+  ipc.handle("reader:cancel-translation", (win, requestId: string) => readerTranslations.cancel(win.id, requestId));
+
+  ipc.handle("reader:save-location", (_win, documentId: string, cfi: string) =>
+    requireDb().saveReaderLocation(documentId, cfi));
+
+  ipc.handle("reader:add-annotation", (_win, input: ReaderAnnotationInput) =>
+    requireDb().addReaderAnnotation(input));
+
+  ipc.handle("reader:remove-annotation", (_win, documentId: string, highlightId: string) =>
+    requireDb().removeReaderAnnotation(documentId, highlightId));
+
+  ipc.handle("reader:resolve-highlight", (_win, id: string) => {
+    if (!zlibService) throw new Error("下载目录尚未就绪。");
+    return resolveReaderHighlight(requireDb(), zlibService.getDownloadDir(), id);
+  });
+
+  ipc.handle("router:get-downloaded-book-cover", async (_win, filePath: string) => {
+    return downloadedCovers.preview(filePath);
+  });
+
+  ipc.handle("router:open-downloaded-book", async (_win, filePath: string) => {
+    if (!zlibService) throw new Error("下载目录尚未就绪。");
+    const book = await resolveDownloadedBook(zlibService.getDownloadDir(), filePath);
+    const error = await shell.openPath(book);
+    if (error) throw new Error(`打开电子书失败：${error}`);
   });
 
   ipc.handle("router:open-download-dir", async (_win, filePath?: string) => {
@@ -1405,7 +1539,7 @@ function wireIpcHandlers(): void {
     const res = await dialog.showOpenDialog(win, {
       title: "选择本地电子书文件（EPUB / PDF / MOBI / AZW3）",
       properties: ["openFile"],
-      filters: [{ name: "电子书文件", extensions: ["epub", "pdf", "mobi", "azw3", "txt", "docx"] }],
+      filters: [{ name: "电子书文件", extensions: ROUTER_EBOOK_EXTENSIONS }],
     });
     if (res.canceled || !res.filePaths[0]) {
       return { canceled: true as const, filePath: "" };
@@ -1421,9 +1555,9 @@ function wireIpcHandlers(): void {
     return zlibService.sendToKindle(filePath);
   });
 
-  ipc.handle("router:import-weread", async (_win, filePath: string) => {
-    if (!zlibService) throw new Error("Router service unavailable");
-    return zlibService.importToWeRead(filePath);
+  ipc.handle("router:import-weread", async (_win, filePath: string, options?: { fromLibrary?: boolean }) => {
+    if (!zlibService) throw new Error("微信读书导入尚未就绪，请稍后重试。");
+    return zlibService.importToWeRead(filePath, options);
   });
 
   ipc.handle("router:meta-read", async (_win, filePath: string) => {
@@ -1455,7 +1589,9 @@ function wireIpcHandlers(): void {
     ) => {
       if (!zlibService) throw new Error("Router service unavailable");
       const { filePath, ...patch } = input;
-      return zlibService.applyLocalBookMeta(filePath, patch);
+      const service = zlibService;
+      return updateReaderMetadata(requireDb(), service.getDownloadDir(), filePath, file => service.applyLocalBookMeta(file, patch),
+        (file, hash) => downloadedCovers.rememberCoverBeforeMetadataEdit(file, hash));
     },
   );
 
@@ -1568,24 +1704,31 @@ function resolveAppIconPath(): string | undefined {
 }
 
 const APP_DISPLAY_NAME = "点点读书";
+/** A menu command chosen while no renderer was listening; the renderer takes it once it subscribes. */
+let pendingMenuAction: AppMenuAction | null = null;
 
 function installAppMenu(): void {
+  const iconPath = resolveAppIconPath();
   app.setAboutPanelOptions({
     applicationName: APP_DISPLAY_NAME,
     applicationVersion: app.getVersion(),
     website: APP_REPO_URL,
-    ...(resolveAppIconPath() ? { iconPath: resolveAppIconPath() } : {}),
+    ...(iconPath ? { iconPath } : {}),
   });
   const template = buildAppMenuTemplate({
     appName: APP_DISPLAY_NAME,
     isMac: process.platform === "darwin",
+    developerTools: !app.isPackaged,
     sendAction: (action: AppMenuAction) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.show();
         mainWindow.focus();
-        sendToMain("app:menu-action", { action });
+        // A window that is still loading has not subscribed yet; hand the command over later.
+        if (mainWindow.webContents.isLoading()) pendingMenuAction = action;
+        else sendToMain("app:menu-action", { action });
       } else {
+        pendingMenuAction = action;
         void createMainWindow();
       }
     },
@@ -1617,8 +1760,17 @@ async function createMainWindow(): Promise<void> {
   });
 
   mainWindow = win;
+  const windowId = win.id;
+  win.webContents.on("did-start-navigation", (event) => {
+    if (event.isMainFrame && !event.isSameDocument) readerTranslations.cancelWindow(windowId);
+  });
+  win.once("closed", () => readerTranslations.cancelWindow(windowId));
   ipc.registerWindow(win, entryUrl);
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  // The workspace page never navigates away; external pages open in the embedded browser instead.
+  win.webContents.on("will-navigate", (event) => {
+    if (!matchesTrustedAppUrl(event.url, entryUrl)) event.preventDefault();
+  });
 
   win.on("focus", () => {
     if (blurCheckTimer) {
@@ -1921,10 +2073,14 @@ async function bootstrap(): Promise<void> {
   kindleStore = new KindleSettingsStore(userDataDir, safeStorage);
   safetyStore = new SafetyModeStore(userDataDir);
   knowledgeDb = new KnowledgeDatabase(path.join(userDataDir, "state", "diandian.sqlite3"));
+  readerTranslationSettings = new ReaderTranslationSettingsStore(knowledgeDb, safeStorage);
+  readerTranslations = new ReaderTranslationService(knowledgeDb, () => settingsStore!.readRaw(), fetch, () => readerTranslationSettings.readDeepLKey());
+  bookCovers = new BookCoverCache(userDataDir);
   twinStore = new TwinStore(userDataDir);
   cardBaker = new CardBakerService();
   cardBaker.installProtocol();
   zlibService = new ZlibCliService(path.join(app.getPath("downloads"), "diandianreading"));
+  downloadedCovers = new DownloadedBookCovers(zlibService, bookCovers, knowledgeDb);
   const savedZlibDomain = knowledgeDb.getSetting("router.zlibDomain");
   if (savedZlibDomain) {
     try {
@@ -2011,7 +2167,8 @@ async function bootstrap(): Promise<void> {
 }
 
 app.whenReady().then(() => {
-  if (process.platform === "darwin" && app.dock) {
+  // A packaged app already carries its icns; only the development Electron needs the brand icon.
+  if (process.platform === "darwin" && app.dock && !app.isPackaged) {
     const dockIcon = resolveAppIconPath();
     if (dockIcon) app.dock.setIcon(dockIcon);
   }

@@ -190,6 +190,9 @@ export interface HighlightRecord {
   note: string;
   source: BookSource;
   fingerprint: string;
+  cfi?: string;
+  isHighlighted?: boolean;
+  color?: ReaderHighlightColor;
   createdAt: string;
 }
 
@@ -226,8 +229,10 @@ export interface ImportNotesResult {
   bookIds: string[];
 }
 
+export type BookMetadataSource = "openlibrary" | "google-books" | "weread";
+
 export interface BookMetadataCandidate {
-  source: "openlibrary" | "google-books";
+  source: BookMetadataSource;
   title: string;
   author: string;
   isbn: string;
@@ -235,6 +240,12 @@ export interface BookMetadataCandidate {
   publishedYear: string;
   description: string;
   coverUrl: string;
+}
+
+export interface BookMetadataSearchResult {
+  candidates: BookMetadataCandidate[];
+  issues: Array<{ source: BookMetadataSource; reason: "rate-limited" | "unavailable" }>;
+  invalidIsbn?: true;
 }
 
 export interface CardTemplateMeta {
@@ -256,6 +267,12 @@ export interface ReadingCardPayload {
   author: string;
   tag: string;
   dateLabel?: string;
+}
+
+export interface ObsidianVaultCandidate {
+  name: string;
+  path: string;
+  lastOpened: number;
 }
 
 export interface ObsidianExportOutcome {
@@ -388,6 +405,77 @@ export interface ZlibBookItem {
   url?: string;
   rating?: string;
   description?: string;
+}
+
+export interface LocalBookImportResult {
+  added: number;
+  existing: number;
+  failures: { name: string; message: string }[];
+  canceled: boolean;
+}
+
+export interface ZlibDownloadHistoryPage {
+  books: (ZlibBookItem & { unavailableReason?: string })[];
+  localRefs: string[];
+  hasMore: boolean;
+}
+
+export interface DownloadedBookFile {
+  filePath: string;
+  fileName: string;
+  format: string;
+  sizeBytes: number;
+  modifiedAt: number;
+  fileRevision?: string;
+}
+
+export type DownloadCoverHint = Partial<Pick<ZlibBookItem, "title" | "author" | "isbn" | "publisher" | "year" | "coverUrl">>;
+
+export interface WeReadImportResult {
+  output: string;
+  alreadyExisted: boolean;
+}
+
+export type ReaderHighlightColor = import("../../electron/storage/highlightColors").ReaderHighlightColor;
+export type ReaderAnnotation = HighlightRecord & { cfi: string; isHighlighted: boolean; color: ReaderHighlightColor };
+
+export type ReaderTranslationProvider = "deepl" | "model";
+
+export interface ReaderTranslationSettings {
+  provider: ReaderTranslationProvider;
+  hasDeepLKey: boolean;
+}
+
+export interface ReaderTranslationSettingsInput {
+  provider: ReaderTranslationProvider;
+  apiKey?: string;
+  clearApiKey?: boolean;
+}
+
+export interface ReaderTranslationInput {
+  provider?: ReaderTranslationProvider;
+  target: "en" | "zh";
+  texts: string[];
+  requestId?: string;
+}
+
+export interface ReaderAnnotationInput {
+  documentId: string;
+  title: string;
+  author?: string;
+  isbn?: string;
+  chapter: string;
+  quote: string;
+  note?: string;
+  cfi: string;
+  color?: ReaderHighlightColor;
+}
+
+export interface OpenReaderBook {
+  bytes: Uint8Array;
+  documentId: string;
+  location: string;
+  annotations: ReaderAnnotation[];
 }
 
 export interface LocalBookMetadata {
@@ -639,6 +727,19 @@ export interface DesktopBridgeApi {
     deleteSession(id: string): Promise<{ deleted: boolean }>;
     onEvent(callback: (event: AgentEvent) => void): () => void;
   };
+  reader: {
+    open(filePath: string): Promise<OpenReaderBook>;
+    getTranslationSettings(): Promise<ReaderTranslationSettings>;
+    saveTranslationSettings(input: ReaderTranslationSettingsInput): Promise<ReaderTranslationSettings>;
+    openDeepLPortal(): Promise<void>;
+    translate(input: ReaderTranslationInput): Promise<string[]>;
+    readCachedTranslations(input: Omit<ReaderTranslationInput, "requestId">): Promise<(string | null)[]>;
+    cancelTranslation(requestId: string): Promise<void>;
+    saveLocation(documentId: string, cfi: string): Promise<void>;
+    addAnnotation(input: ReaderAnnotationInput): Promise<ReaderAnnotation>;
+    removeAnnotation(documentId: string, highlightId: string): Promise<ReaderAnnotation | null>;
+    resolveHighlight(highlightId: string): Promise<{ file: DownloadedBookFile; cfi: string }>;
+  };
   library: {
     listBooks(query?: string): Promise<BookRecord[]>;
     getBook(id: string): Promise<BookRecord | null>;
@@ -677,7 +778,7 @@ export interface DesktopBridgeApi {
       note?: string;
       source?: BookSource;
     }): Promise<{ record: HighlightRecord; deduplicated: boolean }>;
-    updateHighlightNote(id: string, note: string): Promise<HighlightRecord>;
+    updateHighlightNote(id: string, note: string): Promise<HighlightRecord | null>;
     deleteHighlight(id: string): Promise<{ deleted: boolean }>;
     importNotesText(input: {
       rawText: string;
@@ -698,7 +799,9 @@ export interface DesktopBridgeApi {
       deduplicated: boolean;
       usedSelection: boolean;
     }>;
-    lookupMetadata(query: string): Promise<BookMetadataCandidate[]>;
+    lookupMetadata(query: string, bookId?: string): Promise<BookMetadataSearchResult & { lookupId?: string }>;
+    applyMetadata(bookId: string, lookupId: string, index: number): Promise<{ coverUnavailable: boolean }>;
+    getBookCover(bookId: string): Promise<string | null>;
     listWeReadNotebooks(): Promise<WeReadNotebookBook[]>;
     syncWeReadBooks(books: WeReadNotebookBook[]): Promise<WeReadSyncOutcome>;
     randomRecall(excludeId?: string): Promise<RecallHighlightItem | null>;
@@ -797,6 +900,7 @@ export interface DesktopBridgeApi {
   };
   obsidian: {
     getVault(): Promise<{ vaultPath: string }>;
+    listVaults(): Promise<ObsidianVaultCandidate[]>;
     setVault(vaultPath: string): Promise<{ vaultPath: string }>;
     pickVault(): Promise<{ canceled: boolean; vaultPath: string }>;
     exportBook(bookId: string): Promise<ObsidianExportOutcome>;
@@ -854,16 +958,25 @@ export interface DesktopBridgeApi {
     mostPopular(forceRefresh?: boolean): Promise<ZlibBookItem[]>;
     favorites(forceRefresh?: boolean): Promise<ZlibBookItem[]>;
     history(forceRefresh?: boolean): Promise<ZlibBookItem[]>;
-    download(bookRef: string): Promise<{ output: string; directory: string; filePath?: string }>;
+    downloadHistoryPage(page: number, forceRefresh?: boolean): Promise<ZlibDownloadHistoryPage>;
+    downloadHistoryBook(bookRef: string, hint?: DownloadCoverHint):
+      Promise<{ filePath: string; directory: string; output: string; alreadyLocal: boolean }>;
+    download(bookRef: string, hint?: DownloadCoverHint):
+      Promise<{ output: string; directory: string; filePath?: string }>;
+    listDownloadedBooks(): Promise<DownloadedBookFile[]>;
+    importLocalBooks(mode: "files" | "directory"): Promise<LocalBookImportResult>;
+    importBookText(input: { title: string; text: string }): Promise<LocalBookImportResult>;
+    getDownloadedBookCover(filePath: string): Promise<string | null>;
+    openDownloadedBook(filePath: string): Promise<void>;
     openDownloadDir(filePath?: string): Promise<{ opened: boolean; path: string }>;
     pickEbookFile(): Promise<{ canceled: boolean; filePath: string }>;
     sendKindle(filePath: string): Promise<{ output: string }>;
-    importWeRead(filePath: string): Promise<{ output: string }>;
+    importWeRead(filePath: string, options?: { fromLibrary?: boolean }): Promise<WeReadImportResult>;
     readBookMeta(filePath: string): Promise<LocalBookMetadata>;
     fetchBookMetaMatches(filePath: string, sources?: string[]): Promise<LocalBookMetadata[]>;
     applyBookMeta(
       input: Partial<LocalBookMetadata> & { filePath: string; rename?: boolean },
-    ): Promise<{ metadata: LocalBookMetadata; output: string }>;
+    ): Promise<{ metadata: LocalBookMetadata; filePath: string; output: string }>;
   };
   pet: {
     getState(): Promise<PetWindowState>;

@@ -1,11 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { canonicalIsbn } from "../../electron/isbn";
 import type {
-  BookMetadataCandidate,
+  BookMetadataSource,
   BookRecord,
   HighlightRecord,
-  ObsidianExportOutcome,
   WeReadNotebookBook,
 } from "../types/desktop";
+import { ObsidianExportAction } from "./ObsidianExportAction";
+import { LibraryBookCover } from "./LibraryBookCover";
+import { ActionMenu } from "./ActionMenu";
+import { ListPicker } from "./ListPicker";
+import { formatUserError } from "../utils/formatError";
 import { CustomSelect } from "./CustomSelect";
 import { ReadingPosterModal } from "./ReadingPosterModal";
 import {
@@ -13,8 +18,8 @@ import {
   IconCard,
   IconCheck,
   IconClose,
-  IconExternalLink,
   IconEye,
+  IconMoreHorizontal,
   IconPenLine,
   IconPlus,
   IconRefresh,
@@ -26,7 +31,16 @@ import {
   IconWand,
 } from "./Icons";
 
+const SOURCE_LABELS: Record<string, string> = {
+  weread: "微信读书",
+  kindle: "Kindle",
+  local: "本地阅读",
+  zlib: "Z-Library",
+  manual: "手动记录",
+};
+
 interface LibraryViewProps {
+  onOpenOriginal: (highlightId: string) => void;
   refreshSignal: number;
   selectedBookId?: string | null;
   onSelectBookId?: (bookId: string | null) => void;
@@ -44,7 +58,33 @@ interface LibraryViewProps {
 
 const SUGGESTED_THEMES = ["习惯", "系统", "自由", "激励", "长期", "认知", "关系", "决策"];
 
+const METADATA_SOURCES: Record<BookMetadataSource, string> = {
+  weread: "微信读书",
+  "google-books": "Google Books",
+  openlibrary: "Open Library",
+};
+
+type MetadataResult = Awaited<ReturnType<typeof window.diandian.library.lookupMetadata>>;
+
+function metadataSearchNotice({ candidates, issues, invalidIsbn }: MetadataResult): string {
+  if (invalidIsbn) return "ISBN 校验未通过，请核对书上的 10 位或 13 位书号。";
+  const messages: string[] = [];
+  if (candidates.length === 0) {
+    const failed = new Set(issues.map(issue => METADATA_SOURCES[issue.source]));
+    const available = Object.values(METADATA_SOURCES).filter(name => !failed.has(name));
+    messages.push(available.length
+      ? `${available.join("、")} 未找到匹配的书籍。可以只输入书名，或用 ISBN 再查一次。`
+      : "所有书源暂时都无法完成查询，请稍后重试。");
+  }
+  for (const issue of issues) {
+    const reason = issue.reason === "rate-limited" ? "暂时限制了查询次数" : "暂时无法访问";
+    messages.push(`${METADATA_SOURCES[issue.source]}${reason}。`);
+  }
+  return messages.join(" ");
+}
+
 export const LibraryView: React.FC<LibraryViewProps> = ({
+  onOpenOriginal,
   refreshSignal,
   selectedBookId: controlledBookId,
   onSelectBookId,
@@ -68,24 +108,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [books, setBooks] = useState<BookRecord[]>([]);
   const [internalSelectedBookId, setInternalSelectedBookId] = useState<string | null>(null);
   const selectedBookId = controlledBookId !== undefined ? controlledBookId : internalSelectedBookId;
+  const activeBookId = useRef(selectedBookId);
+  useEffect(() => { activeBookId.current = selectedBookId; }, [selectedBookId]);
   const setSelectedBookId = useCallback(
-    (next: string | null | ((prev: string | null) => string | null)) => {
-      if (typeof next === "function") {
-        setInternalSelectedBookId((prev) => {
-          const base = controlledBookId !== undefined ? controlledBookId : prev;
-          const resolved = next(base);
-          onSelectBookId?.(resolved);
-          return resolved;
-        });
-      } else {
-        setInternalSelectedBookId(next);
-        onSelectBookId?.(next);
-      }
+    (next: string | null) => {
+      activeBookId.current = next;
+      setInternalSelectedBookId(next);
+      onSelectBookId?.(next);
     },
-    [controlledBookId, onSelectBookId],
+    [onSelectBookId],
   );
   const [highlights, setHighlights] = useState<HighlightRecord[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
   const [capturing, setCapturing] = useState(false);
 
   // Cross-book viewpoint collision
@@ -100,16 +133,16 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [newNote, setNewNote] = useState("");
   const [newChapter, setNewChapter] = useState("");
   const [showAddHighlight, setShowAddHighlight] = useState(false);
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  useEffect(() => setDescriptionExpanded(false), [selectedBookId]);
 
   // Inline note edit
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState("");
 
-  // Last obsidian export badge
-  const [lastExport, setLastExport] = useState<ObsidianExportOutcome | null>(null);
-
   // Modals
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importError, setImportError] = useState("");
   const [importText, setImportText] = useState("");
   const [importFormat, setImportFormat] = useState<"auto" | "kindle" | "weread">("auto");
   const [importTitle, setImportTitle] = useState("");
@@ -120,8 +153,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
   const [metaModalOpen, setMetaModalOpen] = useState(false);
   const [metaQuery, setMetaQuery] = useState("");
-  const [metaLoading, setMetaLoading] = useState(false);
-  const [metaCandidates, setMetaCandidates] = useState<BookMetadataCandidate[]>([]);
+  const [metaSearch, setMetaSearch] = useState<
+    { status: "loading" | "error" } | { status: "done"; result: MetadataResult }
+  >({ status: "loading" });
+  const [applyingEdition, setApplyingEdition] = useState<number | null>(null);
+  const metaRequest = useRef(0);
+  const metaResult = metaSearch.status === "done" ? metaSearch.result : undefined;
+  const metaNotice = metaResult && metadataSearchNotice(metaResult);
 
   // WeRead full-shelf sync modal
   const [wereadModalOpen, setWeReadModalOpen] = useState(false);
@@ -149,16 +187,18 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     };
   }, [anyModalOpen, onModalToggle]);
 
+  const listRequest = useRef(0);
   const loadBooks = useCallback(
-    async (q = searchQuery) => {
-      const list = await window.diandian.library.listBooks(q);
+    async () => {
+      const request = ++listRequest.current;
+      const list = await window.diandian.library.listBooks();
+      if (request !== listRequest.current) return;
       setBooks(list);
-      setSelectedBookId((prev) => {
-        if (prev && list.some((b) => b.id === prev)) return prev;
-        return list[0]?.id ?? null;
-      });
+      if (!list.some(book => book.id === activeBookId.current)) {
+        setSelectedBookId(list[0]?.id ?? null);
+      }
     },
-    [searchQuery],
+    [setSelectedBookId],
   );
 
   const loadHighlights = useCallback(async (bookId: string | null) => {
@@ -171,11 +211,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   }, []);
 
   useEffect(() => {
-    void loadBooks(searchQuery);
-  }, [loadBooks, searchQuery, refreshSignal]);
+    void loadBooks();
+  }, [loadBooks, refreshSignal]);
 
   useEffect(() => {
-    setLastExport(null);
     void loadHighlights(selectedBookId);
   }, [selectedBookId, loadHighlights, refreshSignal]);
 
@@ -279,7 +318,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     }
   };
 
+  const openImport = () => {
+    setImportError("");
+    setImportModalOpen(true);
+  };
+
   const handleImportFile = async () => {
+    setImportError("");
     try {
       const res = await window.diandian.library.importNotesFile({
         format: importFormat,
@@ -295,12 +340,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         "success",
       );
     } catch (error) {
-      onNotify(error instanceof Error ? error.message : "导入失败", "error");
+      setImportError(formatUserError(error, "导入失败"));
     }
   };
 
   const handleImportTextSubmit = async () => {
     if (!importText.trim()) return;
+    setImportError("");
     try {
       const res = await window.diandian.library.importNotesText({
         rawText: importText,
@@ -314,7 +360,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       if (res.bookIds[0]) setSelectedBookId(res.bookIds[0]);
       onNotify(`已导入 ${res.importedCount} 条划线（去重 ${res.deduplicatedCount} 条）`, "success");
     } catch (error) {
-      onNotify(error instanceof Error ? error.message : "解析失败", "error");
+      setImportError(formatUserError(error, "解析失败"));
     }
   };
 
@@ -371,65 +417,45 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     }
   };
 
-  const handleOpenMetaLookup = async () => {
+  const searchMetadata = async (query: string) => {
+    const q = query.trim();
+    if (!q || !selectedBookId) return;
+    const request = ++metaRequest.current;
+    setMetaSearch({ status: "loading" });
+    try {
+      const result = await window.diandian.library.lookupMetadata(q, selectedBookId);
+      if (request === metaRequest.current) setMetaSearch({ status: "done", result });
+    } catch {
+      if (request === metaRequest.current) setMetaSearch({ status: "error" });
+    }
+  };
+
+  const handleOpenMetaLookup = () => {
     if (!selectedBook) return;
-    const q = [selectedBook.title, selectedBook.author].filter(Boolean).join(" ");
+    const q = canonicalIsbn(selectedBook.isbn) || [selectedBook.title, selectedBook.author].filter(Boolean).join(" ");
     setMetaQuery(q);
-    setMetaCandidates([]);
     setMetaModalOpen(true);
-    setMetaLoading(true);
-    try {
-      const list = await window.diandian.library.lookupMetadata(q);
-      setMetaCandidates(list);
-    } catch (error) {
-      onNotify(error instanceof Error ? error.message : "在线元数据查询失败", "error");
-    } finally {
-      setMetaLoading(false);
-    }
+    void searchMetadata(q);
   };
 
-  const handleSearchMeta = async () => {
-    if (!metaQuery.trim()) return;
-    setMetaLoading(true);
-    try {
-      const list = await window.diandian.library.lookupMetadata(metaQuery.trim());
-      setMetaCandidates(list);
-    } catch (error) {
-      onNotify(error instanceof Error ? error.message : "查询失败", "error");
-    } finally {
-      setMetaLoading(false);
-    }
+  const closeMetaLookup = () => {
+    ++metaRequest.current;
+    setMetaModalOpen(false);
   };
 
-  const handleApplyMeta = async (cand: BookMetadataCandidate) => {
-    if (!selectedBook) return;
+  const handleApplyMeta = async (index: number) => {
+    if (!selectedBook || !metaResult?.lookupId || applyingEdition !== null) return;
+    setApplyingEdition(index);
     try {
-      await window.diandian.library.updateBook({
-        id: selectedBook.id,
-        title: cand.title || selectedBook.title,
-        author: cand.author || selectedBook.author,
-        isbn: cand.isbn || selectedBook.isbn,
-        publisher: cand.publisher || selectedBook.publisher,
-        publishedYear: cand.publishedYear || selectedBook.publishedYear,
-        description: cand.description || selectedBook.description,
-        coverUrl: cand.coverUrl || selectedBook.coverUrl,
-      });
-      setMetaModalOpen(false);
+      const { coverUnavailable } = await window.diandian.library.applyMetadata(selectedBook.id, metaResult.lookupId, index);
+      closeMetaLookup();
       await loadBooks();
-      onNotify("已补全书籍元数据", "success");
+      onNotify(coverUnavailable ? "已保存书籍资料。这个版本的封面暂时无法下载。" : "已补全书籍信息",
+        coverUnavailable ? "info" : "success");
     } catch (error) {
-      onNotify(error instanceof Error ? error.message : "应用元数据失败", "error");
-    }
-  };
-
-  const handleExportObsidian = async () => {
-    if (!selectedBook) return;
-    try {
-      const res = await window.diandian.obsidian.exportBook(selectedBook.id);
-      setLastExport(res);
-      onNotify(res.message, res.status === "conflict" ? "info" : "success");
-    } catch (error) {
-      onNotify(error instanceof Error ? error.message : "导出 Obsidian 失败", "error");
+      onNotify(formatUserError(error, "保存书籍信息失败"), "error");
+    } finally {
+      setApplyingEdition(null);
     }
   };
 
@@ -457,7 +483,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       .join("\n\n");
 
     onSendToChat(
-      `请围绕主题「${topicLabel}」，对我本地书库里来自 ${groupedCollision.length} 本不同书籍的划线做一次深度「跨书观点碰撞分析」，严格遵守我的 STYLE.md 风格：\n1. 这些书之间有哪些**核心共识与互相印证**？\n2. 哪几本书的观点存在**明显分歧或适用边界张力**？\n3. 结合我写下的个人批注，提炼一个属于我自己的判断框架，并调用 draft_create_or_revise 存成一篇专题主题对照草稿（kind: "note"）。\n\n以下是命中的跨书划线：\n\n${snippet}`,
+      `请围绕主题「${topicLabel}」，对我的阅读笔记里来自 ${groupedCollision.length} 本不同书籍的划线做一次深度「跨书观点碰撞分析」，严格遵守我的 STYLE.md 风格：\n1. 这些书之间有哪些**核心共识与互相印证**？\n2. 哪几本书的观点存在**明显分歧或适用边界张力**？\n3. 结合我写下的个人批注，提炼一个属于我自己的判断框架，并调用 draft_create_or_revise 存成一篇专题主题对照草稿（kind: "note"）。\n\n以下是命中的跨书划线：\n\n${snippet}`,
     );
   };
 
@@ -465,35 +491,44 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     <div className="chat-view">
       <header className="view-header">
         <div className="view-header-left">
-          <h1 className="view-title">本地书库</h1>
-          <span className="badge">{books.length} 本书</span>
+          <h1 className="view-title">阅读笔记</h1>
+          {viewMode === "shelf" && books.length > 0 ? (
+            <ListPicker
+              label="全部书目"
+              icon={<IconBookOpen size={13} />}
+              searchPlaceholder="按书名、作者或标签查找…"
+              activeId={selectedBookId}
+              onSelect={setSelectedBookId}
+              items={books.map((book) => ({
+                id: book.id,
+                title: book.title,
+                meta: [book.author || "作者待补全", `${book.highlightCount} 条笔记`].join(" · "),
+                keywords: [book.isbn, ...book.tags].join(" "),
+              }))}
+            />
+          ) : (
+            <span className="badge">{books.length} 个书目</span>
+          )}
         </div>
         <div className="view-header-right">
-          <button type="button" className="btn sm sage" onClick={() => void handleOpenWeReadSync()}>
-            <IconRefresh size={13} />
-            <span>同步微信读书</span>
-          </button>
-          <button type="button" className="btn sm ghost" onClick={() => void handleCaptureBrowser()} disabled={capturing}>
-            <IconEye size={13} />
-            <span>{capturing ? "采集中…" : "采集右侧"}</span>
-          </button>
-          <button type="button" className="btn sm ghost" onClick={() => setImportModalOpen(true)}>
-            <IconUpload size={13} />
-            <span>导入</span>
-          </button>
-          <button
-            type="button"
-            className="btn sm ghost"
-            onClick={() => setPosterModalOpen(true)}
-            title="生成本月跨源阅读月报海报"
-          >
-            <IconCard size={13} />
-            <span>阅读月报</span>
-          </button>
-          <button type="button" className="btn sm primary" onClick={() => setNewBookModalOpen(true)}>
-            <IconPlus size={13} />
-            <span>新建</span>
-          </button>
+          <ActionMenu
+            label="添加笔记"
+            icon={<IconPlus size={13} />}
+            ariaLabel="添加笔记"
+            triggerClassName="btn sm primary"
+            items={[
+              { key: "weread", label: "同步微信读书划线", icon: <IconRefresh size={14} />, onSelect: () => void handleOpenWeReadSync() },
+              {
+                key: "capture",
+                label: capturing ? "正在采集右侧页面…" : "采集右侧页面的划线",
+                icon: <IconEye size={14} />,
+                disabled: capturing,
+                onSelect: () => void handleCaptureBrowser(),
+              },
+              { key: "import", label: "导入 Kindle / 文本笔记", icon: <IconUpload size={14} />, onSelect: openImport },
+              { key: "new-book", label: "手动新建书目", icon: <IconPlus size={14} />, onSelect: () => setNewBookModalOpen(true) },
+            ]}
+          />
         </div>
       </header>
 
@@ -504,7 +539,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             className={`section-tab ${viewMode === "shelf" ? "active" : ""}`}
             onClick={() => setViewMode("shelf")}
           >
-            我的书架与划线
+            按书查看划线
           </button>
           <button
             type="button"
@@ -514,27 +549,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             跨书观点碰撞
           </button>
         </div>
-
-        {viewMode === "shelf" && (books.length > 0 || searchQuery.trim().length > 0) && (
-          <div className="inline-filter-box">
-            <IconSearch size={13} />
-            <input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="筛选书名、作者或标签…"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                className="inline-filter-clear"
-                onClick={() => setSearchQuery("")}
-                title="清空筛选"
-              >
-                <IconClose size={11} />
-              </button>
-            )}
-          </div>
-        )}
+        <button
+          type="button"
+          className="btn sm ghost"
+          onClick={() => setPosterModalOpen(true)}
+          title="生成本月跨源阅读月报海报"
+        >
+          <IconCard size={13} />
+          <span>阅读月报</span>
+        </button>
       </div>
 
       {viewMode === "collision" ? (
@@ -597,7 +620,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <div className="muted-box">正在跨书检索历史划线…</div>
           ) : groupedCollision.length === 0 ? (
             <div className="muted-box">
-              没有在本地书库里找到匹配「{themeQuery || "全部"}」的划线。可以先点击右上角「同步微信读书」或导入 Kindle 笔记充实书库。
+              阅读笔记中没有匹配「{themeQuery || "全部"}」的划线。可以同步微信读书或导入 Kindle 笔记。
             </div>
           ) : (
             <>
@@ -646,28 +669,18 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         <div className="studio-scroll">
           <div className="surf-doc-container">
             {books.length === 0 ? (
-              searchQuery.trim() ? (
-                <div className="muted-box" style={{ padding: "28px 20px" }}>
-                  <div style={{ marginBottom: 10 }}>
-                    未找到与「<strong>{searchQuery.trim()}</strong>」匹配的书目
-                  </div>
-                  <button type="button" className="btn sm" onClick={() => setSearchQuery("")}>
-                    清空筛选
-                  </button>
-                </div>
-              ) : (
                 <div className="muted-box" style={{ padding: "36px 20px" }}>
-                  <div style={{ marginBottom: 8, color: "var(--ink)", fontWeight: 600 }}>书库还是空的</div>
+                  <div style={{ marginBottom: 8, color: "var(--ink)", fontWeight: 600 }}>阅读笔记里还没有书目</div>
                   <div style={{ marginBottom: 14 }}>
-                    你可以直接点击 <strong>「同步微信读书」</strong> 一键拉取整书全部划线与想法，或导入 Kindle{" "}
-                    <span className="code-inline">My Clippings.txt</span>，或在右侧选中任意段落直接浮窗点「存书库」。
+                    可以一键同步微信读书的整书划线与想法，或导入 Kindle{" "}
+                    <span className="code-inline">My Clippings.txt</span>，也可以在右侧选中一段文字，点击「存入阅读笔记」。
                   </div>
                   <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 8 }}>
                     <button type="button" className="btn sage" onClick={() => void handleOpenWeReadSync()}>
                       <IconRefresh size={14} />
                       一键同步微信读书书架笔记
                     </button>
-                    <button type="button" className="btn primary" onClick={() => setImportModalOpen(true)}>
+                    <button type="button" className="btn primary" onClick={openImport}>
                       <IconUpload size={14} />
                       导入 Kindle / 文本笔记
                     </button>
@@ -677,39 +690,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     </button>
                   </div>
                 </div>
-              )
             ) : (
               <>
-                <div className="switcher-strip" role="tablist" aria-label="书架切换">
-                  {books.map((book) => (
-                    <button
-                      key={book.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={book.id === selectedBookId}
-                      className={`switcher-pill ${book.id === selectedBookId ? "active" : ""}`}
-                      onClick={() => setSelectedBookId(book.id)}
-                      title={`${book.title}${book.author ? ` · ${book.author}` : ""}`}
-                    >
-                      <IconBookOpen size={12} style={{ flexShrink: 0, opacity: 0.72 }} />
-                      <span className="switcher-pill-title">{book.title}</span>
-                      {book.highlightCount > 0 && (
-                        <span className="switcher-pill-meta">{book.highlightCount}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-
                 {selectedBook && (
                   <>
                     <section className="surf-plain-section">
                     <div className="book-hero">
                       <div className="book-cover-box">
-                        {selectedBook.coverUrl ? (
-                          <img src={selectedBook.coverUrl} alt={selectedBook.title} />
-                        ) : (
-                          selectedBook.title.slice(0, 1)
-                        )}
+                        <LibraryBookCover key={selectedBook.updatedAt} bookId={selectedBook.id}
+                          title={selectedBook.title} coverUrl={selectedBook.coverUrl} />
                       </div>
                       <div className="book-hero-info">
                         <h2 className="book-hero-title">{selectedBook.title}</h2>
@@ -717,14 +706,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           <span>{selectedBook.author || "作者待补全"}</span>
                           {selectedBook.publisher && <span>· {selectedBook.publisher}</span>}
                           {selectedBook.publishedYear && <span>· {selectedBook.publishedYear}</span>}
-                          {selectedBook.isbn && <span className="badge mono">ISBN {selectedBook.isbn}</span>}
-                          <span className="badge">{selectedBook.highlightCount} 条划线</span>
+                          <span className="badge">{selectedBook.highlightCount} 条笔记</span>
                         </div>
                         {selectedBook.description && (
-                          <p style={{ margin: "0 0 10px", fontSize: 12.5, color: "var(--ink-secondary)" }}>
-                            {selectedBook.description.slice(0, 180)}
-                            {selectedBook.description.length > 180 ? "…" : ""}
-                          </p>
+                          <div className="book-hero-description">
+                            <p className={descriptionExpanded ? "" : "clamped"}>{selectedBook.description}</p>
+                            {selectedBook.description.length > 90 && (
+                              <button type="button" onClick={() => setDescriptionExpanded((v) => !v)}>
+                                {descriptionExpanded ? "收起简介" : "展开简介"}
+                              </button>
+                            )}
+                          </div>
                         )}
                         <div className="book-hero-actions">
                           <button
@@ -732,20 +724,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             className="btn sm primary"
                             onClick={() =>
                               onSendToChat(
-                                `请读取本地书库中《${selectedBook.title}》（bookId: ${selectedBook.id}）的全部划线和我的想法，按照我的 STYLE.md 风格提炼 1 篇有个人立场的书评初稿，并存入创作工作台。`,
+                                `请读取阅读笔记中《${selectedBook.title}》（bookId: ${selectedBook.id}）的全部划线和我的想法，按照我的 STYLE.md 风格提炼 1 篇有个人立场的书评初稿，并存入创作工作台。`,
                               )
                             }
                           >
                             <IconSparkles size={12} />
                             <span>AI 基于划线起草</span>
-                          </button>
-                          <button type="button" className="btn sm" onClick={() => void handleOpenMetaLookup()}>
-                            <IconWand size={12} />
-                            <span>补全元数据</span>
-                          </button>
-                          <button type="button" className="btn sm sage" onClick={() => void handleExportObsidian()}>
-                            <IconBookOpen size={12} />
-                            <span>同步 Obsidian</span>
                           </button>
                           <button
                             type="button"
@@ -755,41 +739,27 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             <IconPlus size={12} />
                             <span>记一条划线</span>
                           </button>
-                          <button
-                            type="button"
-                            className="btn sm ghost"
-                            onClick={() => void handleDeleteBook()}
-                            title="删除这本书"
-                          >
-                            <IconTrash size={12} />
-                          </button>
+                          <ObsidianExportAction key={selectedBook.id} kind="book" itemId={selectedBook.id} title={selectedBook.title} />
+                          <ActionMenu
+                            icon={<IconMoreHorizontal size={15} />}
+                            ariaLabel={`《${selectedBook.title}》的更多操作`}
+                            triggerClassName="btn sm ghost icon-only"
+                            items={[
+                              { key: "metadata", label: "补全书籍信息", icon: <IconWand size={14} />, onSelect: handleOpenMetaLookup },
+                              {
+                                key: "delete",
+                                label: "删除这本书",
+                                confirmLabel: selectedBook.highlightCount
+                                  ? `确认删除，连同 ${selectedBook.highlightCount} 条笔记`
+                                  : "确认删除这本书",
+                                icon: <IconTrash size={14} />,
+                                danger: true,
+                                onSelect: () => void handleDeleteBook(),
+                              },
+                            ]}
+                          />
                         </div>
 
-                        {lastExport && (
-                          <div
-                            style={{
-                              marginTop: 10,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 8,
-                              padding: "7px 10px",
-                              borderRadius: 8,
-                              background: lastExport.status === "conflict" ? "var(--amber-soft)" : "var(--sage-soft)",
-                              fontSize: 12,
-                            }}
-                          >
-                            <span>{lastExport.message}</span>
-                            <button
-                              type="button"
-                              className="btn sm"
-                              onClick={() => void window.diandian.obsidian.openDeepLink(lastExport.deepLink)}
-                            >
-                              <IconExternalLink size={12} />
-                              在 Obsidian 打开
-                            </button>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </section>
@@ -831,7 +801,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           取消
                         </button>
                         <button type="button" className="btn sm primary" onClick={() => void handleAddHighlight()}>
-                          保存到书库
+                          保存划线
                         </button>
                       </div>
                     </section>
@@ -839,13 +809,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
                   <div className="highlight-list">
                     {highlights.length === 0 ? (
-                      <div className="muted-box">这本书还没有划线记录，点击上方「同步微信读书」「采集右侧」或「记一条划线」开始积累。</div>
+                      <div className="muted-box">这本书还没有划线。可以从右上角「添加笔记」同步微信读书或采集右侧页面，也可以点「记一条划线」手动记录。</div>
                     ) : (
                       highlights.map((h) => (
                         <article key={h.id} className="highlight-card">
                           <div className="highlight-chapter">
                             <span>{h.chapter || "未标注章节"}</span>
-                            <span className="badge mono">{h.source}</span>
+                            <span className="badge">{SOURCE_LABELS[h.source] ?? h.source}</span>
                           </div>
                           <blockquote className="highlight-quote">{h.quote}</blockquote>
 
@@ -862,7 +832,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                                 <button type="button" className="btn sm" onClick={() => setEditingNoteId(null)}>
                                   取消
                                 </button>
-                                <button type="button" className="btn sm primary" onClick={() => void handleSaveNote(h.id)}>
+                                <button type="button" className="btn sm primary"
+                                  disabled={h.isHighlighted === false && !editingNoteText.trim()}
+                                  onClick={() => void handleSaveNote(h.id)}>
                                   保存想法
                                 </button>
                               </div>
@@ -875,6 +847,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           ) : null}
 
                           <div className="highlight-footer">
+                            {h.cfi && (
+                              <button type="button" className="btn sm ghost" onClick={() => onOpenOriginal(h.id)}>
+                                <IconBookOpen size={12} />回到原文
+                              </button>
+                            )}
                             <button
                               type="button"
                               className="btn sm ghost"
@@ -905,7 +882,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               className="btn sm ghost"
                               onClick={() =>
                                 onSendToChat(
-                                  `我在读《${selectedBook.title}》时划下这句话：\n\n> ${h.quote}\n${h.note ? `\n我的想法：${h.note}\n` : ""}\n请帮我深度拆解并延伸讨论。`,
+                                  `我在《${selectedBook.title}》里读到这句话：\n\n> ${h.quote}\n${h.note ? `\n我的想法：${h.note}\n` : ""}\n请帮我深度拆解并延伸讨论。`,
                                 )
                               }
                             >
@@ -921,7 +898,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                                 onDataChanged?.();
                                 await loadHighlights(selectedBook.id);
                               }}
-                              title="删除划线"
+                              title={h.note ? "删除这条笔记及想法" : "删除划线"}
                             >
                               <IconTrash size={12} />
                             </button>
@@ -1002,7 +979,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           }
                         />
                         <div className="book-cover-box" style={{ width: 32, height: 44, fontSize: 13 }}>
-                          {b.coverUrl ? <img src={b.coverUrl} alt={b.title} /> : b.title.slice(0, 1)}
+                          <LibraryBookCover title={b.title} coverUrl={b.coverUrl} />
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -1093,6 +1070,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               />
             </div>
 
+            {importError && <div className="muted-box" role="alert">{importError}</div>}
+
             <div className="modal-footer">
               <button type="button" className="btn" onClick={() => setImportModalOpen(false)}>
                 取消
@@ -1157,11 +1136,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
       {/* Metadata Lookup Modal */}
       {metaModalOpen && (
-        <div className="modal-backdrop" onClick={() => setMetaModalOpen(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-backdrop" onClick={applyingEdition === null ? closeMetaLookup : undefined}>
+          <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="meta-lookup-title"
+            onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>在线补全书籍元数据</h3>
-              <button type="button" className="btn icon-only ghost" onClick={() => setMetaModalOpen(false)}>
+              <h3 id="meta-lookup-title">在线补全书籍信息</h3>
+              <button type="button" className="btn icon-only ghost" aria-label="关闭" onClick={closeMetaLookup} disabled={applyingEdition !== null}>
                 <IconClose size={16} />
               </button>
             </div>
@@ -1171,42 +1151,55 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 value={metaQuery}
                 onChange={(e) => setMetaQuery(e.target.value)}
                 placeholder="输入书名、作者或 ISBN…"
+                aria-label="书名、作者或 ISBN"
+                disabled={applyingEdition !== null}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) void handleSearchMeta();
+                  // keyCode 229 covers IMEs that report the confirming Enter without isComposing.
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229
+                    && metaSearch.status !== "loading") {
+                    void searchMetadata(metaQuery);
+                  }
                 }}
               />
-              <button type="button" className="btn primary" onClick={() => void handleSearchMeta()} disabled={metaLoading}>
-                {metaLoading ? "查询中…" : "查询"}
+              <button type="button" className="btn primary" onClick={() => void searchMetadata(metaQuery)}
+                disabled={metaSearch.status === "loading" || applyingEdition !== null || !metaQuery.trim()}>
+                {metaSearch.status === "loading" ? "查询中…" : "查询"}
               </button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {metaLoading ? (
-                <div className="muted-box">正在并行查询 Google Books 与 Open Library…</div>
-              ) : metaCandidates.length === 0 ? (
-                <div className="muted-box">暂无匹配结果，可尝试只输入书名或 ISBN 重新查询。</div>
-              ) : (
-                metaCandidates.map((c, idx) => (
+              {metaSearch.status === "loading" && (
+                <div className="muted-box" role="status">正在查询微信读书、Google Books 和 Open Library…</div>
+              )}
+              {metaSearch.status === "error" && (
+                <div className="muted-box" role="alert">查询未完成，请重试。</div>
+              )}
+              {metaNotice && (
+                <div className={metaResult?.candidates.length ? "metadata-source-notice" : "muted-box"} role="status">
+                  {metaNotice}
+                </div>
+              )}
+              {metaResult?.candidates.map((c, idx) => (
                   <div
                     key={`${c.source}-${idx}`}
                     className="editorial-card"
                     style={{ padding: 12, display: "flex", gap: 12, alignItems: "center" }}
                   >
                     <div className="book-cover-box" style={{ width: 42, height: 60, fontSize: 15 }}>
-                      {c.coverUrl ? <img src={c.coverUrl} alt={c.title} /> : c.title.slice(0, 1)}
+                      <LibraryBookCover title={c.title} coverUrl={c.coverUrl} />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontFamily: "var(--font-serif)" }}>{c.title}</div>
                       <div style={{ fontSize: 12, color: "var(--ink-secondary)" }}>
                         {[c.author, c.publisher, c.publishedYear, c.isbn].filter(Boolean).join(" · ")}
                       </div>
-                      <span className="badge mono" style={{ marginTop: 4 }}>{c.source}</span>
+                      <span className="badge" style={{ marginTop: 4 }}>{METADATA_SOURCES[c.source]}</span>
                     </div>
-                    <button type="button" className="btn sm primary" onClick={() => void handleApplyMeta(c)}>
-                      应用
+                    <button type="button" className="btn sm primary" onClick={() => void handleApplyMeta(idx)}
+                      disabled={applyingEdition !== null}>
+                      {applyingEdition === idx ? "保存中…" : "应用"}
                     </button>
                   </div>
-                ))
-              )}
+                ))}
             </div>
           </div>
         </div>

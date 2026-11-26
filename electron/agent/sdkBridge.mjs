@@ -7,6 +7,7 @@ import * as readline from "node:readline";
 
 let harness = null;
 let activeSessionId = null;
+const openSessions = new Set();
 let busy = false;
 const pendingToolNamesByCallId = new Map();
 const pendingToolNameQueue = [];
@@ -125,6 +126,7 @@ async function handleInit(cmd) {
     }
     harness = null;
     activeSessionId = null;
+    openSessions.clear();
   }
 
   const { DeepSeekHarness } = await import("@deepseek-ai/dsh-sdk-client");
@@ -166,9 +168,13 @@ async function handleSend(cmd) {
 
   const requestedSessionId = cmd.newSession ? undefined : (cmd.sessionId || activeSessionId || undefined);
   try {
-    const result = await harness.run(prompt, {
-      ...(requestedSessionId ? { sessionId: requestedSessionId } : {}),
-      onNotification: (notification) => forwardNotification(notification, requestedSessionId),
+    // A session persisted by a previous SDK process must be resumed before its next prompt.
+    const session = requestedSessionId && !openSessions.has(requestedSessionId)
+      ? await harness.resumeSession(requestedSessionId)
+      : harness.session(requestedSessionId);
+    openSessions.add(session.id);
+    const result = await session.run(prompt, {
+      onNotification: (notification) => forwardNotification(notification, session.id),
     });
     activeSessionId = result.sessionId || activeSessionId;
     emit({

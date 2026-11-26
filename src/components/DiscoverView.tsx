@@ -30,9 +30,12 @@ interface DownloadedEntry {
   kindleSent?: boolean;
 }
 
-const WEREAD_SHELF_URL = "https://weread.qq.com/web/shelf";
+export const WEREAD_SHELF_URL = "https://weread.qq.com/web/shelf";
 
 interface DiscoverViewProps {
+  onBookMetadataChanged: (previousPath: string, updatedPath: string, title: string) => void;
+  onDownloadComplete: () => void;
+  onOpenDownloadLibrary: () => void;
   onSendToChat: (prompt: string, autoSend?: boolean) => void;
   onOpenBrowserUrl: (url: string, newTab?: boolean) => void;
   /** Open in a tab dedicated to that site (keeps the current reading tab intact). */
@@ -148,6 +151,9 @@ const BookCoverMedia: React.FC<BookCoverMediaProps> = ({ book, size = "tile" }) 
 };
 
 export const DiscoverView: React.FC<DiscoverViewProps> = ({
+  onBookMetadataChanged,
+  onDownloadComplete,
+  onOpenDownloadLibrary,
   onSendToChat,
   onOpenBrowserUrl,
   onOpenSiteUrl,
@@ -416,7 +422,8 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
     }
     setDownloadingRef(book.bookRef);
     try {
-      const res = await window.diandian.router.download(book.bookRef);
+      const { title, author, isbn, publisher, year, coverUrl } = book;
+      const res = await window.diandian.router.download(book.bookRef, { title, author, isbn, publisher, year, coverUrl });
       const entry: DownloadedEntry = {
         bookRef: book.bookRef,
         title: book.title,
@@ -425,6 +432,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
       };
       setDownloadedMap((prev) => ({ ...prev, [book.bookRef]: entry }));
       setLastDownload(entry);
+      onDownloadComplete();
       onNotify(`《${cleanShortTitle(book.title)}》已下载到 Downloads/diandianreading`, "success");
       // Refresh quota silently
       void window.diandian.router.connections().then(setConnections).catch(() => {});
@@ -452,7 +460,11 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
     setDispatchBusy(`${entry.bookRef}:${target}`);
     try {
       if (target === "weread") {
-        await window.diandian.router.importWeRead(entry.filePath);
+        const res = await window.diandian.router.importWeRead(entry.filePath);
+        if (res.alreadyExisted) {
+          onNotify(`微信读书已收录《${cleanShortTitle(entry.title)}》，可在微信读书中查找。`, "info");
+          return;
+        }
         const updatedEntry: DownloadedEntry = { ...entry, wereadUploaded: true };
         setDownloadedMap((prev) => ({ ...prev, [entry.bookRef]: updatedEntry }));
         setLastDownload((curr) => (curr?.bookRef === entry.bookRef ? updatedEntry : curr));
@@ -486,16 +498,17 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
         onNotify("豆瓣与微信读书暂未找到更完整的元数据匹配", "info");
         return;
       }
-      await window.diandian.router.applyBookMeta({
+      const result = await window.diandian.router.applyBookMeta({
         filePath: entry.filePath,
         ...best,
         rename: false,
       });
-      const updatedEntry: DownloadedEntry = { ...entry, metaFixed: true };
+      onBookMetadataChanged(entry.filePath, result.filePath, result.metadata.title);
+      const updatedEntry: DownloadedEntry = { ...entry, filePath: result.filePath, metaFixed: true };
       setDownloadedMap((prev) => ({ ...prev, [entry.bookRef]: updatedEntry }));
       setLastDownload((curr) => (curr?.bookRef === entry.bookRef ? updatedEntry : curr));
       onNotify(
-        `已用 ${best.source || "豆瓣"} 元数据无损补全《${best.title || cleanShortTitle(entry.title)}》封面与作者`,
+        `已更新《${best.title || cleanShortTitle(entry.title)}》的书目信息`,
         "success",
       );
     } catch (error) {
@@ -781,6 +794,10 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                 </span>
               </div>
               <div className="discover-download-banner-actions">
+                <button type="button" className="btn sm soft" onClick={onOpenDownloadLibrary}>
+                  <IconBookOpen size={12} />
+                  <span>查看本地书库</span>
+                </button>
                 <button
                   type="button"
                   className="btn sm ghost"
@@ -795,7 +812,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                     className={`btn sm ${lastDownload.metaFixed ? "ghost" : "soft"}`}
                     disabled={dispatchBusy !== null || lastDownload.metaFixed}
                     onClick={() => void handleAutoRepairMeta(lastDownload)}
-                    title="从豆瓣 / 微信读书在线匹配并无损写回电子书封面与作者信息"
+                    title="在线匹配并更新书名、作者等书目信息"
                   >
                     {lastDownload.metaFixed ? <IconCheck size={12} /> : <IconWand size={12} />}
                     <span>
@@ -803,7 +820,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                         ? "补全中…"
                         : lastDownload.metaFixed
                           ? "已补元数据"
-                          : "补豆瓣元数据"}
+                          : "补全书目信息"}
                     </span>
                   </button>
                 )}
@@ -1361,10 +1378,10 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                       )}
                       <span>
                         {dispatchBusy === `${selectedBook.bookRef}:meta`
-                          ? "正在补全豆瓣元数据…"
+                          ? "正在补全书目信息…"
                           : downloadedMap[selectedBook.bookRef]?.metaFixed
-                            ? "已补全豆瓣元数据"
-                            : "补全豆瓣元数据"}
+                            ? "已补全书目信息"
+                            : "补全书目信息"}
                       </span>
                     </button>
                   )}

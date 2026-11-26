@@ -1,0 +1,92 @@
+.vault-picker,
+.vault-picker-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vault-picker {
+  gap: 12px;
+}
+
+.vault-picker-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.vault-picker-group legend,
+.vault-picker-hint,
+.vault-picker-error {
+  margin: 0;
+  padding: 0;
+  color: var(--ink-secondary);
+  font-size: 13px;
+}
+
+.vault-picker-group legend {
+  margin-bottom: 8px;
+}
+
+.vault-picker-list {
+  display: grid;
+  gap: 6px;
+  max-height: 15rem;
+  overflow: auto;
+}
+
+.vault-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+label.vault-picker-row {
+  cursor: pointer;
+}
+
+.vault-picker-row[data-selected="true"] {
+  border-color: var(--accent-border);
+  background: var(--surface-tint);
+}
+
+.vault-picker-row input {
+  flex-shrink: 0;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.vault-picker-folder {
+  display: inline-flex;
+  color: var(--accent);
+}
+
+.vault-picker-details {
+  gap: 3px;
+  overflow-wrap: anywhere;
+}
+
+.vault-picker-details strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.vault-picker-details > span {
+  color: var(--ink-secondary);
+  font-size: 12px;
+}
+
+.vault-picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vault-picker-error {
+  color: var(--danger);
+}

@@ -79,10 +79,10 @@ export function apply(ctx) {
     text: () => {
       const mode = readCurrentMode();
       if (mode === "plan") {
-        return "当前安全模式：plan（只读规划）。你可以阅读页面、检索书库与划线、分析讨论，但不得调用任何保存、新建草稿、导出 Obsidian 或跳转网页工具。";
+        return "当前安全模式：plan（只读规划）。你可以阅读页面、检索阅读笔记中的书目与划线、分析讨论，但不得调用任何保存、新建草稿、导出 Obsidian 或跳转网页工具。";
       }
       if (mode === "auto") {
-        return "当前安全模式：auto（全自动工作流）。你可以阅读页面、管理本地书库与 AI 草稿修订，也可以执行带冲突保护的 Obsidian 增量导出。";
+        return "当前安全模式：auto（全自动工作流）。你可以阅读页面、管理阅读笔记与 AI 草稿修订，也可以执行带冲突保护的 Obsidian 增量导出。";
       }
       return "当前安全模式：confirm（安全确认）。你可以读取右侧页面、检索/保存划线并生成独立的 AI 草稿版本（绝不覆盖用户手改版本）；涉及 Obsidian 外部写入或电子书下载时，请提醒用户在界面一键触发。";
     },

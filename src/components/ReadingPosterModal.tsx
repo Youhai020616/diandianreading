@@ -92,7 +92,7 @@ export const ReadingPosterModal: React.FC<ReadingPosterModalProps> = ({ open, on
           <div>
             <h3 style={{ margin: 0 }}>本月阅读海报</h3>
             <div style={{ fontSize: 12.5, color: "var(--ink-muted)", marginTop: 3 }}>
-              汇总你本地书库的跨平台书目、划线与草稿进度（3:4 · 2× 高清 PNG）
+              汇总本月的笔记书目、划线和创作草稿进度（3:4 · 2× 高清 PNG）
             </div>
           </div>
           <button type="button" className="btn icon-only ghost" disabled={baking !== null} onClick={onClose}>
@@ -172,7 +172,7 @@ export const ReadingPosterModal: React.FC<ReadingPosterModalProps> = ({ open, on
               <span className="field-label">海报设置</span>
               <button type="button" className="btn sm ghost" onClick={() => void loadStats(monthKey)}>
                 <IconRefresh size={12} />
-                <span>刷新书库数据</span>
+                <span>刷新月报数据</span>
               </button>
             </div>
 

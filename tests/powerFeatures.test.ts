@@ -176,7 +176,7 @@ describe("DB recall, reading stats & browser selection overlay", () => {
     const script = buildSelectionToolbarScript("nonce-abc-123");
     expect(script).toContain("attachShadow({ mode: \"closed\" })");
     expect(script).toContain("nonce-abc-123");
-    expect(script).toContain("存书库");
+    expect(script).toContain("存入阅读笔记");
     expect(script).toContain("问小金毛");
     expect(script).toContain("写草稿");
   });

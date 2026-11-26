@@ -1,0 +1,179 @@
+.downloaded-books-content {
+  gap: 12px;
+  padding: 8px 24px 24px;
+}
+
+.downloaded-books-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.downloaded-books-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.downloaded-book-open {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.downloaded-book-cover {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 54px;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px 5px 5px 3px;
+  background: var(--surface-tint);
+  box-shadow: var(--shadow-sm);
+}
+
+.downloaded-book-cover img {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  object-fit: contain;
+}
+
+.downloaded-book-cover:has(.downloaded-book-cover-title) {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 var(--accent-border), var(--shadow-sm);
+}
+
+.downloaded-book-cover-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  padding: 0 5px 0 8px;
+  color: var(--ink-secondary);
+  font-family: var(--font-editorial);
+  font-size: 10px;
+  line-height: 1.45;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.downloaded-book-description {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 5px;
+}
+
+.downloaded-book-description strong {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.downloaded-book-description small {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 6px;
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+}
+
+.downloaded-book-action {
+  flex-shrink: 0;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.downloaded-book-menu {
+  position: fixed;
+  inset: auto;
+  position-area: bottom span-left;
+  justify-self: end;
+  position-try-fallbacks: flip-block;
+  margin: 4px 0;
+  padding: 4px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+}
+.downloaded-book-menu button {
+  display: flex;
+  width: 100%;
+  gap: 8px;
+  align-items: center;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.downloaded-book-menu button:hover:enabled { background: var(--accent-soft); }
+.downloaded-book-menu button:disabled { color: var(--ink-secondary); cursor: progress; }
+
+.downloaded-book-import-status {
+  grid-column: 1 / -1;
+  margin-inline-start: 68px;
+  color: var(--ink-secondary);
+  font-size: 12px;
+}
+
+.downloaded-book-open:hover strong {
+  color: var(--accent);
+}
+
+.downloaded-books-message {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+.shelf-text-import {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.shelf-text-import label {
+  display: grid;
+  gap: 5px;
+  color: var(--ink-secondary);
+  font-size: 13px;
+}
+
+.shelf-text-import input, .shelf-text-import textarea {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--ink);
+  background: var(--surface);
+  font: inherit;
+}
+.shelf-text-import textarea { resize: vertical; }
+.shelf-text-import-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.shelf-import-errors { color: var(--ink-secondary); font-size: 13px; }
+.shelf-import-errors summary { cursor: pointer; }

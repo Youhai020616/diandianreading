@@ -4,6 +4,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { ROUTER_EBOOK_EXTENSIONS, resolveDownloadedBook } from "./downloadedBooks";
+import { supportsWeReadImport } from "./wereadFormats";
+import type { WeReadImportResult } from "../../src/types/desktop";
+import { canonicalIsbn } from "../isbn";
 import {
   parseHalfBlockQrToMatrix,
   serializeToNetscapeCookies,
@@ -84,16 +88,22 @@ export interface LocalBookMetadata {
   publisher: string;
   date: string;
   isbn: string;
+  zlibBookRef?: string;
   language: string;
   tags: string;
   comments: string;
   source?: string;
+  embeddedCover?: string;
 }
 
 const BOOK_REF_RE = /^\d+:[a-zA-Z0-9_-]{3,40}$/;
 
 export function isValidZlibBookRef(ref: string): boolean {
   return BOOK_REF_RE.test(ref.trim());
+}
+
+export function isValidHistoryOnlyRef(ref: string): boolean {
+  return /^history:[a-zA-Z0-9]{1,80}$/.test(ref);
 }
 
 export function normalizeZlibDomainUrl(raw: string): string {
@@ -184,55 +194,91 @@ export function parseZlibSearchJson(stdout: string): ZlibBookItem[] {
         : obj && Array.isArray(obj.items)
           ? (obj.items as unknown[])
           : [];
+  return rows.map(parseBookItem).filter((book): book is ZlibBookItem => book !== null);
+}
 
-  const out: ZlibBookItem[] = [];
-  for (const raw of rows) {
-    if (!raw || typeof raw !== "object") continue;
-    const r = raw as Record<string, unknown>;
-    const rawId = String(r.id ?? r.book_id ?? "").trim();
-    const rawHash = String(r.hash ?? r.book_hash ?? "").trim();
+function parseBookItem(raw: unknown): ZlibBookItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const rawId = String(r.id ?? r.book_id ?? "").trim();
+  const rawHash = String(r.hash ?? r.book_hash ?? "").trim();
 
-    let bookRef = "";
-    if (typeof r.ref === "string" && r.ref.trim()) {
-      bookRef = r.ref.trim();
-    } else if (rawId.includes(":")) {
-      bookRef = rawId;
-    } else if (rawId && rawHash) {
-      bookRef = `${rawId}:${rawHash}`;
-    }
-
-    const title = decodeHtmlEntities(String(r.name ?? r.title ?? ""));
-    if (!title) continue;
-    const rawCover = String(r.cover ?? "").trim();
-    const coverUrl =
-      /^https:\/\//i.test(rawCover) && !/cover-not-exists/i.test(rawCover) ? rawCover : "";
-    const rawYear = String(r.year ?? "").trim();
-    const year = rawYear && rawYear !== "0" ? rawYear : "";
-    const rawUrl = String(r.url ?? "").trim();
-    const safeUrl = /^https:\/\//i.test(rawUrl) ? rawUrl : "";
-    const rawRating = String(r.rating ?? "").trim();
-    const rating = rawRating && rawRating !== "0" && rawRating !== "0.0" ? rawRating : "";
-    const rawDesc = decodeHtmlEntities(String(r.description ?? ""));
-
-    out.push({
-      bookRef,
-      id: rawId,
-      hash: rawHash,
-      title,
-      author: formatAuthors(r.authors ?? r.author),
-      publisher: decodeHtmlEntities(String(r.publisher ?? "")),
-      coverUrl,
-      extension: String(r.extension ?? r.format ?? "").trim().toLowerCase(),
-      size: String(r.filesizeString ?? r.filesize ?? r.size ?? "").trim(),
-      year,
-      language: String(r.language ?? "").trim(),
-      ...(typeof r.isbn === "string" && r.isbn.trim() ? { isbn: r.isbn.trim() } : {}),
-      ...(safeUrl ? { url: safeUrl } : {}),
-      ...(rating ? { rating } : {}),
-      ...(rawDesc ? { description: rawDesc } : {}),
-    });
+  let bookRef = "";
+  if (typeof r.ref === "string" && r.ref.trim()) {
+    bookRef = r.ref.trim();
+  } else if (rawId.includes(":")) {
+    bookRef = rawId;
+  } else if (rawId && rawHash) {
+    bookRef = `${rawId}:${rawHash}`;
   }
-  return out;
+
+  const title = decodeHtmlEntities(String(r.name ?? r.title ?? ""));
+  if (!title) return null;
+  const rawCover = String(r.cover ?? "").trim();
+  const coverUrl =
+    /^https:\/\//i.test(rawCover) && !/cover-not-exists/i.test(rawCover) ? rawCover : "";
+  const rawYear = String(r.year ?? "").trim();
+  const year = rawYear && rawYear !== "0" ? rawYear : "";
+  const rawUrl = String(r.url ?? "").trim();
+  const safeUrl = /^https:\/\//i.test(rawUrl) ? rawUrl : "";
+  const rawRating = String(r.rating ?? "").trim();
+  const rating = rawRating && rawRating !== "0" && rawRating !== "0.0" ? rawRating : "";
+  const rawDesc = decodeHtmlEntities(String(r.description ?? ""));
+
+  return {
+    bookRef,
+    id: rawId,
+    hash: rawHash,
+    title,
+    author: formatAuthors(r.authors ?? r.author),
+    publisher: decodeHtmlEntities(String(r.publisher ?? "")),
+    coverUrl,
+    extension: String(r.extension ?? r.format ?? "").trim().toLowerCase(),
+    size: String(r.filesizeString ?? r.filesize ?? r.size ?? "").trim(),
+    year,
+    language: String(r.language ?? "").trim(),
+    ...(typeof r.isbn === "string" && r.isbn.trim() ? { isbn: r.isbn.trim() } : {}),
+    ...(safeUrl ? { url: safeUrl } : {}),
+    ...(rating ? { rating } : {}),
+    ...(rawDesc ? { description: rawDesc } : {}),
+  };
+}
+
+interface DownloadHistoryPage {
+  books: ZlibBookItem[];
+  hasMore: boolean;
+}
+
+function parseHistoryPage(stdout: string, requestedPage: number): DownloadHistoryPage {
+  let data;
+  try {
+    data = JSON.parse(stdout);
+  } catch {
+    throw new Error("下载历史数据无法解析，请刷新后重试。");
+  }
+  if (!Array.isArray(data?.items) || !Number.isSafeInteger(data.page) || data.page < 1
+    || !Number.isSafeInteger(data.total_pages) || data.total_pages < 0) {
+    throw new Error("下载历史的数据格式异常，请检查 zlib CLI 版本后重试。");
+  }
+  // Some mirrors return the last real page when a page beyond the end is requested.
+  if (data.page < requestedPage) return { books: [], hasMore: false };
+  if (data.page !== requestedPage) throw new Error("下载历史页码不符，请刷新后重试。");
+  const books = [];
+  for (const item of data.items) {
+    const book = parseBookItem(item);
+    if (!book) continue;
+    if (!isValidZlibBookRef(book.bookRef)) {
+      // history --download looks up the /book/<id>/ entry on its first 20 pages.
+      // Pass the CLI its ID; the private download URL stays out of the renderer.
+      const idFromUrl = typeof item.url === "string" ? item.url.match(/\/book\/([^/]+)(?:\/|$)/)?.[1] : "";
+      const historyRef = `history:${book.id}`;
+      book.bookRef = requestedPage <= 20 && typeof item.download_url === "string" && item.download_url.trim()
+        && book.id === idFromUrl && isValidHistoryOnlyRef(historyRef) ? historyRef : "";
+    }
+    if (!book.isbn) book.isbn = canonicalIsbn(item.isbn_13) || canonicalIsbn(item.isbn_10) || undefined;
+    books.push(book);
+  }
+  return { books, hasMore: data.total_pages > 0 ? data.page < data.total_pages : data.items.length > 0 };
 }
 
 export function extractDownloadedFilePath(stdout: string, targetDir: string): string | undefined {
@@ -282,8 +328,15 @@ function normalizeMetaRecord(raw: unknown): LocalBookMetadata {
   const langVal = Array.isArray(r.languages)
     ? r.languages.map((l) => String(l ?? "").trim()).filter(Boolean).join(", ")
     : String(r.language ?? r.languages ?? "").trim();
+  const isbnId = Array.isArray(r.identifiers)
+    ? r.identifiers.find(id => id?.scheme === "isbn")?.value
+    : undefined;
+  const zlibBookRef = Array.isArray(r.identifiers)
+    ? r.identifiers.find(id => id?.scheme === "zlib-id" && typeof id.value === "string" && isValidZlibBookRef(id.value))?.value.trim()
+    : undefined;
   const isbnVal =
     String(r.isbn ?? "").trim()
+    || canonicalIsbn(isbnId)
     || (r.identifiers && typeof r.identifiers === "object"
       ? String((r.identifiers as Record<string, unknown>).isbn ?? "").trim()
       : "");
@@ -294,18 +347,23 @@ function normalizeMetaRecord(raw: unknown): LocalBookMetadata {
     publisher: String(r.publisher ?? "").trim(),
     date: String(r.date ?? r.year ?? r.published ?? "").trim(),
     isbn: isbnVal,
+    ...(zlibBookRef ? { zlibBookRef } : {}),
     language: langVal,
     tags: tagsVal,
     comments: String(r.comments ?? r.description ?? "").trim(),
-    ...(typeof r.source === "string" && r.source.trim() ? { source: r.source.trim() } : {}),
+    source: Array.isArray(r.sources) ? r.sources.join(" / ") : String(r.source ?? ""),
+    embeddedCover: typeof r.cover === "string" ? r.cover : undefined,
   };
 }
 
-function extractCliError(error: unknown, fallback: string): Error {
+function cliErrorMessage(error: unknown, fallback: string): string {
   const err = error as { stdout?: string; stderr?: string; message?: string };
   const raw = [err.stderr?.trim(), err.stdout?.trim()].filter(Boolean).join("\n").trim() || err.message || fallback;
-  const cleaned = raw.replace(/^[✗×]\s*Error:\s*/i, "").trim();
+  return raw.replace(/^[✗×]\s*Error:\s*/i, "").trim();
+}
 
+function extractCliError(error: unknown, fallback: string): Error {
+  const cleaned = cliErrorMessage(error, fallback);
   if (/EAPI search failed:\s*Access denied/i.test(cleaned) || /Access denied/i.test(cleaned)) {
     return new Error(
       "Z-Library 搜索返回 Access denied：请先点击上方「1. 右侧打开登录 → 2. 同步右侧登录态」刷新 Cookie，或切换代理节点 / 执行 `zlib update` 升级到新版后再试。",
@@ -320,7 +378,36 @@ function extractCliError(error: unknown, fallback: string): Error {
   return new Error(cleaned || fallback);
 }
 
-type FeedCacheKey = "recommended" | "most-popular" | "favorites" | "history";
+const unconfirmedWeReadImport = "微信读书尚未确认导入结果，请先查看微信读书书架再决定是否重试。";
+
+function weReadImportError(error: unknown): Error {
+  const message = cliErrorMessage(error, "导入微信读书失败");
+  if (/did not confirm the import|timed? ?out|deadline exceeded/i.test(message) || (error as { killed?: boolean }).killed) {
+    return new Error(unconfirmedWeReadImport);
+  }
+  if (/not logged in|session expired|unauthorized|weread login/i.test(message)) {
+    return new Error("请在「连接与偏好」中连接微信读书账号，再回到书库重试。");
+  }
+  if (/requires verification/i.test(message)) return new Error("请打开手机微信读书完成验证，然后再试。");
+  if (/unreachable|connection (?:refused|reset)|no such host|ENETUNREACH|ENOTFOUND|network is unreachable/i.test(message)) {
+    return new Error("连接微信读书失败，请检查网络后重试。");
+  }
+  if (/file is too large for WeRead/i.test(message)) return new Error("文件超过微信读书允许的大小。");
+  if (/could not read the file as a book/i.test(message)) return new Error("微信读书无法解析这份电子书，请检查文件或更换版本。");
+  if (/WeRead is limiting requests/i.test(message)) return new Error("微信读书暂时限制了导入频率，请稍后再试。");
+  const limit = message.match(/WeRead import limit reached(?:: ([^\n]+))?/i);
+  if (limit) return new Error(limit[1] ? `已达到微信读书导入上限：${limit[1]}` : "已达到微信读书导入上限。");
+  return new Error(message);
+}
+
+export function parseMetaMatches(stdout: string): LocalBookMetadata[] {
+  const parsed: unknown = JSON.parse(stdout);
+  const record = (parsed ?? {}) as Record<string, unknown>;
+  const list = [parsed, record.candidates, record.matches, record.results].find(Array.isArray) ?? [record];
+  return list.map(normalizeMetaRecord).filter(m => Boolean(m.title));
+}
+
+type FeedCacheKey = "recommended" | "most-popular" | "favorites";
 
 const ALLOWED_SEARCH_ORDERS = new Set([
   "popular",
@@ -337,7 +424,9 @@ export class ZlibCliService {
   private readonly defaultDownloadDir: string;
   private preferredDomain = "";
   private activeWeReadLoginProc: ChildProcess | null = null;
+  private readonly activeWeReadImports = new Map<string, Promise<WeReadImportResult>>();
   private readonly feedCache = new Map<FeedCacheKey, { items: ZlibBookItem[]; fetchedAt: number }>();
+  private readonly historyPages = new Map<number, { fetchedAt: number; result: Promise<DownloadHistoryPage> }>();
 
   constructor(downloadDir: string) {
     this.defaultDownloadDir = downloadDir;
@@ -349,6 +438,7 @@ export class ZlibCliService {
 
   invalidateFeedCache(): void {
     this.feedCache.clear();
+    this.historyPages.clear();
   }
 
   setPreferredDomain(domain: string): string {
@@ -778,7 +868,28 @@ export class ZlibCliService {
   }
 
   async getHistory(forceRefresh = false): Promise<ZlibBookItem[]> {
-    return this.fetchCachedFeed("history", 2 * 60_000, forceRefresh);
+    return (await this.getDownloadHistoryPage(1, forceRefresh)).books;
+  }
+
+  async getDownloadHistoryPage(page: number, forceRefresh = false): Promise<DownloadHistoryPage> {
+    if (!Number.isSafeInteger(page) || page < 1) throw new Error("下载历史页码须为正整数。");
+    const cached = this.historyPages.get(page);
+    if (!forceRefresh && cached && Date.now() - cached.fetchedAt < 120_000) return cached.result;
+    const bin = this.requireBinary();
+    const result = execFileAsync(bin, ["history", "--json", "--page", String(page)], {
+      timeout: 30_000, maxBuffer: 4 * 1024 * 1024, env: this.buildEnv(),
+    }).then(({ stdout }) => parseHistoryPage(stdout, page));
+    this.historyPages.set(page, { fetchedAt: Date.now(), result });
+    try {
+      return await result;
+    } catch (error) {
+      if (this.historyPages.get(page)?.result === result) this.historyPages.delete(page);
+      const message = cliErrorMessage(error, "读取 Z-Library 下载历史失败");
+      if ((error as { code?: number }).code === 3 || /not logged in|log ?in (?:first|required)|unauthorized|no saved session/i.test(message)) {
+        throw new Error("请在「连接与偏好」连接 Z-Library 账号，再回到书库重试。");
+      }
+      throw extractCliError(error, "读取 Z-Library 下载历史失败");
+    }
   }
 
   async search(
@@ -819,19 +930,21 @@ export class ZlibCliService {
   ): Promise<{ output: string; directory: string; filePath?: string }> {
     const bin = this.requireBinary();
     const cleanRef = bookRef.trim();
-    if (!isValidZlibBookRef(cleanRef)) {
+    const historyOnly = isValidHistoryOnlyRef(cleanRef);
+    if (!historyOnly && !isValidZlibBookRef(cleanRef)) {
       throw new Error("无效的书籍标识，格式应为 `<id>:<hash>`");
     }
     const targetDir = destDir && path.isAbsolute(destDir) ? destDir : this.defaultDownloadDir;
     fs.mkdirSync(targetDir, { recursive: true });
     try {
-      const { stdout, stderr } = await execFileAsync(bin, ["download", cleanRef, "--dir", targetDir, "--json"], {
+      const args = historyOnly ? ["history", "--download", cleanRef.slice("history:".length)] : ["download", cleanRef];
+      const { stdout, stderr } = await execFileAsync(bin, [...args, "--dir", targetDir, "--json"], {
         timeout: 120_000,
         maxBuffer: 2 * 1024 * 1024,
         env: this.buildEnv(),
       });
       const filePath = extractDownloadedFilePath(stdout, targetDir);
-      this.feedCache.delete("history");
+      this.historyPages.clear();
       return {
         directory: targetDir,
         ...(filePath ? { filePath } : {}),
@@ -859,21 +972,35 @@ export class ZlibCliService {
     }
   }
 
-  async importToWeRead(filePath: string): Promise<{ output: string }> {
-    const bin = this.requireBinary();
-    const cleanPath = this.assertReadableBookFile(filePath);
-    try {
-      const { stdout, stderr } = await execFileAsync(bin, ["weread", "import", cleanPath, "--json"], {
-        timeout: 90_000,
-        maxBuffer: 2 * 1024 * 1024,
-        env: this.buildEnv(),
-      });
-      return {
-        output: [stdout.trim(), stderr.trim()].filter(Boolean).join("\n") || "已上传至微信读书书架",
-      };
-    } catch (error) {
-      throw extractCliError(error, "导入微信读书书架失败");
+  async importToWeRead(filePath: string, options?: { fromLibrary?: boolean }): Promise<WeReadImportResult> {
+    const cleanPath = options?.fromLibrary
+      ? await resolveDownloadedBook(this.defaultDownloadDir, filePath)
+      : await fs.promises.realpath(this.assertReadableBookFile(filePath));
+    if (!supportsWeReadImport(path.extname(cleanPath).slice(1))) {
+      throw new Error("微信读书支持导入 EPUB、PDF、MOBI、AZW3 和 TXT 文件。");
     }
+    const pending = this.activeWeReadImports.get(cleanPath);
+    if (pending) return pending;
+    const bin = locateZlibBinary();
+    if (!bin) throw new Error("请先在「连接与偏好」安装传书组件并连接微信读书。");
+    const transfer = this.uploadToWeRead(bin, cleanPath);
+    this.activeWeReadImports.set(cleanPath, transfer);
+    try { return await transfer; }
+    finally { this.activeWeReadImports.delete(cleanPath); }
+  }
+
+  private async uploadToWeRead(bin: string, filePath: string): Promise<WeReadImportResult> {
+    // WeRead can spend up to three minutes processing after the upload finishes.
+    const { stdout, stderr } = await execFileAsync(bin, ["weread", "import", filePath, "--json"], {
+      timeout: 15 * 60_000, maxBuffer: 2 * 1024 * 1024, env: this.buildEnv(),
+    }).catch(error => { throw weReadImportError(error); });
+    let result;
+    try { result = JSON.parse(stdout); } catch { throw new Error(unconfirmedWeReadImport); }
+    if (typeof result?.book_id !== "string" || !result.book_id.trim()
+      || (result.already_existed !== undefined && typeof result.already_existed !== "boolean")) {
+      throw new Error(unconfirmedWeReadImport);
+    }
+    return { output: [stdout.trim(), stderr.trim()].filter(Boolean).join("\n"), alreadyExisted: result.already_existed === true };
   }
 
   async readLocalBookMeta(filePath: string): Promise<LocalBookMetadata> {
@@ -910,17 +1037,7 @@ export class ZlibCliService {
         maxBuffer: 2 * 1024 * 1024,
         env: this.buildEnv(),
       });
-      const parsed = JSON.parse(stdout.trim()) as unknown;
-      const list = Array.isArray(parsed)
-        ? parsed
-        : parsed && typeof parsed === "object" && Array.isArray((parsed as Record<string, unknown>).matches)
-          ? ((parsed as Record<string, unknown>).matches as unknown[])
-          : parsed && typeof parsed === "object" && Array.isArray((parsed as Record<string, unknown>).results)
-            ? ((parsed as Record<string, unknown>).results as unknown[])
-            : parsed && typeof parsed === "object"
-              ? [parsed]
-              : [];
-      return list.map(normalizeMetaRecord).filter((m) => Boolean(m.title));
+      return parseMetaMatches(stdout);
     } catch (error) {
       throw extractCliError(error, "在线抓取元数据失败");
     }
@@ -929,7 +1046,7 @@ export class ZlibCliService {
   async applyLocalBookMeta(
     filePath: string,
     patch: Partial<LocalBookMetadata> & { rename?: boolean },
-  ): Promise<{ metadata: LocalBookMetadata; output: string }> {
+  ): Promise<{ metadata: LocalBookMetadata; filePath: string; output: string }> {
     const bin = this.requireBinary();
     const cleanPath = this.assertReadableBookFile(filePath);
     const args = ["meta", cleanPath];
@@ -958,10 +1075,38 @@ export class ZlibCliService {
       }
       return {
         metadata,
+        filePath: extractDownloadedFilePath(stdout, path.dirname(cleanPath)) ?? cleanPath,
         output: [stdout.trim(), stderr.trim()].filter(Boolean).join("\n") || "元数据已原子写回电子书文件",
       };
     } catch (error) {
       throw extractCliError(error, "写回电子书元数据失败");
+    }
+  }
+
+  async embedEpubCover(filePath: string, jpeg: Buffer): Promise<void> {
+    const bin = this.requireBinary();
+    const book = this.assertReadableBookFile(filePath);
+    const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), "diandian-cover-"));
+    try {
+      const cover = path.join(directory, "cover.jpg");
+      await fs.promises.writeFile(cover, jpeg, { mode: 0o600 });
+      await execFileAsync(bin, ["meta", book, "--cover", cover, "--json"], {
+        timeout: 30_000, env: this.buildEnv(),
+      });
+    } finally {
+      await fs.promises.rm(directory, { recursive: true, force: true });
+    }
+  }
+
+  async extractBookCover(filePath: string): Promise<Buffer | null> {
+    const bin = this.requireBinary();
+    const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "diandian-preview-"));
+    try {
+      const file = path.join(dir, "cover");
+      await execFileAsync(bin, ["meta", filePath, "--get-cover", file], { timeout: 15_000, env: this.buildEnv() });
+      return (await fs.promises.stat(file)).size <= 8 * 1024 * 1024 ? await fs.promises.readFile(file) : null;
+    } finally {
+      await fs.promises.rm(dir, { recursive: true, force: true });
     }
   }
 
@@ -979,7 +1124,7 @@ export class ZlibCliService {
       throw new Error("目标不是有效的电子书文件");
     }
     const ext = path.extname(trimmed).toLowerCase();
-    if (![".epub", ".pdf", ".mobi", ".azw3", ".txt", ".docx"].includes(ext)) {
+    if (!ROUTER_EBOOK_EXTENSIONS.includes(ext.slice(1))) {
       throw new Error(`不支持的电子书格式: ${ext || "未知"}`);
     }
     return trimmed;

@@ -39,7 +39,7 @@ export function apply(ctx) {
   ctx.tools.register(
     defineTool({
       name: "library_list_books",
-      description: "列出用户本地点点书库中的书籍（含书名、作者、划线数量、草稿数量与 bookId），支持按关键词筛选。",
+      description: "列出用户阅读笔记中的书目（含书名、作者、划线数量、草稿数量与 bookId），支持按关键词筛选。",
       parameters: {
         query: {
           type: "string",
@@ -106,7 +106,7 @@ export function apply(ctx) {
   ctx.tools.register(
     defineTool({
       name: "library_save_highlight",
-      description: "把一条有价值的金句划线及想法沉淀到本地 SQLite 书库（自动去重，如书目不存在则自动建档）。",
+      description: "把一条有价值的金句划线及想法存入阅读笔记（自动去重，如书目不存在则自动建档）。",
       parameters: {
         bookTitle: {
           type: "string",

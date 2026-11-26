@@ -6,6 +6,7 @@ export interface CustomSelectOption<T extends string = string> {
   value: T;
   label: string;
   description?: string;
+  icon?: React.ReactNode;
 }
 
 interface CustomSelectProps<T extends string = string> {
@@ -121,6 +122,7 @@ export function CustomSelect<T extends string = string>({
           if (!disabled) setOpen((v) => !v);
         }}
       >
+        {selected?.icon && <span className="cselect-icon">{selected.icon}</span>}
         <span className={`cselect-value ${selected ? "" : "placeholder"}`}>
           {selected ? selected.label : placeholder}
         </span>
@@ -157,6 +159,7 @@ export function CustomSelect<T extends string = string>({
                   triggerRef.current?.focus();
                 }}
               >
+                {opt.icon && <span className="cselect-icon">{opt.icon}</span>}
                 <div className="cselect-option-text">
                   <span className="cselect-option-label">{opt.label}</span>
                   {opt.description && <span className="cselect-option-desc">{opt.description}</span>}

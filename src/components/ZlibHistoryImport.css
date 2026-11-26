@@ -1,0 +1,57 @@
+.zlib-history-dialog {
+  box-sizing: border-box;
+  width: min(580px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  overflow: hidden;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  -webkit-app-region: no-drag;
+}
+.zlib-history-dialog[open] { display: flex; flex-direction: column; }
+.zlib-history-dialog::backdrop { background: rgb(15 23 42 / 34%); backdrop-filter: blur(5px); }
+.zlib-history-header, .zlib-history-toolbar, .zlib-history-footer, .zlib-history-pager {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-inline: clamp(14px, 4vw, 24px);
+}
+.zlib-history-header { padding-block: 17px 9px; }
+.zlib-history-header h2 { font-size: 17px; line-height: 1.45; margin: 0; }
+.zlib-history-toolbar {
+  padding-block: 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--ink-secondary);
+  font-size: 12px;
+}
+.zlib-history-toolbar label, .zlib-history-local { display: inline-flex; align-items: center; gap: 6px; }
+.zlib-history-dialog input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; flex: none; margin: 0; }
+.zlib-history-list { min-height: 0; max-height: 49dvh; overflow-y: auto; overscroll-behavior: contain; }
+.zlib-history-list ul { list-style: none; padding: 0; margin: 0; }
+.zlib-history-list li + li { border-top: 1px solid var(--border); }
+.zlib-history-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px clamp(14px, 4vw, 24px);
+}
+.zlib-history-row:has(input:enabled) { cursor: pointer; }
+.zlib-history-row:has(input:enabled):hover { background: var(--surface-tint); }
+.zlib-history-row:has(input:checked) { background: var(--accent-soft); }
+.zlib-history-book, .zlib-history-feedback { display: grid; gap: 3px; min-width: 0; flex: 1; }
+.zlib-history-book strong { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.zlib-history-book small, .zlib-history-feedback small { color: var(--ink-secondary); font-size: 12px; overflow-wrap: anywhere; }
+.zlib-history-book .zlib-history-error { color: var(--danger); }
+.zlib-history-local { color: var(--sage); background: var(--sage-soft); border-radius: 5px; padding: 2px 6px; font-size: 11px; white-space: nowrap; }
+.zlib-history-unavailable { max-width: 9em; color: var(--ink-secondary); font-size: 11px; }
+.zlib-history-message { color: var(--ink-secondary); margin: 0; padding: 30px 20px; font-size: 13px; text-align: center; overflow-wrap: anywhere; }
+.zlib-history-message p { margin: 0 0 10px; }
+.zlib-history-pager { justify-content: center; padding-block: 5px; font-size: 12px; color: var(--ink-secondary); }
+.zlib-history-footer { padding-block: 14px; border-top: 1px solid var(--border); }
+.zlib-history-feedback strong { font-size: 13px; font-weight: 500; }
+.zlib-history-feedback small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

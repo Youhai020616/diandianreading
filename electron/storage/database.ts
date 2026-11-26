@@ -2,6 +2,9 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { BookIdentityIndex } from "./bookIdentity";
+import type { ReaderAnnotation, ReaderAnnotationInput } from "../../src/types/desktop";
+import { isReaderHighlightColor, type ReaderHighlightColor } from "./highlightColors";
 
 export type BookSource = "weread" | "kindle" | "local" | "zlib" | "manual";
 export type DraftKind = "review" | "card_copy" | "thread" | "script" | "note";
@@ -25,6 +28,11 @@ export interface BookRecord {
   draftCount: number;
 }
 
+type BookPatch = Partial<Pick<BookRecord,
+  "title" | "author" | "isbn" | "publisher" | "publishedYear" | "description" | "tags" | "coverUrl"
+>>;
+type NewBook = BookPatch & { title: string; source?: BookSource; sourceLocator?: string };
+
 export interface HighlightRecord {
   id: string;
   bookId: string;
@@ -33,8 +41,14 @@ export interface HighlightRecord {
   note: string;
   source: BookSource;
   fingerprint: string;
+  cfi?: string;
+  isHighlighted?: boolean;
+  color?: ReaderHighlightColor;
   createdAt: string;
 }
+
+type NewHighlight = Pick<HighlightRecord, "bookId" | "quote"> &
+  Partial<Pick<HighlightRecord, "chapter" | "note" | "source" | "createdAt">>;
 
 export interface DraftRevisionRecord {
   id: string;
@@ -145,13 +159,27 @@ export interface ReadingStatsSummary {
   suggestedKeywords: string[];
 }
 
-export function computeHighlightFingerprint(bookTitle: string, quote: string, note: string): string {
+export function computeHighlightFingerprint(bookKey: string, quote: string, note: string): string {
   const norm = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
   return crypto
     .createHash("sha256")
-    .update(`${norm(bookTitle)}\n${norm(quote)}\n${norm(note)}`)
+    .update(`${norm(bookKey)}\n${norm(quote)}\n${norm(note)}`)
     .digest("hex");
 }
+
+function bookHighlightFingerprint(bookId: string, quote: string, note: string): string {
+  return "v2:" + computeHighlightFingerprint(bookId, quote, note);
+}
+
+function requireReaderCfi(value: string): string {
+  if (typeof value !== "string" || value.length > 16_384 || !/^epubcfi\(\/[\s\S]+\)$/.test(value)) {
+    throw new Error("无法识别这段文字在 EPUB 中的位置。");
+  }
+  return value;
+}
+
+/** Roughly 20 MB of paragraph translations. */
+export const READER_TRANSLATION_CACHE_LIMIT = 40_000;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -227,15 +255,20 @@ function escapeFtsPhrase(term: string): string {
 
 export class KnowledgeDatabase {
   private readonly db: DatabaseSync;
+  private readonly identities: BookIdentityIndex;
   readonly dbPath: string;
   private ftsAvailable = false;
+  private readonly translationCacheLimit: number;
 
-  constructor(dbPath: string) {
+  constructor(dbPath: string, options: { translationCacheLimit?: number } = {}) {
     this.dbPath = dbPath;
+    this.translationCacheLimit = options.translationCacheLimit ?? READER_TRANSLATION_CACHE_LIMIT;
     fs.mkdirSync(path.dirname(dbPath), { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(dbPath);
+    this.db.exec("PRAGMA busy_timeout = 5000;");
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec("PRAGMA foreign_keys = ON;");
+    this.identities = new BookIdentityIndex(this.db);
     this.migrate();
   }
 
@@ -267,6 +300,14 @@ export class KnowledgeDatabase {
         updated_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS book_identity (
+        book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        value TEXT NOT NULL,
+        PRIMARY KEY (book_id, kind, value)
+      );
+      CREATE INDEX IF NOT EXISTS idx_book_identity_lookup ON book_identity(kind, value);
+
       CREATE TABLE IF NOT EXISTS highlights (
         id TEXT PRIMARY KEY,
         book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
@@ -278,6 +319,28 @@ export class KnowledgeDatabase {
         created_at TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_highlights_book ON highlights(book_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS reader_documents (
+        id TEXT PRIMARY KEY,
+        file_path TEXT NOT NULL,
+        byte_length INTEGER NOT NULL,
+        location TEXT NOT NULL DEFAULT '',
+        book_id TEXT REFERENCES books(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS reader_file_revisions (
+        content_hash TEXT PRIMARY KEY,
+        document_id TEXT NOT NULL REFERENCES reader_documents(id) ON DELETE CASCADE,
+        byte_length INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_reader_revisions_document ON reader_file_revisions(document_id, byte_length);
+
+      CREATE TABLE IF NOT EXISTS reader_translation_cache (
+        cache_key TEXT PRIMARY KEY,
+        translation TEXT NOT NULL,
+        used_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_reader_translation_used ON reader_translation_cache(used_at);
 
       CREATE TABLE IF NOT EXISTS drafts (
         id TEXT PRIMARY KEY,
@@ -354,6 +417,25 @@ export class KnowledgeDatabase {
       CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, seq ASC);
     `);
 
+    this.transaction(() => {
+      const columns = this.db.prepare("PRAGMA table_info(highlights)").all();
+      if (!columns.some(column => column.name === "reader_document_id")) {
+        this.db.exec("ALTER TABLE highlights ADD COLUMN reader_document_id TEXT REFERENCES reader_documents(id)");
+        this.db.exec("ALTER TABLE highlights ADD COLUMN reader_cfi TEXT");
+      }
+      if (!columns.some(column => column.name === "reader_highlighted")) {
+        this.db.exec("ALTER TABLE highlights ADD COLUMN reader_highlighted INTEGER NOT NULL DEFAULT 1 CHECK (reader_highlighted IN (0, 1))");
+      }
+      if (!columns.some(column => column.name === "reader_color")) {
+        this.db.exec("ALTER TABLE highlights ADD COLUMN reader_color TEXT");
+      }
+      this.db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reader_highlight_location
+        ON highlights(reader_document_id, reader_cfi) WHERE reader_document_id IS NOT NULL`);
+    });
+    this.migrateBookIdentities();
+    this.migrateDownloadCoverHints();
+    this.migrateTranslationCache();
+
     // SQLite FTS5 trigram full-text index for fast Chinese substring search (inspired by MoreCut)
     try {
       this.db.exec(`
@@ -370,6 +452,122 @@ export class KnowledgeDatabase {
     } catch {
       this.ftsAvailable = false;
     }
+  }
+
+  transaction<T>(work: () => T): T {
+    if (this.db.isTransaction) return work();
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = work();
+      this.db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  private migrateDownloadCoverHints(): void {
+    this.transaction(() => {
+      const version = "schema.download-cover-hints.v2";
+      if (this.getSetting(version)) return;
+      // The old key was a one-way hash of the path. Its value includes the
+      // filesystem revision, which survives a rename even before the upgrade.
+      const rows = this.db.prepare("SELECT value FROM app_kv WHERE key GLOB 'download.cover.*' ORDER BY updated_at").all();
+      for (const row of rows) {
+        let saved;
+        try { saved = JSON.parse(String(row.value)); } catch { continue; }
+        if (typeof saved?.revision === "string" && saved.hint && saved.revision.split(":")[1] !== "0") {
+          this.setSetting("download.cover-legacy." + saved.revision, JSON.stringify(saved.hint));
+        }
+      }
+      this.setSetting(version, "1");
+    });
+    this.transaction(() => {
+      const version = "schema.download-cover-hints.v3";
+      if (this.getSetting(version)) return;
+      // Path keys with an inode were copied to revision keys above and are no longer read.
+      // Consumed revision keys used to be blanked instead of removed.
+      const remove = this.db.prepare("DELETE FROM app_kv WHERE key = ?");
+      for (const row of this.db.prepare("SELECT key, value FROM app_kv WHERE key GLOB 'download.cover.*'").all()) {
+        let saved;
+        try { saved = JSON.parse(String(row.value)); } catch { continue; }
+        if (typeof saved?.revision === "string" && saved.revision.split(":")[1] !== "0") remove.run(String(row.key));
+      }
+      this.db.exec("DELETE FROM app_kv WHERE key GLOB 'download.cover-legacy.*' AND value = ''");
+      this.setSetting(version, "1");
+    });
+  }
+
+  /** Move per-paragraph translations out of the settings table into the bounded cache. */
+  private migrateTranslationCache(): void {
+    this.transaction(() => {
+      this.db.exec(`INSERT OR IGNORE INTO reader_translation_cache (cache_key, translation, used_at)
+        SELECT key, value, COALESCE(CAST(strftime('%s', updated_at) AS INTEGER) * 1000, 0)
+        FROM app_kv WHERE key GLOB 'reader.translation.v1.*'`);
+      this.db.exec("DELETE FROM app_kv WHERE key GLOB 'reader.translation.v1.*'");
+      this.pruneReaderTranslations();
+    });
+  }
+
+  readReaderTranslations(keys: readonly string[]): (string | null)[] {
+    return this.transaction(() => {
+      const read = this.db.prepare("SELECT translation FROM reader_translation_cache WHERE cache_key = ?");
+      const touch = this.db.prepare("UPDATE reader_translation_cache SET used_at = ? WHERE cache_key = ?");
+      const now = Date.now();
+      return keys.map(key => {
+        const row = read.get(key) as { translation: string } | undefined;
+        if (!row) return null;
+        touch.run(now, key);
+        return row.translation;
+      });
+    });
+  }
+
+  saveReaderTranslations(entries: ReadonlyArray<readonly [key: string, translation: string]>): void {
+    this.transaction(() => {
+      const write = this.db.prepare(`INSERT INTO reader_translation_cache (cache_key, translation, used_at) VALUES (?, ?, ?)
+        ON CONFLICT(cache_key) DO UPDATE SET translation = excluded.translation, used_at = excluded.used_at`);
+      const now = Date.now();
+      for (const [key, translation] of entries) write.run(key, translation, now);
+      this.pruneReaderTranslations();
+    });
+  }
+
+  /** Keep the most recently read translations; older paragraphs can be translated again on demand. */
+  private pruneReaderTranslations(): void {
+    this.db.prepare(`DELETE FROM reader_translation_cache WHERE cache_key IN (
+      SELECT cache_key FROM reader_translation_cache ORDER BY used_at DESC LIMIT -1 OFFSET ?)`)
+      .run(this.translationCacheLimit);
+  }
+
+  private migrateBookIdentities(): void {
+    const versionKey = "schema.book-identity.v1";
+    this.transaction(() => {
+      if (this.getSetting(versionKey)) return;
+      const books = this.db.prepare("SELECT id, title, isbn, source_locator AS sourceLocator FROM books").all() as
+        Array<{ id: string; title: string; isbn: string; sourceLocator: string }>;
+      const readHighlights = this.db.prepare("SELECT id, quote, note, fingerprint FROM highlights WHERE book_id = ? AND reader_document_id IS NULL ORDER BY created_at, id");
+      const writeFingerprint = this.db.prepare("UPDATE highlights SET fingerprint = ? WHERE id = ?");
+      for (const book of books) {
+        this.identities.indexLegacyBook(book.id, book);
+        // Old digests can prove a previous title, e.g. before an edition label or subtitle was added.
+        const prefixes = [...book.title.matchAll(/[:：(（]/g)].map(match => book.title.slice(0, match.index).trim()).filter(Boolean);
+        const seen = new Set<string>();
+        for (const row of readHighlights.all(book.id) as Array<{ id: string; quote: string; note: string; fingerprint: string }>) {
+          for (const title of prefixes) {
+            if (computeHighlightFingerprint(title, row.quote, row.note) === row.fingerprint) {
+              this.identities.remember(book.id, { title });
+            }
+          }
+          const key = bookHighlightFingerprint(book.id, row.quote, row.note);
+          // Preserve separately referenced legacy duplicates while deduplicating future imports.
+          writeFingerprint.run(seen.has(key) ? key + ":" + row.id : key, row.id);
+          seen.add(key);
+        }
+      }
+      this.setSetting(versionKey, "1");
+    });
   }
 
   private backfillHighlightsFts(): void {
@@ -425,6 +623,10 @@ export class KnowledgeDatabase {
     return row ? row.value : null;
   }
 
+  deleteSetting(key: string): void {
+    this.db.prepare("DELETE FROM app_kv WHERE key = ?").run(key);
+  }
+
   setSetting(key: string, value: string): void {
     this.db
       .prepare(
@@ -470,30 +672,21 @@ export class KnowledgeDatabase {
     return row ? this.mapBookRow(row) : null;
   }
 
-  findOrCreateBook(input: {
-    title: string;
-    author?: string;
-    source?: BookSource;
-    sourceLocator?: string;
-    isbn?: string;
-    publisher?: string;
-    publishedYear?: string;
-    description?: string;
-    tags?: string[];
-    coverUrl?: string;
-  }): BookRecord {
+  findOrCreateBook(input: NewBook): BookRecord {
+    return this.transaction(() => this.findOrInsertBook(input));
+  }
+
+  private findOrInsertBook(input: NewBook): BookRecord {
     const title = input.title.trim();
     if (!title) throw new Error("书名不能为空");
     const author = (input.author ?? "").trim();
 
-    const existing = this.db
-      .prepare("SELECT id FROM books WHERE lower(trim(title)) = lower(?) LIMIT 1")
-      .get(title) as { id: string } | undefined;
-
-    if (existing) {
-      const current = this.getBook(existing.id)!;
-      if (author && !current.author) {
-        return this.updateBook(current.id, { author });
+    const existingId = this.identities.find(input);
+    if (existingId) {
+      const current = this.getBook(existingId)!;
+      this.identities.remember(existingId, { title, sourceLocator: input.sourceLocator });
+      if ((author && !current.author) || (input.isbn && !current.isbn)) {
+        return this.updateBook(existingId, { author: current.author || author, isbn: current.isbn || input.isbn });
       }
       return current;
     }
@@ -520,22 +713,15 @@ export class KnowledgeDatabase {
         ts,
         ts,
       );
+    this.identities.remember(id, input);
     return this.getBook(id)!;
   }
 
-  updateBook(
-    id: string,
-    patch: {
-      title?: string;
-      author?: string;
-      isbn?: string;
-      publisher?: string;
-      publishedYear?: string;
-      description?: string;
-      tags?: string[];
-      coverUrl?: string;
-    },
-  ): BookRecord {
+  updateBook(id: string, patch: BookPatch, editionTitle?: string): BookRecord {
+    return this.transaction(() => this.updateBookRecord(id, patch, editionTitle));
+  }
+
+  private updateBookRecord(id: string, patch: BookPatch, editionTitle?: string): BookRecord {
     const existing = this.getBook(id);
     if (!existing) throw new Error(`未找到书籍: ${id}`);
     const nextTitle = patch.title !== undefined ? patch.title.trim() : existing.title;
@@ -559,6 +745,9 @@ export class KnowledgeDatabase {
         nowIso(),
         id,
       );
+    if (patch.title !== undefined) this.identities.remember(id, { title: nextTitle });
+    if (editionTitle) this.identities.remember(id, { title: editionTitle });
+    if (patch.isbn !== undefined) this.identities.replaceIsbn(id, patch.isbn);
     return this.getBook(id)!;
   }
 
@@ -577,6 +766,102 @@ export class KnowledgeDatabase {
     }
     this.db.prepare("DELETE FROM notebook_items WHERE item_kind = 'book' AND item_ref = ?").run(id);
     this.db.prepare("DELETE FROM books WHERE id = ?").run(id);
+  }
+
+  // ---------- Local EPUB reading ----------
+
+  readerDocumentId(contentHash: string): string {
+    const row = this.db.prepare("SELECT document_id FROM reader_file_revisions WHERE content_hash = ?").get(contentHash);
+    return row ? String(row.document_id) : contentHash;
+  }
+
+  readerRevisionSizes(documentId: string): number[] {
+    return this.db.prepare(`SELECT byte_length FROM reader_documents WHERE id = ?
+      UNION SELECT byte_length FROM reader_file_revisions WHERE document_id = ?`)
+      .all(documentId, documentId).map(row => Number(row.byte_length));
+  }
+
+  registerReaderRevision(filePath: string, before: { hash: string; size: number }, after: { hash: string; size: number }): void {
+    this.transaction(() => {
+      const id = this.readerDocumentId(before.hash);
+      const known = this.readerDocumentId(after.hash);
+      if (known !== id && (known !== after.hash || this.db.prepare("SELECT id FROM reader_documents WHERE id = ?").get(known))) {
+        throw new Error("修改后的文件已关联另一本书的阅读记录，无法覆盖。");
+      }
+      this.db.prepare("INSERT OR IGNORE INTO reader_documents (id, file_path, byte_length) VALUES (?, ?, ?)")
+        .run(id, filePath, before.size);
+      const insert = this.db.prepare("INSERT OR IGNORE INTO reader_file_revisions (content_hash, document_id, byte_length) VALUES (?, ?, ?)");
+      insert.run(before.hash, id, before.size);
+      insert.run(after.hash, id, after.size);
+    });
+  }
+
+  openReaderDocument(id: string, filePath: string, size: number): { location: string; annotations: ReaderAnnotation[] } {
+    return this.transaction(() => {
+      const row = this.db.prepare(`INSERT INTO reader_documents (id, file_path, byte_length) VALUES (?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET file_path = excluded.file_path, byte_length = excluded.byte_length RETURNING location`)
+        .get(id, filePath, size)!;
+      const rows = this.db.prepare("SELECT * FROM highlights WHERE reader_document_id = ? ORDER BY created_at")
+        .all(id);
+      return { location: String(row.location), annotations: rows.map(r => this.mapReaderAnnotation(r)) };
+    });
+  }
+
+  saveReaderLocation(id: string, cfi: string): void {
+    const changes = this.db.prepare("UPDATE reader_documents SET location = ? WHERE id = ?")
+      .run(requireReaderCfi(cfi), id).changes;
+    if (!changes) throw new Error("请重新打开这本电子书。");
+  }
+
+  addReaderAnnotation(input: ReaderAnnotationInput): ReaderAnnotation {
+    const cfi = requireReaderCfi(input.cfi);
+    if (input.color !== undefined && !isReaderHighlightColor(input.color)) throw new Error("不支持这种划线颜色。");
+    const color = input.color;
+    return this.transaction(() => {
+      const doc = this.db.prepare("SELECT book_id FROM reader_documents WHERE id = ?").get(input.documentId);
+      if (!doc) throw new Error("请重新打开这本电子书。");
+      let bookId = String(doc.book_id ?? "");
+      if (!bookId) {
+        bookId = this.findOrCreateBook({
+          title: input.title, author: input.author, isbn: input.isbn, source: "local",
+          sourceLocator: "urn:sha256:" + input.documentId,
+        }).id;
+        this.db.prepare("UPDATE reader_documents SET book_id = ? WHERE id = ?").run(bookId, input.documentId);
+      }
+      const result = this.insertHighlight({
+        bookId, chapter: input.chapter, quote: input.quote, note: input.note, source: "local",
+      }, { documentId: input.documentId, cfi, color: color ?? "yellow" });
+      const id = result.record.id;
+      if (result.deduplicated && input.note !== undefined) {
+        const updated = this.updateHighlightNote(id, input.note);
+        if (!updated) throw new Error("请在「阅读笔记」中删除这条想法。");
+      } else {
+        this.db.prepare("UPDATE highlights SET reader_highlighted = 1 WHERE id = ?").run(id);
+      }
+      if (color) this.db.prepare("UPDATE highlights SET reader_color = ? WHERE id = ?").run(color, id);
+      return this.mapReaderAnnotation(this.db.prepare("SELECT * FROM highlights WHERE id = ?").get(id)!);
+    });
+  }
+
+  removeReaderAnnotation(documentId: string, highlightId: string): ReaderAnnotation | null {
+    return this.transaction(() => {
+      const row = this.db.prepare("SELECT * FROM highlights WHERE reader_document_id = ? AND id = ?")
+        .get(documentId, highlightId);
+      if (!row) return null;
+      if (!row.note) {
+        this.deleteHighlight(highlightId);
+        return null;
+      }
+      this.db.prepare("UPDATE highlights SET reader_highlighted = 0 WHERE id = ?").run(highlightId);
+      return this.mapReaderAnnotation({ ...row, reader_highlighted: 0 });
+    });
+  }
+
+  readerHighlightTarget(highlightId: string) {
+    const row = this.db.prepare(`SELECT h.reader_cfi, d.id, d.file_path, d.byte_length FROM highlights h
+      JOIN reader_documents d ON h.reader_document_id = d.id WHERE h.id = ?`).get(highlightId);
+    if (!row) throw new Error("这条划线没有本地原文位置。");
+    return { documentId: String(row.id), filePath: String(row.file_path), size: Number(row.byte_length), cfi: String(row.reader_cfi) };
   }
 
   // ---------- Highlights ----------
@@ -733,24 +1018,23 @@ export class KnowledgeDatabase {
       }));
   }
 
-  addHighlight(input: {
-    bookId: string;
-    chapter?: string;
-    quote: string;
-    note?: string;
-    source?: BookSource;
-    createdAt?: string;
-  }): { record: HighlightRecord; deduplicated: boolean } {
+  addHighlight(input: NewHighlight): { record: HighlightRecord; deduplicated: boolean } {
+    return this.transaction(() => this.insertHighlight(input));
+  }
+
+  private insertHighlight(input: NewHighlight, anchor?: { documentId: string; cfi: string; color: ReaderHighlightColor }): { record: HighlightRecord; deduplicated: boolean } {
     const book = this.getBook(input.bookId);
     if (!book) throw new Error(`书籍不存在: ${input.bookId}`);
     const quote = input.quote.trim();
     if (!quote) throw new Error("划线内容不能为空");
     const note = (input.note ?? "").trim();
-    const fingerprint = computeHighlightFingerprint(book.title, quote, note);
+    const fingerprint = anchor
+      ? "reader:" + crypto.createHash("sha256").update(anchor.documentId + "\n" + anchor.cfi).digest("hex")
+      : bookHighlightFingerprint(book.id, quote, note);
 
     const existing = this.db
-      .prepare("SELECT * FROM highlights WHERE fingerprint = ?")
-      .get(fingerprint) as Record<string, unknown> | undefined;
+      .prepare("SELECT * FROM highlights WHERE book_id = ? AND (fingerprint = ? OR fingerprint GLOB ?) ORDER BY fingerprint LIMIT 1")
+      .get(book.id, fingerprint, fingerprint + ":*") as Record<string, unknown> | undefined;
     if (existing) {
       return { record: this.mapHighlightRow(existing), deduplicated: true };
     }
@@ -759,10 +1043,11 @@ export class KnowledgeDatabase {
     const ts = input.createdAt ?? nowIso();
     this.db
       .prepare(
-        `INSERT INTO highlights (id, book_id, chapter, quote, note, source, fingerprint, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO highlights (id, book_id, chapter, quote, note, source, fingerprint, created_at, reader_document_id, reader_cfi, reader_color)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, book.id, (input.chapter ?? "").trim(), quote, note, input.source ?? book.source, fingerprint, ts);
+      .run(id, book.id, (input.chapter ?? "").trim(), quote, note, input.source ?? book.source, fingerprint, ts,
+        anchor?.documentId ?? null, anchor?.cfi ?? null, anchor?.color ?? null);
     this.db.prepare("UPDATE books SET updated_at = ? WHERE id = ?").run(nowIso(), book.id);
     this.upsertHighlightFts(id, quote, note, book.title);
 
@@ -770,14 +1055,22 @@ export class KnowledgeDatabase {
     return { record: this.mapHighlightRow(inserted), deduplicated: false };
   }
 
-  updateHighlightNote(id: string, note: string): HighlightRecord {
+  updateHighlightNote(id: string, note: string): HighlightRecord | null {
+    return this.transaction(() => this.editHighlightNote(id, note.trim()));
+  }
+
+  private editHighlightNote(id: string, nextNote: string): HighlightRecord | null {
     const row = this.db.prepare("SELECT * FROM highlights WHERE id = ?").get(id) as
       | Record<string, unknown>
       | undefined;
     if (!row) throw new Error(`划线不存在: ${id}`);
+    if (!nextNote && row.reader_document_id && !row.reader_highlighted) {
+      this.deleteHighlight(id);
+      return null;
+    }
+    if (nextNote === row.note) return this.mapHighlightRow(row);
     const book = this.getBook(String(row.book_id));
-    const nextNote = note.trim();
-    const nextFp = computeHighlightFingerprint(book?.title ?? "", String(row.quote), nextNote);
+    const nextFp = row.reader_document_id ? String(row.fingerprint) : bookHighlightFingerprint(String(row.book_id), String(row.quote), nextNote);
     this.db.prepare("UPDATE highlights SET note = ?, fingerprint = ? WHERE id = ?").run(nextNote, nextFp, id);
     this.upsertHighlightFts(id, String(row.quote), nextNote, book?.title ?? "");
     const updated = this.db.prepare("SELECT * FROM highlights WHERE id = ?").get(id) as Record<string, unknown>;
@@ -1151,7 +1444,21 @@ export class KnowledgeDatabase {
       note: String(r.note ?? ""),
       source: String(r.source ?? "manual") as BookSource,
       fingerprint: String(r.fingerprint),
+      ...(r.reader_cfi ? {
+        cfi: String(r.reader_cfi),
+        isHighlighted: Boolean(r.reader_highlighted),
+        color: isReaderHighlightColor(r.reader_color) ? r.reader_color : "yellow",
+      } : {}),
       createdAt: String(r.created_at),
+    };
+  }
+
+  private mapReaderAnnotation(row: Record<string, unknown>): ReaderAnnotation {
+    return {
+      ...this.mapHighlightRow(row),
+      cfi: String(row.reader_cfi),
+      isHighlighted: Boolean(row.reader_highlighted),
+      color: isReaderHighlightColor(row.reader_color) ? row.reader_color : "yellow",
     };
   }
 

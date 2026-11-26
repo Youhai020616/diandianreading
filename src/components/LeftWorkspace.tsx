@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   AgentEvent,
   BookRecord,
@@ -10,6 +10,7 @@ import type {
 } from "../types/desktop";
 import { DockedAskBar, type ContextAttachment } from "./DockedAskBar";
 import {
+  IconArrowUp,
   IconBookOpen,
   IconCheck,
   IconClose,
@@ -53,7 +54,7 @@ const TOOL_LABEL_MAP: Record<string, string> = {
   browser_state: "查看浏览器标签",
   browser_open: "打开网页",
   browser_navigate: "控制浏览器页面",
-  library_list_books: "查看本地书库",
+  library_list_books: "查看阅读笔记书目",
   library_search_highlights: "检索历史划线",
   library_get_book_notes: "读取书籍笔记",
   library_save_highlight: "存入本地划线",
@@ -162,27 +163,27 @@ interface LeftWorkspaceProps {
 const STARTERS = [
   {
     title: "和我读过的书碰一碰",
-    desc: "把眼前观点与你本地书库里的历史划线做跨书对照、挑刺与印证",
+    desc: "把眼前观点与你阅读笔记里的历史划线做跨书对照、挑刺与印证",
     prompt:
-      "请结合右侧当前页面或我最近读的书，检索我本地书库里的历史划线与个人批注，找找我以前读过的书里有哪些观点能与它互相印证、又有哪些地方存在明显冲突，给我一份简洁的跨书对照思考。",
+      "请结合右侧当前页面或我最近读的书，检索我的阅读笔记里的历史划线与个人批注，找找我以前读过的书里有哪些观点能与它互相印证、又有哪些地方存在明显冲突，给我一份简洁的跨书对照思考。",
   },
   {
     title: "按我的口吻写小红书长文",
-    desc: "结合本地书库划线与个人批注，按 STYLE.md 生成可一键排版的初稿",
+    desc: "结合阅读笔记中的划线与个人批注，按 STYLE.md 生成可一键排版的初稿",
     prompt:
-      "请先查看我本地书库里最近更新的书籍、划线与个人批注，严格遵守我的 STYLE.md 去 AI 味要求，写一篇结构清晰（带 H2 小标题、原文引用与个人观点）的小红书读书长文初稿，并调用 draft_create_or_revise 存入创作工作台。",
+      "请先查看我的阅读笔记里最近更新的书目、划线与个人批注，严格遵守我的 STYLE.md 去 AI 味要求，写一篇结构清晰（带 H2 小标题、原文引用与个人观点）的小红书读书长文初稿，并调用 draft_create_or_revise 存入创作工作台。",
   },
   {
     title: "给当前草稿加论据 & 去 AI 味",
-    desc: "从历史书库翻出真实书摘支撑论点，并按你的个人风格打磨修订",
+    desc: "从阅读笔记中找出书摘支撑论点，并按你的个人风格打磨修订",
     prompt:
-      "请先查看我创作工作台里最新的一篇草稿，再从我的本地书库里检索 2-3 条最能支撑或反转文章论点的历史划线，结合我的 STYLE.md 提出具体修改建议，并可追加一版更自然、更有个人锋芒的修订稿。",
+      "请先查看我创作工作台里最新的一篇草稿，再从我的阅读笔记里检索 2-3 条最能支撑或反转文章论点的历史划线，结合我的 STYLE.md 提出具体修改建议，并可追加一版更自然、更有个人锋芒的修订稿。",
   },
   {
-    title: "跨站摘录并沉淀进书库",
+    title: "把网页摘录存入阅读笔记",
     desc: "把豆瓣、微信读书或任意网页的选中灵感附点评直接存入本地知识库",
     prompt:
-      "请读取右侧页面我刚刚选中的文字（若无选区则读取当前页核心段落），结合我的个人阅读画像写一句克制、有个人角度的短评，并帮我沉淀到本地书库。",
+      "请读取右侧页面我刚刚选中的文字（若无选区则读取当前页核心段落），结合我的个人阅读画像写一句克制、有个人角度的短评，并帮我存入阅读笔记。",
   },
 ];
 
@@ -254,6 +255,13 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
   const harnessSessionIdRef = useRef<string | null>(null);
   const activeAssistantIdRef = useRef<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  // Follow new output only while the reader is at the bottom; sending a message always returns there.
+  const stickToBottomRef = useRef(true);
+  const [atBottom, setAtBottom] = useState(true);
+  // React may call state updaters twice in development, so saving happens after the render instead.
+  const pendingPersistRef = useRef<{ sid: string | null; hid?: string | null; exclude?: string } | null>(null);
+  // Blocks a second Enter before the engine reports that it started.
+  const sendingRef = useRef(false);
 
   currentSessionIdRef.current = currentSessionId;
 
@@ -364,7 +372,7 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
   const sendPrompt = useCallback(
     async (overridePrompt?: string, displayText?: string, contextLabels?: string[]) => {
       const prompt = (overridePrompt ?? input).trim();
-      if (!prompt || running) return;
+      if (!prompt || running || sendingRef.current) return;
       if (!modelSettings?.hasApiKey) {
         onOpenSettings();
         onNotify("请先配置 DeepSeek 或 OpenAI 兼容 API Key", "error");
@@ -388,16 +396,17 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
       };
       const assistantId = `a_${Date.now() + 1}`;
       activeAssistantIdRef.current = assistantId;
+      sendingRef.current = true;
+      setRunning(true);
+      stickToBottomRef.current = true;
+      setAtBottom(true);
 
-      setMessages((prev) => {
-        const next = [
-          ...prev,
-          userMsg,
-          { id: assistantId, role: "assistant" as const, text: "", reasoning: "", tools: [], streaming: true },
-        ];
-        persistMessages(next.filter((m) => m.id !== assistantId), sid);
-        return next;
-      });
+      pendingPersistRef.current = { sid, exclude: assistantId };
+      setMessages((prev) => [
+        ...prev,
+        userMsg,
+        { id: assistantId, role: "assistant" as const, text: "", reasoning: "", tools: [], streaming: true },
+      ]);
       if (!overridePrompt) setInput("");
 
       try {
@@ -407,19 +416,17 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
         });
       } catch (error) {
         activeAssistantIdRef.current = null;
+        sendingRef.current = false;
         setRunning(false);
         const message = error instanceof Error ? error.message : String(error);
-        setMessages((prev) => {
-          const next = [
-            ...prev.filter((m) => m.id !== assistantId),
-            { id: `sys_${Date.now()}`, role: "system" as const, text: message },
-          ];
-          persistMessages(next, sid);
-          return next;
-        });
+        pendingPersistRef.current = { sid };
+        setMessages((prev) => [
+          ...prev.filter((m) => m.id !== assistantId),
+          { id: `sys_${Date.now()}`, role: "system" as const, text: message },
+        ]);
       }
     },
-    [input, running, modelSettings?.hasApiKey, onOpenSettings, onNotify, persistMessages],
+    [input, running, modelSettings?.hasApiKey, onOpenSettings, onNotify],
   );
 
   useEffect(() => {
@@ -434,19 +441,41 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
   }, [pendingPrompt, onConsumePendingPrompt, modelSettings?.hasApiKey, running, sendPrompt]);
 
   useEffect(() => {
+    const job = pendingPersistRef.current;
+    if (!job) return;
+    pendingPersistRef.current = null;
+    persistMessages(job.exclude ? messages.filter((m) => m.id !== job.exclude) : messages, job.sid, job.hid);
+  }, [messages, persistMessages]);
+
+  // Measure "at bottom" before new content lands; measuring afterwards counts the new message as distance.
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight;
+  }, [messages]);
+
+  const handleListScroll = () => {
     const el = listRef.current;
     if (!el) return;
-    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (distFromBottom < 140) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [messages]);
+    const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    stickToBottomRef.current = bottom;
+    setAtBottom(bottom);
+  };
+
+  const scrollToLatest = () => {
+    const el = listRef.current;
+    if (!el) return;
+    stickToBottomRef.current = true;
+    setAtBottom(true);
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  };
 
   useEffect(() => {
     const off = window.diandian.agent.onEvent((ev: AgentEvent) => {
       if (ev.kind === "status") {
         setRunning(ev.running);
+        if (ev.running) sendingRef.current = false;
         if (!ev.running) {
+          sendingRef.current = false;
           activeAssistantIdRef.current = null;
           setMessages((prev) =>
             prev.some((m) => m.streaming || m.tools?.some((t) => t.status === "running"))
@@ -544,6 +573,7 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
         if (ev.sessionId) {
           harnessSessionIdRef.current = ev.sessionId;
         }
+        pendingPersistRef.current = { sid: currentSessionIdRef.current, hid: ev.sessionId ?? harnessSessionIdRef.current };
         setMessages((prev) => {
           const next: ChatMessage[] = !targetId
             ? ev.finalResponse
@@ -570,29 +600,26 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
                   streaming: false,
                 };
               });
-          persistMessages(next, currentSessionIdRef.current, ev.sessionId ?? harnessSessionIdRef.current);
           return next;
         });
         return;
       }
       if (ev.kind === "error") {
         setRunning(false);
+        sendingRef.current = false;
         activeAssistantIdRef.current = null;
         if (ev.sessionId) {
           harnessSessionIdRef.current = ev.sessionId;
         }
-        setMessages((prev) => {
-          const next: ChatMessage[] = [
-            ...prev.map((m) => (m.streaming ? { ...m, streaming: false } : m)),
-            { id: `sys_${Date.now()}`, role: "system", text: ev.message },
-          ];
-          persistMessages(next, currentSessionIdRef.current, ev.sessionId ?? harnessSessionIdRef.current);
-          return next;
-        });
+        pendingPersistRef.current = { sid: currentSessionIdRef.current, hid: ev.sessionId ?? harnessSessionIdRef.current };
+        setMessages((prev) => [
+          ...prev.map((m) => (m.streaming ? { ...m, streaming: false } : m)),
+          { id: `sys_${Date.now()}`, role: "system", text: ev.message },
+        ]);
       }
     });
     return off;
-  }, [persistMessages]);
+  }, []);
 
   const handleCapturePagePrompt = async () => {
     try {
@@ -605,12 +632,12 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
         onNotify("已将右侧选中段落填入输入框", "success");
       } else if (snap.extractionMethod === "canvas-ocr" && snap.textLength >= 30) {
         setInput(
-          `请读取右侧页面《${cleanTitle}》当前屏幕的内容，帮我提炼值得记入书库的 2-3 条金句与个人思考。`,
+          `请读取右侧页面《${cleanTitle}》当前屏幕的内容，帮我提炼值得存入阅读笔记的 2-3 条金句与个人思考。`,
         );
         onNotify(`已本地识别当前阅读页正文（约 ${snap.textLength} 字），可直接发送`, "success");
       } else if (!snap.likelyCanvasReader && snap.textLength > 40) {
         setInput(
-          `请读取右侧页面《${cleanTitle}》的内容，帮我提炼值得记入书库的 2-3 条金句与个人思考。`,
+          `请读取右侧页面《${cleanTitle}》的内容，帮我提炼值得存入阅读笔记的 2-3 条金句与个人思考。`,
         );
         onNotify("已关联右侧当前页面", "success");
       } else {
@@ -680,9 +707,8 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
       );
       await window.diandian.agent.selectSession(detail.harnessSessionId || null);
       setHistoryOpen(false);
-      requestAnimationFrame(() => {
-        if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
-      });
+      stickToBottomRef.current = true;
+      setAtBottom(true);
     } catch (error) {
       onNotify(error instanceof Error ? error.message : "加载历史对话失败", "error");
     }
@@ -708,7 +734,7 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
   const isEmpty = messages.length === 0;
 
   const contextZoneNode = (
-    <div className={`ai-surf-context-zone ${isEmpty ? "in-empty" : ""}`} ref={ctxPickerRef}>
+    <div className={`ai-surf-context-zone ${isEmpty ? "in-empty" : "docked"}`} ref={ctxPickerRef}>
       <div className="ai-surf-context-pills">
         {activeAutoContext ? (
           <span
@@ -799,7 +825,7 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
 
             {pickerOptions.bookItems.length > 0 && (
               <>
-                <div className="surf-mention-section">本地书库</div>
+                <div className="surf-mention-section">阅读笔记</div>
                 {pickerOptions.bookItems.map((item) => {
                   const added = attachments.some((a) => a.id === item.id);
                   return (
@@ -1034,11 +1060,9 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
           </div>
         </div>
       ) : (
-        /* Active Chat Mode: Top Context Strip + Scrollable Messages + Bottom Docked Composer */
+        /* Active Chat Mode: Scrollable Messages + Bottom Composer with its attached context */
         <>
-          {contextZoneNode}
-
-          <div className="chat-messages ai-drawer-messages" ref={listRef}>
+          <div className="chat-messages ai-drawer-messages" ref={listRef} onScroll={handleListScroll}>
             {messages.map((m) => (
               <div key={m.id} className={`msg-row ${m.role}`}>
                 <div className="msg-bubble">
@@ -1092,8 +1116,13 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
                   })()}
 
                   {m.reasoning && (
-                    <details className="reasoning-box" open={Boolean(m.streaming && !m.text)}>
-                      <summary>{m.streaming && !m.text ? "正在深度思考…" : "深度思考过程"}</summary>
+                    // Collapsed by default; the reader opens it on demand and it stays as they left it.
+                    <details className="reasoning-box">
+                      <summary>
+                        <span className={m.streaming && !m.text ? "shimmer-status-text" : undefined}>
+                          {m.streaming && !m.text ? "正在深度思考…" : "深度思考过程"}
+                        </span>
+                      </summary>
                       <pre>{m.reasoning}</pre>
                     </details>
                   )}
@@ -1157,7 +1186,16 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
             ))}
           </div>
 
-          {askBarNode}
+          <div className="ai-docked-composer">
+            {!atBottom && (
+              <button type="button" className="ai-jump-latest" onClick={scrollToLatest} aria-label="回到最新消息">
+                <IconArrowUp size={14} style={{ transform: "rotate(180deg)" }} />
+                <span>{running ? "查看最新回复" : "回到底部"}</span>
+              </button>
+            )}
+            {contextZoneNode}
+            {askBarNode}
+          </div>
         </>
       )}
     </div>

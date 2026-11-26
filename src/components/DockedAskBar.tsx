@@ -29,7 +29,7 @@ import {
 
 export interface ContextAttachment {
   id: string;
-  kind: "web" | "book" | "draft" | "notebook";
+  kind: "web" | "book" | "draft" | "notebook" | "reader";
   label: string;
   meta?: string;
   promptSummary?: string;
@@ -45,7 +45,7 @@ const SAFETY_OPTIONS: Array<{
     mode: "plan",
     title: "只读规划",
     badge: "plan",
-    desc: "仅读页面与检索书库，拦截写入、新建草稿与导出",
+    desc: "仅读取页面与检索阅读笔记，拦截写入、新建草稿与导出",
   },
   {
     mode: "confirm",
@@ -122,6 +122,7 @@ export const DockedAskBar: React.FC<DockedAskBarProps> = ({
   const [switchingModelId, setSwitchingModelId] = useState<string | null>(null);
   const [modelFilter, setModelFilter] = useState("");
   const [mentionFilter, setMentionFilter] = useState("");
+  const [mentionIndex, setMentionIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const modelTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -266,6 +267,12 @@ export const DockedAskBar: React.FC<DockedAskBarProps> = ({
 
     return { webItems, bookItems, draftItems };
   }, [browserState?.tabs, books, drafts, mentionFilter]);
+  // Keyboard order matches the on-screen order: web pages, then notes, then drafts.
+  const mentionList = useMemo(
+    () => [...mentionOptions.webItems, ...mentionOptions.bookItems, ...mentionOptions.draftItems],
+    [mentionOptions],
+  );
+  useEffect(() => setMentionIndex(0), [mentionFilter, mentionOpen]);
 
   const addAttachment = (item: ContextAttachment) => {
     setAttachments((prev) => (prev.some((x) => x.id === item.id) ? prev : [...prev, item]));
@@ -284,11 +291,12 @@ export const DockedAskBar: React.FC<DockedAskBarProps> = ({
 
   const handleTextChange = (next: string) => {
     setText(next);
-    const match = next.match(/(?:^|\s)@([^\s@]{0,20})$/);
+    // Chinese text has no spaces before "@"; only skip address-like "name@host".
+    const match = next.match(/(?:^|[^A-Za-z0-9._%+-])@([^\s@]{0,20})$/);
     if (match) {
       setMentionFilter(match[1] ?? "");
       setMentionOpen(true);
-    } else if (mentionOpen && !next.includes("@")) {
+    } else if (mentionOpen) {
       setMentionOpen(false);
       setMentionFilter("");
     }
@@ -297,6 +305,7 @@ export const DockedAskBar: React.FC<DockedAskBarProps> = ({
   const buildComposedPrompt = (raw: string, list: ContextAttachment[]): string => {
     if (list.length === 0) return raw;
     const ctxLines = list.map((item) => {
+      if (item.kind === "reader") return `- [正在阅读的本地电子书] ${item.label}`;
       if (item.kind === "notebook") {
         return item.promptSummary || `- [主题空间] ${item.label}`;
       }
@@ -305,7 +314,7 @@ export const DockedAskBar: React.FC<DockedAskBarProps> = ({
       }
       if (item.kind === "book") {
         const bookId = item.id.replace(/^book:/, "");
-        return `- [本地书库] ${item.label}（bookId: ${bookId}，请读取该书划线与我的批注）`;
+        return `- [阅读笔记] ${item.label}（bookId: ${bookId}，请读取该书划线与我的批注）`;
       }
       const draftId = item.id.replace(/^draft:/, "");
       return `- [创作草稿] ${item.label}（draftId: ${draftId}）`;
@@ -348,11 +357,14 @@ export const DockedAskBar: React.FC<DockedAskBarProps> = ({
             {mentionOptions.webItems.length > 0 && (
               <>
                 <div className="surf-mention-section">已打开网页</div>
-                {mentionOptions.webItems.map((item) => (
+                {mentionOptions.webItems.map((item, i) => (
                   <button
                     key={item.id}
                     type="button"
-                    className="surf-mention-item"
+                    role="option"
+                    aria-selected={mentionIndex === 0 + i}
+                    className={`surf-mention-item ${mentionIndex === 0 + i ? "active" : ""}`}
+                    onMouseEnter={() => setMentionIndex(0 + i)}
                     onClick={() => addAttachment(item)}
                   >
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 7, minWidth: 0 }}>
@@ -369,12 +381,15 @@ export const DockedAskBar: React.FC<DockedAskBarProps> = ({
 
             {mentionOptions.bookItems.length > 0 && (
               <>
-                <div className="surf-mention-section">本地书库</div>
-                {mentionOptions.bookItems.map((item) => (
+                <div className="surf-mention-section">阅读笔记</div>
+                {mentionOptions.bookItems.map((item, i) => (
                   <button
                     key={item.id}
                     type="button"
-                    className="surf-mention-item"
+                    role="option"
+                    aria-selected={mentionIndex === mentionOptions.webItems.length + i}
+                    className={`surf-mention-item ${mentionIndex === mentionOptions.webItems.length + i ? "active" : ""}`}
+                    onMouseEnter={() => setMentionIndex(mentionOptions.webItems.length + i)}
                     onClick={() => addAttachment(item)}
                   >
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 7, minWidth: 0 }}>
@@ -392,11 +407,14 @@ export const DockedAskBar: React.FC<DockedAskBarProps> = ({
             {mentionOptions.draftItems.length > 0 && (
               <>
                 <div className="surf-mention-section">创作草稿</div>
-                {mentionOptions.draftItems.map((item) => (
+                {mentionOptions.draftItems.map((item, i) => (
                   <button
                     key={item.id}
                     type="button"
-                    className="surf-mention-item"
+                    role="option"
+                    aria-selected={mentionIndex === mentionOptions.webItems.length + mentionOptions.bookItems.length + i}
+                    className={`surf-mention-item ${mentionIndex === mentionOptions.webItems.length + mentionOptions.bookItems.length + i ? "active" : ""}`}
+                    onMouseEnter={() => setMentionIndex(mentionOptions.webItems.length + mentionOptions.bookItems.length + i)}
                     onClick={() => addAttachment(item)}
                   >
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 7, minWidth: 0 }}>
@@ -625,7 +643,7 @@ export const DockedAskBar: React.FC<DockedAskBarProps> = ({
           <textarea
             ref={textareaRef}
             className="surf-ask-textarea"
-            rows={text.includes("\n") ? 3 : 1}
+            rows={1}
             value={text}
             onChange={(e) => handleTextChange(e.target.value)}
             placeholder={placeholder}
@@ -633,6 +651,20 @@ export const DockedAskBar: React.FC<DockedAskBarProps> = ({
               if (e.key === "Escape" && mentionOpen) {
                 setMentionOpen(false);
                 return;
+              }
+              if (mentionOpen && mentionList.length > 0 && !e.nativeEvent.isComposing) {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                  e.preventDefault();
+                  const step = e.key === "ArrowDown" ? 1 : -1;
+                  setMentionIndex((i) => (i + step + mentionList.length) % mentionList.length);
+                  return;
+                }
+                if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
+                  // Picking a mention must not send a half-typed "@name" as the question.
+                  e.preventDefault();
+                  addAttachment(mentionList[Math.min(mentionIndex, mentionList.length - 1)]!);
+                  return;
+                }
               }
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();

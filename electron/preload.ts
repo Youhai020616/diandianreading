@@ -1,4 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { ReaderTranslationInput, ReaderTranslationSettingsInput } from "../src/types/desktop";
+import type { DownloadCoverHint, ReaderAnnotationInput } from "../src/types/desktop";
 
 const desktopApi = {
   app: {
@@ -21,6 +23,10 @@ const desktopApi = {
     onMenuAction: (callback: (payload: unknown) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload);
       ipcRenderer.on("app:menu-action", listener);
+      // Deliver a command chosen while this window was still opening or loading.
+      void ipcRenderer.invoke("app:take-menu-action").then((payload) => {
+        if (payload) callback(payload);
+      }).catch(() => undefined);
       return () => {
         ipcRenderer.removeListener("app:menu-action", listener);
       };
@@ -144,6 +150,20 @@ const desktopApi = {
       };
     },
   },
+  reader: {
+    open: (filePath: string) => ipcRenderer.invoke("reader:open", filePath),
+    getTranslationSettings: () => ipcRenderer.invoke("reader:get-translation-settings"),
+    saveTranslationSettings: (input: ReaderTranslationSettingsInput) => ipcRenderer.invoke("reader:save-translation-settings", input),
+    openDeepLPortal: () => ipcRenderer.invoke("reader:open-deepl-portal"),
+    translate: (input: ReaderTranslationInput) => ipcRenderer.invoke("reader:translate", input),
+    readCachedTranslations: (input: Omit<ReaderTranslationInput, "requestId">) => ipcRenderer.invoke("reader:cached-translations", input),
+    cancelTranslation: (requestId: string) => ipcRenderer.invoke("reader:cancel-translation", requestId),
+    saveLocation: (documentId: string, cfi: string) => ipcRenderer.invoke("reader:save-location", documentId, cfi),
+    addAnnotation: (input: ReaderAnnotationInput) => ipcRenderer.invoke("reader:add-annotation", input),
+    removeAnnotation: (documentId: string, highlightId: string) =>
+      ipcRenderer.invoke("reader:remove-annotation", documentId, highlightId),
+    resolveHighlight: (id: string) => ipcRenderer.invoke("reader:resolve-highlight", id),
+  },
   library: {
     listBooks: (query?: string) => ipcRenderer.invoke("library:list-books", query),
     getBook: (id: string) => ipcRenderer.invoke("library:get-book", id),
@@ -162,7 +182,10 @@ const desktopApi = {
     importNotesFile: (input?: Record<string, unknown>) => ipcRenderer.invoke("library:import-notes-file", input),
     captureFromBrowser: (input?: Record<string, unknown>) =>
       ipcRenderer.invoke("library:capture-from-browser", input),
-    lookupMetadata: (query: string) => ipcRenderer.invoke("library:lookup-metadata", query),
+    lookupMetadata: (query: string, bookId?: string) => ipcRenderer.invoke("library:lookup-metadata", query, bookId),
+    applyMetadata: (bookId: string, lookupId: string, index: number) =>
+      ipcRenderer.invoke("library:apply-metadata", bookId, lookupId, index),
+    getBookCover: (bookId: string) => ipcRenderer.invoke("library:get-book-cover", bookId),
     listWeReadNotebooks: () => ipcRenderer.invoke("library:weread-list-notebooks"),
     syncWeReadBooks: (books: unknown[]) => ipcRenderer.invoke("library:weread-sync-books", books),
     randomRecall: (excludeId?: string) => ipcRenderer.invoke("library:random-recall", excludeId),
@@ -208,6 +231,7 @@ const desktopApi = {
   },
   obsidian: {
     getVault: () => ipcRenderer.invoke("obsidian:get-vault"),
+    listVaults: () => ipcRenderer.invoke("obsidian:list-vaults"),
     setVault: (vaultPath: string) => ipcRenderer.invoke("obsidian:set-vault", vaultPath),
     pickVault: () => ipcRenderer.invoke("obsidian:pick-vault"),
     exportBook: (bookId: string) => ipcRenderer.invoke("obsidian:export-book", bookId),
@@ -246,11 +270,22 @@ const desktopApi = {
     mostPopular: (forceRefresh?: boolean) => ipcRenderer.invoke("router:most-popular", { forceRefresh }),
     favorites: (forceRefresh?: boolean) => ipcRenderer.invoke("router:favorites", { forceRefresh }),
     history: (forceRefresh?: boolean) => ipcRenderer.invoke("router:history", { forceRefresh }),
-    download: (bookRef: string) => ipcRenderer.invoke("router:download", { bookRef }),
+    downloadHistoryPage: (page: number, forceRefresh?: boolean) =>
+      ipcRenderer.invoke("router:download-history-page", { page, forceRefresh }),
+    downloadHistoryBook: (bookRef: string, hint?: DownloadCoverHint) =>
+      ipcRenderer.invoke("router:download-history-book", { bookRef, hint }),
+    download: (bookRef: string, hint?: DownloadCoverHint) =>
+      ipcRenderer.invoke("router:download", { bookRef, hint }),
+    importLocalBooks: (mode: "files" | "directory") => ipcRenderer.invoke("router:import-local-books", mode),
+    importBookText: (input: { title: string; text: string }) => ipcRenderer.invoke("router:import-book-text", input),
+    listDownloadedBooks: () => ipcRenderer.invoke("router:list-downloaded-books"),
+    getDownloadedBookCover: (filePath: string) => ipcRenderer.invoke("router:get-downloaded-book-cover", filePath),
+    openDownloadedBook: (filePath: string) => ipcRenderer.invoke("router:open-downloaded-book", filePath),
     openDownloadDir: (filePath?: string) => ipcRenderer.invoke("router:open-download-dir", filePath),
     pickEbookFile: () => ipcRenderer.invoke("router:pick-ebook-file"),
     sendKindle: (filePath: string) => ipcRenderer.invoke("router:send-kindle", filePath),
-    importWeRead: (filePath: string) => ipcRenderer.invoke("router:import-weread", filePath),
+    importWeRead: (filePath: string, options?: { fromLibrary?: boolean }) =>
+      ipcRenderer.invoke("router:import-weread", filePath, options),
     readBookMeta: (filePath: string) => ipcRenderer.invoke("router:meta-read", filePath),
     fetchBookMetaMatches: (filePath: string, sources?: string[]) =>
       ipcRenderer.invoke("router:meta-fetch", { filePath, sources }),

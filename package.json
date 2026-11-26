@@ -23,13 +23,19 @@
     "@deepseek-ai/dsh": "0.2.2-rc.5",
     "@deepseek-ai/dsh-sdk-client": "0.2.2-rc.5",
     "@deepseek-ai/dsh-tools": "0.2.2-rc.5",
+    "fflate": "0.8.3",
+    "foliate-js": "https://codeload.github.com/johnfactotum/foliate-js/tar.gz/78914aef4466eb960965702401634c2cb348e9b1",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "saxes": "^6.0.0",
+    "sharp": "0.35.5",
+    "yauzl": "^3.4.0"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@types/yauzl": "^3.4.0",
     "@vitejs/plugin-react": "^6.0.5",
     "electron": "45.4.1",
     "typescript": "~5.9.2",
@@ -40,7 +46,10 @@
     "onlyBuiltDependencies": [
       "electron",
       "esbuild"
-    ]
+    ],
+    "patchedDependencies": {
+      "foliate-js@0.0.0": "patches/foliate-js@0.0.0.patch"
+    }
   },
   "build": {
     "appId": "com.diandianreading.app",

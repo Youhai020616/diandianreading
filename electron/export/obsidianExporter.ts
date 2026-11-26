@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { BookRecord, DraftRecord, HighlightRecord, KnowledgeDatabase } from "../storage/database";
+import { resolveObsidianVaultRoot } from "./obsidianVaults";
 
 export interface ObsidianExportOutcome {
   status: "written" | "unchanged" | "conflict";
@@ -27,18 +28,6 @@ export function safeVaultSegment(raw: string, fallback = "Untitled"): string {
     .replace(/^\.+|\.+$/g, "")
     .slice(0, 72);
   return cleaned || fallback;
-}
-
-function assertSafeVaultRoot(vaultPath: string): string {
-  const trimmed = vaultPath.trim();
-  if (!trimmed || !path.isAbsolute(trimmed)) {
-    throw new Error("Obsidian Vault 路径必须是有效的绝对目录路径");
-  }
-  const stat = fs.lstatSync(trimmed);
-  if (stat.isSymbolicLink() || !stat.isDirectory()) {
-    throw new Error("Obsidian Vault 路径必须是普通目录（禁止符号链接）");
-  }
-  return fs.realpathSync.native(trimmed);
 }
 
 function resolveInsideVault(vaultRealRoot: string, relativePath: string): string {
@@ -138,8 +127,8 @@ function findExistingByStableId(vaultRealRoot: string, stableId: string): string
 }
 
 export function buildObsidianDeepLink(vaultRealRoot: string, relativePath: string): string {
-  const vaultName = path.basename(vaultRealRoot);
-  return `obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(relativePath)}`;
+  const notePath = path.join(vaultRealRoot, relativePath);
+  return `obsidian://open?path=${encodeURIComponent(notePath)}`;
 }
 
 function writeAtomic(filePath: string, content: string): void {
@@ -156,7 +145,7 @@ function reconcileAndWrite(
   defaultRelativePath: string,
   content: string,
 ): ObsidianExportOutcome {
-  const vaultRoot = assertSafeVaultRoot(vaultPath);
+  const vaultRoot = resolveObsidianVaultRoot(vaultPath);
   const nextHash = sha256(content);
   const existingMap = db.getObsidianMapping(stableId, vaultRoot);
 

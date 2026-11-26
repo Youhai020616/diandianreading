@@ -2,10 +2,12 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import type {
   DraftKind,
   DraftRecord,
-  ObsidianExportOutcome,
   RelatedHighlightItem,
   StyleDistillSuggestion,
 } from "../types/desktop";
+import { shortDateLabel } from "../lib/dateLabel";
+import { ListPicker } from "./ListPicker";
+import { ObsidianExportAction } from "./ObsidianExportAction";
 import { hasDraftChatter, prepareDraftFromAssistantReply } from "../lib/draftCleanup";
 import { copyDraftForXiaohongshu, XHS_LONG_ARTICLE_URL } from "../lib/xhsFormat";
 import { ConceptVisualModal } from "./ConceptVisualModal";
@@ -14,11 +16,9 @@ import {
   IconBookOpen,
   IconCheck,
   IconClose,
-  IconExternalLink,
   IconFileText,
   IconGlobe,
   IconPlus,
-  IconSearch,
   IconSparkles,
   IconSplit,
   IconTrash,
@@ -53,14 +53,12 @@ export const StudioView: React.FC<StudioViewProps> = ({
   onNotify,
 }) => {
   const [drafts, setDrafts] = useState<DraftRecord[]>([]);
-  const [draftQuery, setDraftQuery] = useState("");
   const [detail, setDetail] = useState<DraftRecord | null>(null);
   const [titleInput, setTitleInput] = useState("");
   const [contentInput, setContentInput] = useState("");
   const [editorMode, setEditorMode] = useState<"preview" | "edit">("preview");
   const [compareMode, setCompareMode] = useState(false);
   const [viewingRevNo, setViewingRevNo] = useState<number | null>(null);
-  const [exportResult, setExportResult] = useState<ObsidianExportOutcome | null>(null);
 
   // Feature 1: Auto-evolving STYLE.md suggestions distilled from AI vs Human diff
   const [distilling, setDistilling] = useState(false);
@@ -111,7 +109,6 @@ export const StudioView: React.FC<StudioViewProps> = ({
     } else {
       setEditorMode("preview");
     }
-    setExportResult(null);
     setStyleSuggestions([]);
   }, []);
 
@@ -239,17 +236,6 @@ export const StudioView: React.FC<StudioViewProps> = ({
     onNotify(`已将《${item.bookTitle}》旧划线插入草稿`, "success");
   };
 
-  const handleExportObsidian = async () => {
-    if (!detail) return;
-    try {
-      const res = await window.diandian.obsidian.exportDraft(detail.id);
-      setExportResult(res);
-      onNotify(res.message, res.status === "conflict" ? "info" : "success");
-    } catch (error) {
-      onNotify(error instanceof Error ? error.message : "导出失败", "error");
-    }
-  };
-
   const handleDelete = async () => {
     if (!detail) return;
     await window.diandian.drafts.delete(detail.id);
@@ -307,7 +293,22 @@ export const StudioView: React.FC<StudioViewProps> = ({
       <header className="view-header">
         <div className="view-header-left">
           <h1 className="view-title">创作工作台</h1>
-          <span className="badge">{drafts.length} 篇草稿</span>
+          {drafts.length > 0 && (
+            <ListPicker
+              label="全部草稿"
+              icon={<IconFileText size={13} />}
+              searchPlaceholder="按标题或书名查找…"
+              activeId={detail?.id ?? null}
+              onSelect={onSelectDraftId}
+              items={drafts.map((d) => ({
+                id: d.id,
+                title: d.title || "未命名草稿",
+                meta: [KIND_LABELS[d.kind], d.bookTitle && `《${d.bookTitle}》`, shortDateLabel(d.updatedAt)]
+                  .filter(Boolean)
+                  .join(" · "),
+              }))}
+            />
+          )}
         </div>
         <div className="view-header-right">
           {detail && firstAiRev && (
@@ -342,52 +343,6 @@ export const StudioView: React.FC<StudioViewProps> = ({
             </div>
           ) : (
             <>
-              <div className="draft-switcher-bar">
-                <div className="switcher-strip" role="tablist" aria-label="草稿切换">
-                  {drafts
-                    .filter((d) =>
-                      draftQuery.trim()
-                        ? d.title.toLowerCase().includes(draftQuery.trim().toLowerCase())
-                        : true,
-                    )
-                    .map((d) => (
-                      <button
-                        key={d.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={d.id === detail?.id}
-                        className={`switcher-pill ${d.id === detail?.id ? "active" : ""}`}
-                        onClick={() => onSelectDraftId(d.id)}
-                        title={d.title}
-                      >
-                        <IconFileText size={12} style={{ flexShrink: 0, opacity: 0.72 }} />
-                        <span className="switcher-pill-title">{d.title}</span>
-                        <span className="switcher-pill-meta">v{d.latestRevisionNo}</span>
-                      </button>
-                    ))}
-                </div>
-                {drafts.length > 4 && (
-                  <div className="inline-filter-box">
-                    <IconSearch size={13} />
-                    <input
-                      value={draftQuery}
-                      onChange={(e) => setDraftQuery(e.target.value)}
-                      placeholder="筛选草稿…"
-                    />
-                    {draftQuery && (
-                      <button
-                        type="button"
-                        className="inline-filter-clear"
-                        onClick={() => setDraftQuery("")}
-                        title="清空筛选"
-                      >
-                        <IconClose size={11} />
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
               {detail && (
                 <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   <div className="studio-title-row">
@@ -681,10 +636,7 @@ export const StudioView: React.FC<StudioViewProps> = ({
                         <IconGlobe size={12} />
                         <span>复制并去小红书写长文</span>
                       </button>
-                      <button type="button" className="btn sm ghost" onClick={() => void handleExportObsidian()}>
-                        <IconBookOpen size={12} />
-                        <span>同步 Obsidian</span>
-                      </button>
+                      <ObsidianExportAction key={detail.id} kind="draft" itemId={detail.id} title={detail.title} />
                     </div>
 
                     <button
@@ -698,30 +650,6 @@ export const StudioView: React.FC<StudioViewProps> = ({
                     </button>
                   </div>
 
-                  {exportResult && (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                        padding: "8px 11px",
-                        borderRadius: 8,
-                        background: exportResult.status === "conflict" ? "var(--amber-soft)" : "var(--sage-soft)",
-                        fontSize: 12,
-                      }}
-                    >
-                      <span>{exportResult.message}</span>
-                      <button
-                        type="button"
-                        className="btn sm"
-                        onClick={() => void window.diandian.obsidian.openDeepLink(exportResult.deepLink)}
-                      >
-                        <IconExternalLink size={12} />
-                        打开 Obsidian
-                      </button>
-                    </div>
-                  )}
                 </section>
               )}
             </>

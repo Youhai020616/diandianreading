@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ConnectionsSnapshot,
   LocalBookMetadata,
@@ -7,6 +7,7 @@ import type {
 } from "../types/desktop";
 import { CustomSelect } from "./CustomSelect";
 import { MarkdownText } from "./MarkdownText";
+import { ObsidianVaultPicker } from "./ObsidianVaultPicker";
 import {
   IconCheck,
   IconCompass,
@@ -25,13 +26,92 @@ import { KindleConfigModal } from "./KindleConfigModal";
 import { WeReadQrModal } from "./WeReadQrModal";
 
 interface RouterViewProps {
+  onBookMetadataChanged: (previousPath: string, updatedPath: string, title: string) => void;
   initialSection?: "twin" | "obsidian" | "router";
   onModalToggle: (open: boolean) => void;
   onEnsureBrowserOpen: () => void;
   onNotify: (msg: string, tone?: "info" | "success" | "error") => void;
 }
 
+function ObsidianExportSettings() {
+  const [vaultPath, setVaultPath] = useState<string | null>(null);
+  const [changingVault, setChangingVault] = useState(false);
+  const [readError, setReadError] = useState(false);
+  const [readAttempt, setReadAttempt] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setReadError(false);
+    void window.diandian.obsidian.getVault().then(
+      ({ vaultPath: path }) => {
+        if (active) setVaultPath(path);
+      },
+      () => {
+        if (active) setReadError(true);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [readAttempt]);
+
+  const vaultName = vaultPath?.split(/[\\/]/).filter(Boolean).pop() || vaultPath;
+
+  return (
+    <section className="editorial-card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div>
+        <h3 style={{ margin: 0, fontFamily: "var(--font-serif)", fontSize: 16 }}>导出到 Obsidian</h3>
+        <p style={{ margin: "6px 0 0", color: "var(--ink-secondary)", lineHeight: 1.6 }}>
+          从「阅读笔记」导出一本书的全部划线，或从「创作草稿」导出草稿最新保存的版本。
+        </p>
+      </div>
+
+      {readError && (
+        <div role="alert">
+          <span>暂时无法读取当前连接的笔记库。</span>{" "}
+          <button className="btn sm" type="button" onClick={() => setReadAttempt((n) => n + 1)}>重试</button>
+        </div>
+      )}
+      {vaultPath === null && !readError && <div role="status">正在读取笔记库连接…</div>}
+      {vaultPath && !changingVault && (
+        <div className="conn-group">
+          <div className="conn-row">
+            <div className="conn-card-head">
+              <strong className="conn-card-title" style={{ overflowWrap: "anywhere" }}>
+                <IconFolder size={15} /> {vaultName}
+              </strong>
+              <span className="badge sage">已连接</span>
+            </div>
+            <div className="conn-card-meta" style={{ overflowWrap: "anywhere", userSelect: "text" }}>{vaultPath}</div>
+            <div className="conn-card-actions">
+              <button className="btn sm" type="button" onClick={() => setChangingVault(true)}>更换笔记库</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {(vaultPath === "" || changingVault) && (
+        <ObsidianVaultPicker
+          actionLabel="连接这个笔记库"
+          onConnect={async (path) => {
+            setVaultPath(path);
+            setChangingVault(false);
+          }}
+          onCancel={changingVault ? () => setChangingVault(false) : undefined}
+          cancelLabel="取消更换"
+        />
+      )}
+
+      <details style={{ color: "var(--ink-secondary)", fontSize: 12.5, lineHeight: 1.65 }}>
+        <summary style={{ cursor: "pointer" }}>了解导出规则</summary>
+        <p>书籍划线默认保存到笔记库的 <code>DiandianReading/Books</code>，创作草稿保存到 <code>DiandianReading/Drafts</code>。</p>
+        <p style={{ marginBottom: 0 }}>再次导出时，点点读书会按笔记标识查找改名或移动过的文件。如果你在 Obsidian 里编辑过笔记，原稿会保留，新导出的内容会另存为冲突副本。</p>
+      </details>
+    </section>
+  );
+}
+
 export const RouterView: React.FC<RouterViewProps> = ({
+  onBookMetadataChanged,
   initialSection = "router",
   onModalToggle,
   onEnsureBrowserOpen,
@@ -45,9 +125,6 @@ export const RouterView: React.FC<RouterViewProps> = ({
   const [styleMd, setStyleMd] = useState("");
   const [twinViewMode, setTwinViewMode] = useState<"preview" | "edit">("preview");
   const [savingTwin, setSavingTwin] = useState(false);
-
-  // Obsidian Vault
-  const [vaultPath, setVaultPath] = useState("");
 
   // Connections Hub + Optional zlib CLI Router
   const [connections, setConnections] = useState<ConnectionsSnapshot | null>(null);
@@ -69,6 +146,9 @@ export const RouterView: React.FC<RouterViewProps> = ({
   const [metaDraft, setMetaDraft] = useState<LocalBookMetadata | null>(null);
   const [metaMatches, setMetaMatches] = useState<LocalBookMetadata[]>([]);
   const [renameOnApply, setRenameOnApply] = useState(false);
+  // What the file currently contains, so adopted or typed changes read as unsaved.
+  const [metaSaved, setMetaSaved] = useState<LocalBookMetadata | null>(null);
+  const metaEditorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSection(initialSection);
@@ -104,7 +184,6 @@ export const RouterView: React.FC<RouterViewProps> = ({
       setProfileMd(t.profileMd);
       setStyleMd(t.styleMd);
     });
-    void window.diandian.obsidian.getVault().then((res) => setVaultPath(res.vaultPath));
     void refreshConnections();
   }, [refreshConnections]);
 
@@ -118,18 +197,6 @@ export const RouterView: React.FC<RouterViewProps> = ({
       onNotify(error instanceof Error ? error.message : "保存失败", "error");
     } finally {
       setSavingTwin(false);
-    }
-  };
-
-  const handlePickVault = async () => {
-    try {
-      const res = await window.diandian.obsidian.pickVault();
-      if (!res.canceled) {
-        setVaultPath(res.vaultPath);
-        onNotify(`已绑定 Obsidian Vault: ${res.vaultPath}`, "success");
-      }
-    } catch (error) {
-      onNotify(error instanceof Error ? error.message : "选择 Vault 失败", "error");
     }
   };
 
@@ -249,20 +316,33 @@ export const RouterView: React.FC<RouterViewProps> = ({
     if (!res.canceled) {
       setSelectedEbookPath(res.filePath);
       setMetaDraft(null);
+      setMetaSaved(null);
       setMetaMatches([]);
+      setRouterLog("");
     }
+  };
+
+  const revealMetaEditor = () => {
+    requestAnimationFrame(() => {
+      metaEditorRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      metaEditorRef.current?.querySelector("input")?.focus({ preventScroll: true });
+    });
+  };
+
+  const openMetaEditor = (metadata: LocalBookMetadata) => {
+    setMetaDraft(metadata);
+    setMetaSaved(metadata);
   };
 
   const handleReadLocalMeta = async () => {
     if (!selectedEbookPath) return;
     setBusyAction("meta-read");
     try {
-      const m = await window.diandian.router.readBookMeta(selectedEbookPath);
-      setMetaDraft(m);
+      openMetaEditor(await window.diandian.router.readBookMeta(selectedEbookPath));
       setMetaMatches([]);
-      onNotify("已读取本地电子书内置元数据", "success");
+      revealMetaEditor();
     } catch (error) {
-      onNotify(error instanceof Error ? error.message : "读取元数据失败", "error");
+      onNotify(error instanceof Error ? error.message : "无法读取这本书的信息", "error");
     } finally {
       setBusyAction(null);
     }
@@ -272,6 +352,11 @@ export const RouterView: React.FC<RouterViewProps> = ({
     if (!selectedEbookPath) return;
     setBusyAction("meta-fetch");
     try {
+      // Show the file's own information next to the matches so they can be compared before saving.
+      if (!metaDraft) {
+        const current = await window.diandian.router.readBookMeta(selectedEbookPath).catch(() => null);
+        if (current) openMetaEditor(current);
+      }
       const list = await window.diandian.router.fetchBookMetaMatches(selectedEbookPath, [
         "douban",
         "weread",
@@ -280,15 +365,20 @@ export const RouterView: React.FC<RouterViewProps> = ({
       ]);
       setMetaMatches(list);
       if (list.length === 0) {
-        onNotify("未在线匹配到候选元数据，可直接手工编辑后写回", "info");
+        onNotify("没有在线找到这本书的信息，可以在下方手动填写后保存。", "info");
       } else {
-        onNotify(`从豆瓣/微信读书/Open Library 匹配到 ${list.length} 条元数据候选`, "success");
+        onNotify(`找到 ${list.length} 个可能的版本，点「采用」后记得保存到文件。`, "success");
       }
     } catch (error) {
-      onNotify(error instanceof Error ? error.message : "在线匹配失败", "error");
+      onNotify(error instanceof Error ? error.message : "在线查找失败，请稍后重试", "error");
     } finally {
       setBusyAction(null);
     }
+  };
+
+  const adoptMetaMatch = (match: LocalBookMetadata) => {
+    setMetaDraft(match);
+    revealMetaEditor();
   };
 
   const handleApplyLocalMeta = async () => {
@@ -300,11 +390,13 @@ export const RouterView: React.FC<RouterViewProps> = ({
         ...metaDraft,
         rename: renameOnApply,
       });
-      setMetaDraft(res.metadata);
+      setSelectedEbookPath(res.filePath);
+      openMetaEditor(res.metadata);
+      onBookMetadataChanged(selectedEbookPath, res.filePath, res.metadata.title);
       setRouterLog(res.output);
-      onNotify("已原子写回电子书元数据（失败自动保持原文件无损）", "success");
+      onNotify(`已更新《${res.metadata.title || "这本书"}》的书籍信息`, "success");
     } catch (error) {
-      onNotify(error instanceof Error ? error.message : "写回元数据失败", "error");
+      onNotify(error instanceof Error ? error.message : "保存失败，原文件未改动", "error");
     } finally {
       setBusyAction(null);
     }
@@ -314,18 +406,24 @@ export const RouterView: React.FC<RouterViewProps> = ({
     if (!selectedEbookPath) return;
     setBusyAction(target);
     try {
-      const res =
-        target === "kindle"
-          ? await window.diandian.router.sendKindle(selectedEbookPath)
-          : await window.diandian.router.importWeRead(selectedEbookPath);
-      setRouterLog(res.output);
-      onNotify(target === "kindle" ? "已触发推送到 Kindle" : "已触发导入微信读书书架", "success");
+      if (target === "kindle") {
+        const res = await window.diandian.router.sendKindle(selectedEbookPath);
+        setRouterLog(res.output);
+        onNotify("已发送到 Kindle", "success");
+      } else {
+        const res = await window.diandian.router.importWeRead(selectedEbookPath);
+        setRouterLog(res.output);
+        onNotify(res.alreadyExisted ? "微信读书书架里已经有这本书了" : "已导入微信读书书架", res.alreadyExisted ? "info" : "success");
+      }
     } catch (error) {
-      onNotify(error instanceof Error ? error.message : "分发失败", "error");
+      onNotify(error instanceof Error ? error.message : "发送失败，请稍后重试", "error");
     } finally {
       setBusyAction(null);
     }
   };
+
+  const metaDirty = metaDraft !== null && metaSaved !== null
+    && (["title", "authors", "publisher", "isbn", "date"] as const).some(key => metaDraft[key] !== metaSaved[key]);
 
   const zlibStatus = connections?.status ?? null;
 
@@ -448,34 +546,7 @@ export const RouterView: React.FC<RouterViewProps> = ({
           </section>
         )}
 
-        {section === "obsidian" && (
-          <section className="editorial-card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <h3 style={{ margin: 0, fontFamily: "var(--font-serif)", fontSize: 16 }}>Obsidian 增量双向同步</h3>
-            <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-secondary)", lineHeight: 1.65 }}>
-              点点读书将书籍划线与成稿写入你的 Obsidian Vault。每次导出都会通过 frontmatter 中的{" "}
-              <span className="code-inline">diandian_id</span> 自动追踪你在 Obsidian 里的改名或移动，绝不产生重复文件；
-              如果检测到你在 Obsidian 里手工修改过原笔记，系统会保留你的修改并输出{" "}
-              <span className="code-inline">.diandian-conflict.md</span> 冲突副本，绝不静默覆盖。
-            </p>
-
-            <div className="field-group" style={{ marginBottom: 0 }}>
-              <label className="field-label">已绑定的 Vault 根目录</label>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  className="input"
-                  value={vaultPath}
-                  onChange={(e) => setVaultPath(e.target.value)}
-                  placeholder="尚未绑定目录，请点击右侧按钮选择…"
-                  readOnly
-                />
-                <button type="button" className="btn primary" onClick={() => void handlePickVault()}>
-                  <IconFolder size={14} />
-                  <span>选择 Vault 文件夹</span>
-                </button>
-              </div>
-            </div>
-          </section>
-        )}
+        {section === "obsidian" && <ObsidianExportSettings />}
 
         {section === "router" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -802,30 +873,38 @@ export const RouterView: React.FC<RouterViewProps> = ({
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", fontSize: 11.5 }}>
                 <IconCompass size={13} />
                 <span className="badge amber">
-                  当前 CLI 版本不含本地 EPUB meta 重写（可在终端执行 zlib update 升级）
+                  当前传书组件版本不支持修改书籍信息，可在终端执行 zlib update 升级
                 </span>
               </div>
             )}
 
             {zlibStatus?.installed && (
               <>
-                <div className="pref-section-label">本机电子书元数据修复与分发</div>
-                <section className="editorial-card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div className="pref-section-label">整理书籍信息，发送到 Kindle 或微信读书</div>
+                <section className="editorial-card" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   <div style={{ display: "flex", gap: 8 }}>
                     <input
                       className="input"
                       readOnly
                       value={selectedEbookPath}
-                      placeholder="选择本机 EPUB / PDF / MOBI / AZW3 文件…"
+                      placeholder="先选择一本电子书（EPUB、PDF、MOBI、AZW3）"
+                      aria-label="已选择的电子书"
                     />
                     <button type="button" className="btn" onClick={() => void handlePickEbook()}>
                       <IconFolder size={14} />
                       <span>选择文件</span>
                     </button>
                   </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {zlibStatus.supportsMeta && (
-                      <>
+                  {!selectedEbookPath && (
+                    <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: -6 }}>
+                      选好文件后，可以修改它的书名、作者等信息，也可以直接发送到 Kindle 或微信读书。
+                    </div>
+                  )}
+
+                  {zlibStatus.supportsMeta && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-secondary)" }}>书籍信息</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         <button
                           type="button"
                           className="btn sm soft"
@@ -833,7 +912,7 @@ export const RouterView: React.FC<RouterViewProps> = ({
                           onClick={() => void handleReadLocalMeta()}
                         >
                           <IconWand size={13} />
-                          <span>{busyAction === "meta-read" ? "读取中…" : "读取文件元数据"}</span>
+                          <span>{busyAction === "meta-read" ? "读取中…" : "编辑书名和作者"}</span>
                         </button>
                         <button
                           type="button"
@@ -842,140 +921,157 @@ export const RouterView: React.FC<RouterViewProps> = ({
                           onClick={() => void handleFetchLocalMeta()}
                         >
                           <IconSearch size={13} />
-                          <span>{busyAction === "meta-fetch" ? "匹配中…" : "豆瓣 / 微信读书在线匹配"}</span>
+                          <span>{busyAction === "meta-fetch" ? "查找中…" : "在线查找书籍信息"}</span>
                         </button>
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      className="btn sm primary"
-                      disabled={!selectedEbookPath || busyAction !== null}
-                      onClick={() => void handleDispatchEbook("kindle")}
-                    >
-                      <IconUpload size={13} />
-                      <span>{busyAction === "kindle" ? "发送中…" : "推送到 Kindle"}</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="btn sm sage"
-                      disabled={!selectedEbookPath || busyAction !== null}
-                      onClick={() => void handleDispatchEbook("weread")}
-                    >
-                      <IconUpload size={13} />
-                      <span>{busyAction === "weread" ? "导入中…" : "导入微信读书书架"}</span>
-                    </button>
-                  </div>
-
-                  {metaMatches.length > 0 && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-secondary)" }}>
-                        在线匹配候选（点击即可填入下方编辑框）：
                       </div>
-                      {metaMatches.slice(0, 5).map((m, idx) => (
+
+                      {metaMatches.length > 0 && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+                            可能的版本：点「采用」填入下方，确认后点「保存到文件」。
+                          </div>
+                          {metaMatches.slice(0, 5).map((m, idx) => (
+                            <div
+                              key={`mm-${idx}`}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                gap: 8,
+                                padding: "8px 10px",
+                                borderRadius: 8,
+                                border: "1px solid var(--border)",
+                                background: "var(--surface-tint)",
+                              }}
+                            >
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontWeight: 600, fontSize: 12.5 }}>{m.title}</div>
+                                <div style={{ fontSize: 11.5, color: "var(--ink-muted)" }}>
+                                  {[m.authors, m.publisher, m.date, m.isbn].filter(Boolean).join(" · ")}
+                                </div>
+                              </div>
+                              <button type="button" className="btn sm soft" onClick={() => adoptMetaMatch(m)}>
+                                采用
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {metaDraft && (
                         <div
-                          key={`mm-${idx}`}
+                          ref={metaEditorRef}
                           style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            gap: 8,
-                            padding: "8px 10px",
-                            borderRadius: 8,
-                            border: "1px solid var(--border)",
+                            padding: 12,
+                            borderRadius: 10,
+                            border: `1px solid ${metaDirty ? "var(--accent-border)" : "var(--border)"}`,
                             background: "var(--surface-tint)",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 8,
+                            scrollMarginBlock: 16,
                           }}
                         >
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 600, fontSize: 12.5 }}>{m.title}</div>
-                            <div style={{ fontSize: 11.5, color: "var(--ink-muted)" }}>
-                              {[m.authors, m.publisher, m.date, m.isbn, m.source].filter(Boolean).join(" · ")}
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            <div className="field-group" style={{ marginBottom: 0 }}>
+                              <label className="field-label">书名</label>
+                              <input
+                                className="input"
+                                value={metaDraft.title}
+                                onChange={(e) => setMetaDraft((d) => (d ? { ...d, title: e.target.value } : d))}
+                              />
+                            </div>
+                            <div className="field-group" style={{ marginBottom: 0 }}>
+                              <label className="field-label">作者（多位用 &amp; 分隔）</label>
+                              <input
+                                className="input"
+                                value={metaDraft.authors}
+                                onChange={(e) => setMetaDraft((d) => (d ? { ...d, authors: e.target.value } : d))}
+                              />
+                            </div>
+                            <div className="field-group" style={{ marginBottom: 0 }}>
+                              <label className="field-label">出版社</label>
+                              <input
+                                className="input"
+                                value={metaDraft.publisher}
+                                onChange={(e) => setMetaDraft((d) => (d ? { ...d, publisher: e.target.value } : d))}
+                              />
+                            </div>
+                            <div className="field-group" style={{ marginBottom: 0 }}>
+                              <label className="field-label">出版日期</label>
+                              <input
+                                className="input"
+                                value={metaDraft.date}
+                                onChange={(e) => setMetaDraft((d) => (d ? { ...d, date: e.target.value } : d))}
+                              />
+                            </div>
+                            <div className="field-group" style={{ marginBottom: 0 }}>
+                              <label className="field-label">ISBN</label>
+                              <input
+                                className="input"
+                                value={metaDraft.isbn}
+                                onChange={(e) => setMetaDraft((d) => (d ? { ...d, isbn: e.target.value } : d))}
+                              />
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            className="btn sm soft"
-                            onClick={() => setMetaDraft(m)}
-                          >
-                            采用
-                          </button>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ink-secondary)" }}>
+                              <input
+                                type="checkbox"
+                                checked={renameOnApply}
+                                onChange={(e) => setRenameOnApply(e.target.checked)}
+                              />
+                              同时把文件名改成「书名 - 作者」
+                            </label>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              {metaDirty && <span style={{ fontSize: 12, color: "var(--amber)" }}>修改尚未保存到文件</span>}
+                              <button
+                                type="button"
+                                className="btn sm primary"
+                                disabled={busyAction !== null}
+                                onClick={() => void handleApplyLocalMeta()}
+                              >
+                                <IconCheck size={12} />
+                                <span>{busyAction === "meta-apply" ? "保存中…" : "保存到文件"}</span>
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                      ))}
+                      )}
                     </div>
                   )}
 
-                  {metaDraft && (
-                    <div
-                      style={{
-                        padding: 12,
-                        borderRadius: 10,
-                        border: "1px solid var(--border)",
-                        background: "var(--surface-tint)",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 8,
-                      }}
-                    >
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                        <div className="field-group" style={{ marginBottom: 0 }}>
-                          <label className="field-label">书名</label>
-                          <input
-                            className="input"
-                            value={metaDraft.title}
-                            onChange={(e) => setMetaDraft((d) => (d ? { ...d, title: e.target.value } : d))}
-                          />
-                        </div>
-                        <div className="field-group" style={{ marginBottom: 0 }}>
-                          <label className="field-label">作者（多位用 &amp; 分隔）</label>
-                          <input
-                            className="input"
-                            value={metaDraft.authors}
-                            onChange={(e) => setMetaDraft((d) => (d ? { ...d, authors: e.target.value } : d))}
-                          />
-                        </div>
-                        <div className="field-group" style={{ marginBottom: 0 }}>
-                          <label className="field-label">出版社</label>
-                          <input
-                            className="input"
-                            value={metaDraft.publisher}
-                            onChange={(e) => setMetaDraft((d) => (d ? { ...d, publisher: e.target.value } : d))}
-                          />
-                        </div>
-                        <div className="field-group" style={{ marginBottom: 0 }}>
-                          <label className="field-label">ISBN / 出版日期</label>
-                          <input
-                            className="input"
-                            value={metaDraft.isbn}
-                            onChange={(e) => setMetaDraft((d) => (d ? { ...d, isbn: e.target.value } : d))}
-                            placeholder="ISBN"
-                          />
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ink-secondary)" }}>
-                          <input
-                            type="checkbox"
-                            checked={renameOnApply}
-                            onChange={(e) => setRenameOnApply(e.target.checked)}
-                          />
-                          同时规范重命名为「书名 - 作者.ext」
-                        </label>
-                        <button
-                          type="button"
-                          className="btn sm primary"
-                          disabled={busyAction !== null}
-                          onClick={() => void handleApplyLocalMeta()}
-                        >
-                          <IconCheck size={12} />
-                          <span>{busyAction === "meta-apply" ? "写回中…" : "原子写回电子书文件"}</span>
-                        </button>
-                      </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-secondary)" }}>发送</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      <button
+                        type="button"
+                        className="btn sm primary"
+                        disabled={!selectedEbookPath || busyAction !== null}
+                        onClick={() => void handleDispatchEbook("kindle")}
+                      >
+                        <IconUpload size={13} />
+                        <span>{busyAction === "kindle" ? "发送中…" : "推送到 Kindle"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn sm sage"
+                        disabled={!selectedEbookPath || busyAction !== null}
+                        onClick={() => void handleDispatchEbook("weread")}
+                      >
+                        <IconUpload size={13} />
+                        <span>{busyAction === "weread" ? "导入中…" : "导入微信读书书架"}</span>
+                      </button>
                     </div>
-                  )}
+                  </div>
 
                   {routerLog && (
-                    <pre className="md-code-block" style={{ margin: 0 }}>
-                      {routerLog}
-                    </pre>
+                    <details style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+                      <summary style={{ cursor: "pointer" }}>查看详细输出</summary>
+                      <pre className="md-code-block" style={{ margin: "8px 0 0" }}>
+                        {routerLog}
+                      </pre>
+                    </details>
                   )}
                 </section>
               </>

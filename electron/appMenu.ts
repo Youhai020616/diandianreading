@@ -13,6 +13,8 @@ export type AppMenuAction =
 export interface AppMenuDeps {
   appName: string;
   isMac: boolean;
+  /** Reload and DevTools are for development; a packaged app should not expose them. */
+  developerTools: boolean;
   sendAction: (action: AppMenuAction) => void;
   openExternal: (url: string) => void;
 }
@@ -22,7 +24,7 @@ export interface AppMenuDeps {
  * Edit/Window use standard roles so clipboard shortcuts and window controls work everywhere.
  */
 export function buildAppMenuTemplate(deps: AppMenuDeps): MenuItemConstructorOptions[] {
-  const { appName, isMac, sendAction, openExternal } = deps;
+  const { appName, isMac, developerTools, sendAction, openExternal } = deps;
   const action = (id: AppMenuAction) => () => sendAction(id);
 
   const preferences: MenuItemConstructorOptions = {
@@ -91,9 +93,13 @@ export function buildAppMenuTemplate(deps: AppMenuDeps): MenuItemConstructorOpti
   template.push({
     label: "视图",
     submenu: [
-      { role: "reload", label: "重新载入" },
-      { role: "toggleDevTools", label: "开发者工具" },
-      { type: "separator" },
+      ...(developerTools
+        ? ([
+            { role: "reload", label: "重新载入" },
+            { role: "toggleDevTools", label: "开发者工具" },
+            { type: "separator" },
+          ] satisfies MenuItemConstructorOptions[])
+        : []),
       { role: "resetZoom", label: "实际大小" },
       { role: "zoomIn", label: "放大" },
       { role: "zoomOut", label: "缩小" },

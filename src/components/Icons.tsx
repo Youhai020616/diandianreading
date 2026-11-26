@@ -52,6 +52,12 @@ export const IconPenLine: React.FC<IconProps> = ({ size = 16, className }) => (
   </svg>
 );
 
+export const IconLanguages: React.FC<IconProps> = ({ size = 16, className }) => (
+  <svg {...baseProps(size, className)}>
+    <path d="M3 5h12M9 2v3m3 0c-1 5-4 9-9 12m2-9c1 3 4 6 7 8m1 5 4.5-12L22 21m-7-4h5" />
+  </svg>
+);
+
 export const IconSquarePen: React.FC<IconProps> = ({ size = 16, className }) => (
   <svg {...baseProps(size, className)}>
     <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -340,52 +346,49 @@ export const IconHistory: React.FC<IconProps> = ({ size = 16, className, style }
   </svg>
 );
 
+export type ModelBrand = "deepseek" | "kimi" | "qwen" | "glm" | "openai";
+
+// Logos with dark marks on a transparent background get a light plate in dark mode.
+const MODEL_BRAND_LOGOS: Record<ModelBrand, { src: string; plate: boolean }> = {
+  deepseek: { src: deepseekLogo, plate: true },
+  kimi: { src: kimiLogo, plate: false },
+  qwen: { src: qwenLogo, plate: false },
+  glm: { src: zhipuLogo, plate: true },
+  openai: { src: openaiLogo, plate: true },
+};
+
+function modelBrandFromHint(hint: string): ModelBrand | null {
+  if (hint.includes("deepseek")) return "deepseek";
+  if (hint.includes("moonshot") || hint.includes("kimi")) return "kimi";
+  if (hint.includes("dashscope") || hint.includes("qwen") || hint.includes("tongyi")) return "qwen";
+  if (hint.includes("bigmodel") || hint.includes("glm") || hint.includes("zhipu")) return "glm";
+  if (hint.includes("openai") || /(^|[-/])(gpt-|o1|o3|o4|chatgpt)/.test(hint)) return "openai";
+  return null;
+}
+
+/** Bundled vendor logo for a model provider. */
+export const ModelBrandLogo: React.FC<{ brand: ModelBrand; size?: number }> = ({ brand, size = 14 }) => {
+  const { src, plate } = MODEL_BRAND_LOGOS[brand];
+  return (
+    <img
+      src={src}
+      alt=""
+      width={size}
+      height={size}
+      draggable={false}
+      className={`model-brand-icon ${plate ? "has-plate" : ""}`}
+      style={{ width: size, height: size }}
+    />
+  );
+};
+
 export const ModelBrandIcon: React.FC<{
   baseUrl?: string;
   model?: string;
   size?: number;
 }> = ({ baseUrl = "", model = "", size = 14 }) => {
-  const hint = `${baseUrl} ${model}`.toLowerCase();
-
-  let src: string | null = null;
-  let needsLightPlate = false;
-
-  if (hint.includes("deepseek")) {
-    src = deepseekLogo;
-    needsLightPlate = true;
-  } else if (hint.includes("moonshot") || hint.includes("kimi")) {
-    src = kimiLogo;
-  } else if (hint.includes("dashscope") || hint.includes("qwen") || hint.includes("tongyi")) {
-    src = qwenLogo;
-  } else if (hint.includes("bigmodel") || hint.includes("glm") || hint.includes("zhipu")) {
-    src = zhipuLogo;
-    needsLightPlate = true;
-  } else if (
-    hint.includes("openai")
-    || /(^|[-/])(gpt-|o1|o3|o4|chatgpt)/.test(hint)
-  ) {
-    src = openaiLogo;
-    needsLightPlate = true;
-  }
-
-  if (src) {
-    return (
-      <img
-        src={src}
-        alt=""
-        width={size}
-        height={size}
-        draggable={false}
-        className={`model-brand-icon ${needsLightPlate ? "has-plate" : ""}`}
-        style={{
-          width: size,
-          height: size,
-        }}
-      />
-    );
-  }
-
-  return <IconSparkles size={Math.max(12, size - 1)} />;
+  const brand = modelBrandFromHint(`${baseUrl} ${model}`.toLowerCase());
+  return brand ? <ModelBrandLogo brand={brand} size={size} /> : <IconSparkles size={Math.max(12, size - 1)} />;
 };
 
 export const SiteBrandIcon: React.FC<{ url?: string; faviconUrl?: string; size?: number }> = ({

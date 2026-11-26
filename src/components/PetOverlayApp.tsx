@@ -252,7 +252,7 @@ export const PetOverlayApp: React.FC = () => {
     if (!hit) {
       setMessages((prev) => [
         ...prev,
-        { id: `ps_${Date.now()}`, role: "system", text: "本地书库里还没有划线，去同步微信读书或划一句吧～" },
+        { id: `ps_${Date.now()}`, role: "system", text: "阅读笔记里还没有划线，去同步微信读书或划一句吧～" },
       ]);
       return;
     }
@@ -331,7 +331,7 @@ export const PetOverlayApp: React.FC = () => {
       void refreshMilestone();
       setMessages((prev) => [
         ...prev,
-        { id: `ps_${Date.now()}`, role: "system", text: `汪！已收录到《${book.title}》本地书库。` },
+        { id: `ps_${Date.now()}`, role: "system", text: `汪！已存入《${book.title}》的阅读笔记。` },
       ]);
       setQuickQuote(null);
     } catch (error) {
@@ -593,7 +593,7 @@ export const PetOverlayApp: React.FC = () => {
               <div className="pet-quick-quote-btns">
                 <button type="button" className="pet-nudge-btn" onClick={() => void handleSaveQuickQuote()}>
                   <IconBookOpen size={11} />
-                  <span>存书库</span>
+                  <span>存入阅读笔记</span>
                 </button>
                 <button
                   type="button"
@@ -617,7 +617,7 @@ export const PetOverlayApp: React.FC = () => {
               <div className="pet-chat-empty">
                 <div className="pet-chat-empty-badge">
                   <IconSparkles size={12} />
-                  <span>全局快捷键 ⌘⇧D 随时呼出 · 已连书库</span>
+                  <span>全局快捷键 ⌘⇧D 随时呼出</span>
                 </div>
                 <p>在任何地方复制一段好话按 ⌘⇧D，或在右侧划词点「问小金毛」，我都会立刻蹦出来陪你聊～</p>
               </div>

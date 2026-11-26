@@ -232,10 +232,22 @@ export async function listWeReadNotebooks(cookies: NormalizedCookie[]): Promise<
   return parseWeReadNotebooksResponse(data);
 }
 
+type CacheCover = (url: string) => Promise<string | null>;
+
+async function usableCover(url: string, cacheCover?: CacheCover): Promise<string> {
+  if (!url || !cacheCover) return url;
+  try {
+    return await cacheCover(url) ? url : "";
+  } catch {
+    return "";
+  }
+}
+
 export async function syncWeReadBooksIntoDatabase(
   db: KnowledgeDatabase,
   cookies: NormalizedCookie[],
   books: WeReadNotebookBook[],
+  cacheCover?: CacheCover,
 ): Promise<WeReadSyncOutcome> {
   const cookieHeader = assertLoggedInCookies(cookies);
   const details: WeReadSyncBookResult[] = [];
@@ -244,66 +256,79 @@ export async function syncWeReadBooksIntoDatabase(
 
   for (const book of books) {
     const encodedId = encodeURIComponent(book.bookId);
-    const [bmRes, revRes] = await Promise.all([
+    const [bmRes, revRes, incomingCover] = await Promise.all([
       fetchWeReadJson(`/web/book/bookmarklist?bookId=${encodedId}`, cookieHeader),
       fetchWeReadJson(`/web/review/list?bookId=${encodedId}&listType=11&mine=1&synckey=0`, cookieHeader).catch(
         () => ({ reviews: [] }),
       ),
+      usableCover(book.coverUrl, cacheCover),
     ]);
 
     const entries = mergeWeReadBookmarksAndReviews(bmRes, revRes);
-    const localBook = db.findOrCreateBook({
-      title: book.title,
-      author: book.author,
-      isbn: book.isbn,
-      publisher: book.publisher,
-      publishedYear: book.publishedYear,
-      description: book.intro,
-      coverUrl: book.coverUrl,
-      source: "weread",
-      sourceLocator: `https://weread.qq.com/web/reader/${book.bookId}`,
-    });
-
-    // Enrich missing metadata on existing books.
-    if (
-      (book.coverUrl && !localBook.coverUrl)
-      || (book.publisher && !localBook.publisher)
-      || (book.intro && !localBook.description)
-      || (book.isbn && !localBook.isbn)
-    ) {
-      db.updateBook(localBook.id, {
-        coverUrl: localBook.coverUrl || book.coverUrl,
-        publisher: localBook.publisher || book.publisher,
-        description: localBook.description || book.intro,
-        isbn: localBook.isbn || book.isbn,
-        publishedYear: localBook.publishedYear || book.publishedYear,
-      });
-    }
-
-    let importedCount = 0;
-    let deduplicatedCount = 0;
-    for (const entry of entries) {
-      const added = db.addHighlight({
-        bookId: localBook.id,
-        chapter: entry.chapter,
-        quote: entry.quote,
-        note: entry.note,
+    let previousCover = "";
+    const detail = db.transaction(() => {
+      const localBook = db.findOrCreateBook({
+        title: book.title,
+        author: book.author,
+        isbn: book.isbn,
+        publisher: book.publisher,
+        publishedYear: book.publishedYear,
+        description: book.intro,
+        coverUrl: incomingCover,
         source: "weread",
-        createdAt: entry.createdAt,
+        sourceLocator: `https://weread.qq.com/web/reader/${book.bookId}`,
       });
-      if (added.deduplicated) deduplicatedCount++;
-      else importedCount++;
-    }
+      previousCover = localBook.coverUrl;
 
-    totalImported += importedCount;
-    totalDedup += deduplicatedCount;
-    details.push({
-      bookId: book.bookId,
-      localBookId: localBook.id,
-      title: book.title,
-      importedCount,
-      deduplicatedCount,
+      // Enrich missing metadata on existing books.
+      if (
+        (incomingCover && !localBook.coverUrl)
+        || (book.publisher && !localBook.publisher)
+        || (book.intro && !localBook.description)
+        || (book.isbn && !localBook.isbn)
+      ) {
+        db.updateBook(localBook.id, {
+          coverUrl: localBook.coverUrl || incomingCover,
+          publisher: localBook.publisher || book.publisher,
+          description: localBook.description || book.intro,
+          isbn: localBook.isbn || book.isbn,
+          publishedYear: localBook.publishedYear || book.publishedYear,
+        });
+      }
+
+      let importedCount = 0;
+      let deduplicatedCount = 0;
+      for (const entry of entries) {
+        const added = db.addHighlight({
+          bookId: localBook.id,
+          chapter: entry.chapter,
+          quote: entry.quote,
+          note: entry.note,
+          source: "weread",
+          createdAt: entry.createdAt,
+        });
+        if (added.deduplicated) deduplicatedCount++;
+        else importedCount++;
+      }
+
+      return {
+        bookId: book.bookId,
+        localBookId: localBook.id,
+        title: book.title,
+        importedCount,
+        deduplicatedCount,
+      };
     });
+    if (cacheCover && incomingCover && previousCover && previousCover !== incomingCover) {
+      const oldStillUsable = await usableCover(previousCover, cacheCover);
+      // A metadata selection in the meantime takes precedence over the shelf refresh.
+      if (!oldStillUsable && db.getBook(detail.localBookId)?.coverUrl === previousCover) {
+        db.updateBook(detail.localBookId, { coverUrl: incomingCover });
+      }
+    }
+    details.push(detail);
+    totalImported += detail.importedCount;
+    totalDedup += detail.deduplicatedCount;
   }
 
   return {
