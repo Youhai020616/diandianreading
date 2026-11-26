@@ -8,7 +8,7 @@ import {
   isValidZlibBookRef,
   parseZlibSearchJson,
 } from "../electron/router/zlibCliService";
-import { evaluateToolSafety, SafetyModeStore } from "../electron/security/safetyPolicy";
+import { evaluateToolSafety, SafetyModeStore, TOOL_POLICY_FILE } from "../electron/security/safetyPolicy";
 
 const tempDirs: string[] = [];
 
@@ -36,10 +36,26 @@ describe("Runtime safety policy", () => {
     expect(evaluateToolSafety("confirm", "library_save_highlight")).toBeNull();
     expect(evaluateToolSafety("confirm", "draft_create_or_revise")).toBeNull();
     expect(evaluateToolSafety("confirm", "obsidian_export_book")).toBeTruthy();
-    expect(evaluateToolSafety("confirm", "book_router_download")).toBeTruthy();
+    expect(evaluateToolSafety("confirm", "obsidian_export_draft")).toBeTruthy();
 
     expect(evaluateToolSafety("auto", "obsidian_export_book")).toBeNull();
-    expect(evaluateToolSafety("auto", "book_router_download")).toBeNull();
+    expect(evaluateToolSafety("auto", "browser_navigate")).toBeNull();
+  });
+
+  it("guards only tools the plugins actually register, from one shared policy file", () => {
+    const registered = new Set<string>();
+    for (const plugin of fs.readdirSync(path.resolve("plugins"))) {
+      const file = path.resolve("plugins", plugin, "index.mjs");
+      if (!fs.existsSync(file)) continue;
+      for (const match of fs.readFileSync(file, "utf8").matchAll(/defineTool\(\{\s*name:\s*"([a-z_]+)"/g)) registered.add(match[1]!);
+    }
+    const policy = JSON.parse(fs.readFileSync(TOOL_POLICY_FILE, "utf8")) as { planDenied: string[]; confirmDenied: string[] };
+    for (const tool of [...policy.planDenied, ...policy.confirmDenied]) expect(registered, tool).toContain(tool);
+    expect(registered).not.toContain("book_router_download");
+    // The enforcing guard in the Harness reads the same file instead of keeping its own list.
+    const guard = fs.readFileSync(path.resolve("plugins/runtime-safety/index.mjs"), "utf8");
+    expect(guard).toContain("tool-policy.json");
+    expect(guard).not.toMatch(/new Set\(\[/);
   });
 
   it("persists safety mode atomically", () => {

@@ -1,0 +1,13 @@
+{
+  "$comment": "Single source for the agent tool guard. Read by plugins/runtime-safety/index.mjs (the enforcing guard in the Harness process) and electron/security/safetyPolicy.ts. Ebook downloads are not an agent tool: they run only from the UI over the router:download IPC.",
+  "alwaysDenied": ["bash", "write", "edit", "multi_edit", "notebook_edit", "shell"],
+  "planDenied": [
+    "library_save_highlight",
+    "draft_create_or_revise",
+    "obsidian_export_book",
+    "obsidian_export_draft",
+    "browser_open",
+    "browser_navigate"
+  ],
+  "confirmDenied": ["obsidian_export_book", "obsidian_export_draft"]
+}

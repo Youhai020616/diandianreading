@@ -3,30 +3,11 @@ import fs from "node:fs";
 export const name = "diandian-runtime-safety";
 export const inject = ["tools", "systemPrompt"];
 
-const ALWAYS_DENIED = new Set([
-  "bash",
-  "write",
-  "edit",
-  "multi_edit",
-  "notebook_edit",
-  "shell",
-]);
-
-const PLAN_DENIED = new Set([
-  "library_save_highlight",
-  "draft_create_or_revise",
-  "obsidian_export_book",
-  "obsidian_export_draft",
-  "browser_open",
-  "browser_navigate",
-  "book_router_download",
-]);
-
-const CONFIRM_DENIED = new Set([
-  "obsidian_export_book",
-  "obsidian_export_draft",
-  "book_router_download",
-]);
+// One policy file shared with electron/security/safetyPolicy.ts.
+const policy = JSON.parse(fs.readFileSync(new URL("./tool-policy.json", import.meta.url), "utf8"));
+const ALWAYS_DENIED = new Set(policy.alwaysDenied);
+const PLAN_DENIED = new Set(policy.planDenied);
+const CONFIRM_DENIED = new Set(policy.confirmDenied);
 
 function readCurrentMode() {
   const stateFile = (process.env.DIANDIAN_SAFETY_STATE_FILE || "").trim();
@@ -66,7 +47,7 @@ export function apply(ctx) {
     }
     if (mode === "confirm" && CONFIRM_DENIED.has(toolName)) {
       return {
-        reason: `当前处于「安全确认 (confirm)」模式，外部磁盘导出或下载工具 "${toolName}" 需要用户点击界面按钮或切换到 auto 模式后执行。`,
+        reason: `当前处于「安全确认 (confirm)」模式，外部磁盘导出工具 "${toolName}" 需要用户点击界面按钮或切换到 auto 模式后执行。`,
       };
     }
     return undefined;
@@ -84,7 +65,7 @@ export function apply(ctx) {
       if (mode === "auto") {
         return "当前安全模式：auto（全自动工作流）。你可以阅读页面、管理阅读笔记与 AI 草稿修订，也可以执行带冲突保护的 Obsidian 增量导出。";
       }
-      return "当前安全模式：confirm（安全确认）。你可以读取右侧页面、检索/保存划线并生成独立的 AI 草稿版本（绝不覆盖用户手改版本）；涉及 Obsidian 外部写入或电子书下载时，请提醒用户在界面一键触发。";
+      return "当前安全模式：confirm（安全确认）。你可以读取右侧页面、检索/保存划线并生成独立的 AI 草稿版本（绝不覆盖用户手改版本）；涉及 Obsidian 外部写入时，请提醒用户在界面一键触发；电子书下载只能由用户在界面操作。";
     },
   });
 }

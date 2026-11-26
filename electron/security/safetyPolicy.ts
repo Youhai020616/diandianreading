@@ -5,30 +5,19 @@ export type SafetyMode = "plan" | "confirm" | "auto";
 
 export const VALID_SAFETY_MODES: readonly SafetyMode[] = ["plan", "confirm", "auto"] as const;
 
-export const ALWAYS_DENIED_TOOLS = new Set([
-  "bash",
-  "write",
-  "edit",
-  "multi_edit",
-  "notebook_edit",
-  "shell",
-]);
+interface ToolPolicy {
+  alwaysDenied: string[];
+  planDenied: string[];
+  confirmDenied: string[];
+}
 
-export const PLAN_DENIED_TOOLS = new Set([
-  "library_save_highlight",
-  "draft_create_or_revise",
-  "obsidian_export_book",
-  "obsidian_export_draft",
-  "browser_open",
-  "browser_navigate",
-  "book_router_download",
-]);
+/** The guard that actually enforces this runs in the Harness process and reads the same file. */
+export const TOOL_POLICY_FILE = path.resolve(__dirname, "..", "..", "plugins", "runtime-safety", "tool-policy.json");
+const policy = JSON.parse(fs.readFileSync(TOOL_POLICY_FILE, "utf8")) as ToolPolicy;
 
-export const CONFIRM_DENIED_TOOLS = new Set([
-  "obsidian_export_book",
-  "obsidian_export_draft",
-  "book_router_download",
-]);
+export const ALWAYS_DENIED_TOOLS: ReadonlySet<string> = new Set(policy.alwaysDenied);
+export const PLAN_DENIED_TOOLS: ReadonlySet<string> = new Set(policy.planDenied);
+export const CONFIRM_DENIED_TOOLS: ReadonlySet<string> = new Set(policy.confirmDenied);
 
 export function normalizeSafetyMode(raw: unknown): SafetyMode {
   if (raw === "plan" || raw === "confirm" || raw === "auto") return raw;
@@ -44,7 +33,7 @@ export function evaluateToolSafety(mode: SafetyMode, toolName: string): string |
     return `当前处于「只读规划（plan）」安全模式，已拦截写入/导航类工具 "${name}"。请先输出方案，或请用户切换到 confirm / auto 模式。`;
   }
   if (mode === "confirm" && CONFIRM_DENIED_TOOLS.has(name)) {
-    return `当前处于「安全确认（confirm）」模式，已拦截外部文件写入/下载工具 "${name}"。请引导用户点击界面按钮手动触发，或切换到 auto 模式。`;
+    return `当前处于「安全确认（confirm）」模式，已拦截外部文件写入工具 "${name}"。请引导用户点击界面按钮手动触发，或切换到 auto 模式。`;
   }
   return null;
 }
