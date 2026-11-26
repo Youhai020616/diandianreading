@@ -41,5 +41,21 @@
       "electron",
       "esbuild"
     ]
+  },
+  "build": {
+    "appId": "com.diandianreading.app",
+    "productName": "点点读书",
+    "directories": {
+      "buildResources": "build"
+    },
+    "mac": {
+      "icon": "build/icons/icon.icns"
+    },
+    "win": {
+      "icon": "build/icons/icon.ico"
+    },
+    "linux": {
+      "icon": "build/icons"
+    }
   }
 }

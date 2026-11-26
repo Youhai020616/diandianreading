@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const filesToCopy = [
   ["electron/agent/sdkBridge.mjs", "dist-electron/agent/sdkBridge.mjs"],
+  ["build/icons/icon.png", "dist-electron/assets/icon.png"],
 ];
 
 const dirsToCopy = [

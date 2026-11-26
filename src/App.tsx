@@ -36,6 +36,7 @@ import { SettingsModal } from "./components/SettingsModal";
 import { StudioView } from "./components/StudioView";
 import { PullCordLamp } from "./components/ui/pull-cord-lamp";
 import { cleanQuoteDraftTitle, prepareDraftFromAssistantReply } from "./lib/draftCleanup";
+import brandLogoUrl from "./assets/brand/logo-small.svg";
 import { formatUserError } from "./utils/formatError";
 
 type StudioTab = "discover" | "library" | "studio" | "notebook" | "router";
@@ -928,7 +929,7 @@ export const App: React.FC = () => {
           >
           <div className="surf-brand-row">
             <div className="surf-brand-left">
-              <span className="surf-brand-mark">点</span>
+              <img className="surf-brand-mark" src={brandLogoUrl} alt="" aria-hidden="true" />
               <span className="surf-brand-name">点点读书</span>
             </div>
           </div>

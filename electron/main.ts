@@ -1557,14 +1557,24 @@ function wireIpcHandlers(): void {
   });
 }
 
+function resolveAppIconPath(): string | undefined {
+  const candidates = [
+    path.join(__dirname, "assets", "icon.png"),
+    path.resolve(__dirname, "..", "build", "icons", "icon.png"),
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate));
+}
+
 async function createMainWindow(): Promise<void> {
   const entryUrl = resolveAppEntryUrl();
+  const appIconPath = resolveAppIconPath();
   const win = new BrowserWindow({
     width: 1480,
     height: 940,
     minWidth: 1020,
     minHeight: 680,
     title: "点点读书 · diandianreading",
+    ...(appIconPath ? { icon: appIconPath } : {}),
     backgroundColor: "#f7f4ee",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     webPreferences: {
@@ -1970,6 +1980,10 @@ async function bootstrap(): Promise<void> {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === "darwin" && app.dock) {
+    const dockIcon = resolveAppIconPath();
+    if (dockIcon) app.dock.setIcon(dockIcon);
+  }
   void bootstrap();
 
   app.on("activate", () => {
