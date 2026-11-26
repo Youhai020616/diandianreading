@@ -1,0 +1,347 @@
+/* ==================== Main Split Stage & 38px Surf Topbar ==================== */
+
+.main-stage {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--canvas);
+  border-top-left-radius: 14px;
+  border-bottom-left-radius: 14px;
+  box-shadow:
+    -1px 0 0 rgba(59, 118, 246, 0.12),
+    -6px 0 22px rgba(30, 64, 175, 0.065),
+    inset 1px 1px 0 rgba(255, 255, 255, 0.92);
+  transition: border-radius 0.16s ease, box-shadow 0.16s ease;
+}
+
+.main-stage.rail-collapsed {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  box-shadow: none;
+}
+
+.main-stage.ai-open {
+  border-top-right-radius: 14px;
+  border-bottom-right-radius: 14px;
+  box-shadow:
+    -1px 0 0 rgba(59, 118, 246, 0.12),
+    1px 0 0 rgba(59, 118, 246, 0.12),
+    0 0 22px rgba(30, 64, 175, 0.06),
+    inset 1px 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.main-stage.rail-collapsed.ai-open {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.workspace-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 340px;
+  height: 100%;
+  background: var(--canvas);
+  overflow: hidden;
+}
+
+.workspace-column.full-width {
+  flex: 1 1 0 !important;
+  width: auto !important;
+}
+
+/* Razor-thin 38px Surf Breadcrumb Topbar */
+.surf-topbar {
+  height: 38px;
+  min-height: 38px;
+  padding: 0 12px 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: linear-gradient(180deg, #fafcfe 0%, #f6f9fd 100%);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.surf-topbar.rail-collapsed {
+  padding-left: 88px;
+}
+
+.surf-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  position: relative;
+  z-index: 2;
+  -webkit-app-region: no-drag;
+}
+
+.surf-topbar-drag {
+  flex: 1;
+  min-width: 16px;
+  height: 100%;
+  -webkit-app-region: drag;
+}
+
+.surf-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+  -webkit-app-region: no-drag;
+}
+
+.surf-topbar button {
+  -webkit-app-region: no-drag;
+}
+
+.surf-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 4px;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}
+
+.surf-crumb-root {
+  color: var(--ink);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.surf-crumb-sep {
+  color: #cbd5e1;
+  display: inline-flex;
+  align-items: center;
+}
+
+.surf-crumb-mid {
+  color: var(--ink-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.surf-crumb-mid:hover {
+  color: var(--ink);
+}
+
+.surf-crumb-current {
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+
+/* Body row under 38px topbar: optional 212px context tree + pure-white main canvas */
+.surf-body-row {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Middle 212px Pure-White Books & Drafts Outline Tree (Surf Center Column) */
+.context-tree {
+  width: 212px;
+  min-width: 212px;
+  height: 100%;
+  border-right: 1px solid var(--border);
+  background: var(--canvas);
+  display: flex;
+  flex-direction: column;
+  padding: 8px 8px 12px;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.context-tree-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 2px 6px;
+}
+
+.context-tree-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  user-select: none;
+}
+
+.context-tree-search {
+  position: relative;
+}
+
+.context-tree-search svg {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-muted);
+  pointer-events: none;
+}
+
+.context-tree-search input {
+  width: 100%;
+  height: 28px;
+  padding: 0 9px 0 28px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: var(--canvas-subtle);
+  color: var(--ink);
+  font-size: 12px;
+  outline: none;
+  transition: all 0.14s ease;
+}
+
+.context-tree-search input:focus {
+  background: var(--canvas);
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 2.5px rgba(59, 118, 246, 0.1);
+}
+
+.context-tree-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tree-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tree-group.with-sep {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.tree-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 8px 4px;
+  user-select: none;
+  cursor: default;
+}
+
+.tree-group-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  letter-spacing: 0.03em;
+}
+
+.tree-item {
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 9px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--ink-secondary);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.tree-item:hover:not(.active) {
+  background: var(--canvas-subtle);
+  color: var(--ink);
+}
+
+.tree-item.active {
+  background: var(--surf-pill-active);
+  color: #1e40af;
+  font-weight: 600;
+}
+
+.tree-item-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-item-meta {
+  font-size: 11px;
+  color: var(--ink-muted);
+  flex-shrink: 0;
+}
+
+.tree-item.active .tree-item-meta {
+  color: #3b76f6;
+}
+
+.surf-canvas-shell {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+  overflow: hidden;
+  position: relative;
+}
+
+/* Feather Split Handle */
+.split-handle {
+  width: 7px;
+  margin: 0 -1px;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 20;
+  user-select: none;
+  touch-action: none;
+  transition: background 0.15s ease;
+}
+
+.split-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: var(--border);
+  transition: background 0.15s ease, width 0.15s ease, left 0.15s ease;
+}
+
+.split-handle:hover,
+.split-handle.dragging {
+  background: rgba(59, 118, 246, 0.1);
+}
+.split-handle:hover::after,
+.split-handle.dragging::after {
+  left: 2.5px;
+  width: 2px;
+  background: var(--accent);
+}
+
+body.is-dragging-split,
+body.is-dragging-split * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}

@@ -1,0 +1,168 @@
+/* ==================== Inline Chat Safety Guard Popover & Reading-Focus Toolbar ==================== */
+
+.surf-safety-popover {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 40;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.14), 0 2px 8px rgba(15, 23, 42, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.surf-safety-popover-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 3px;
+}
+
+.surf-safety-item {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.surf-safety-item:hover {
+  background: var(--bg-elevated);
+}
+
+.surf-safety-item.active {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+
+.surf-safety-item-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.surf-safety-item-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.surf-safety-item-badge {
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--ink-muted);
+}
+
+.surf-safety-item.active .surf-safety-item-badge {
+  background: rgba(47, 110, 246, 0.12);
+  border-color: transparent;
+  color: var(--accent);
+}
+
+.surf-safety-item-check {
+  margin-left: auto;
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+}
+
+.surf-safety-item-desc {
+  font-size: 11px;
+  color: var(--ink-muted);
+  line-height: 1.4;
+  padding-left: 14px;
+}
+
+.surf-micro-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+/* Browser toolbar macOS traffic-lights clearance when both left rail and workspace are collapsed */
+.browser-toolbar.has-traffic-lights {
+  padding-left: 78px;
+}
+
+.browser-restore-workspace-btn {
+  height: 26px;
+  padding: 0 9px 0 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+.browser-restore-workspace-btn:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent-hover);
+}
+
+.browser-restore-mark {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 10.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:root[data-theme="dark"] .surf-safety-popover {
+  background: #182030;
+  border-color: rgba(203, 219, 245, 0.14);
+  box-shadow: 0 16px 40px rgba(2, 6, 14, 0.56);
+}
+
+:root[data-theme="dark"] .surf-safety-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+:root[data-theme="dark"] .surf-safety-item.active {
+  background: rgba(91, 147, 255, 0.16);
+  border-color: rgba(91, 147, 255, 0.34);
+}
+
+:root[data-theme="dark"] .browser-restore-workspace-btn {
+  background: #1b2434;
+  border-color: rgba(203, 219, 245, 0.14);
+  color: #e2eaf8;
+}
+
+:root[data-theme="dark"] .browser-restore-workspace-btn:hover {
+  background: rgba(91, 147, 255, 0.18);
+  border-color: rgba(91, 147, 255, 0.36);
+  color: #9dc0ff;
+}

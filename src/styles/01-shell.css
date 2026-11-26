@@ -1,0 +1,334 @@
+/* ==================== App Shell & Surf Cloud-Blue Rail ==================== */
+
+.app-shell {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--surf-rail-bg);
+}
+
+/* 196px Frosted Cloud-Blue Left Sidebar (Arc / Deta Surf Style) */
+.surf-rail {
+  width: 196px;
+  min-width: 196px;
+  height: 100%;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  padding: 42px 10px 12px;
+  gap: 6px;
+  -webkit-app-region: drag;
+  user-select: none;
+  overflow: hidden;
+}
+
+.surf-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 8px;
+  -webkit-app-region: no-drag;
+}
+
+.surf-brand-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.surf-brand-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: block;
+  flex-shrink: 0;
+  object-fit: cover;
+  box-shadow: 0 2px 6px rgba(45, 82, 60, 0.22);
+}
+
+.surf-brand-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #16243d;
+  letter-spacing: -0.01em;
+}
+
+.surf-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.surf-nav-item {
+  width: 100%;
+  height: 33px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #344767;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.surf-nav-item:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.48);
+  color: #16243d;
+}
+
+.surf-nav-item.active {
+  background: rgba(255, 255, 255, 0.94);
+  color: #1d4ed8;
+  font-weight: 600;
+  border-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 8px rgba(30, 64, 175, 0.09), 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.surf-nav-item svg {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.surf-nav-item.active svg {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.surf-nav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.surf-nav-count {
+  font-size: 11px;
+  color: #6b7f9e;
+  font-weight: 500;
+}
+
+.surf-rail-divider {
+  height: 1px;
+  background: rgba(37, 99, 235, 0.1);
+  margin: 6px 6px 4px;
+}
+
+.surf-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 8px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #5b7296;
+  letter-spacing: 0.02em;
+  -webkit-app-region: no-drag;
+}
+
+.surf-rail-tabs {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.surf-tab-item {
+  width: 100%;
+  height: 31px;
+  padding: 0 8px 0 10px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #3a4f70;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.surf-tab-item:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.45);
+  color: #16243d;
+}
+
+.surf-tab-item.active {
+  background: rgba(255, 255, 255, 0.85);
+  color: #16243d;
+  font-weight: 600;
+  box-shadow: 0 1px 5px rgba(30, 64, 175, 0.07);
+}
+
+.surf-tab-close {
+  border: none;
+  background: transparent;
+  color: #7c90b0;
+  padding: 2px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.local-book-tab-select {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.local-book-tab-select svg { flex-shrink: 0; }
+.local-book-tab:focus-within .surf-tab-close { opacity: 1; }
+
+.surf-tab-item:hover .surf-tab-close,
+.surf-tab-item.active .surf-tab-close {
+  opacity: 1;
+}
+
+.surf-tab-close:hover {
+  background: rgba(15, 23, 42, 0.08);
+  color: var(--danger);
+}
+
+.surf-quick-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 4px 2px;
+  -webkit-app-region: no-drag;
+}
+
+.surf-quick-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 25px;
+  padding: 0 9px 0 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(59, 118, 246, 0.14);
+  background: rgba(255, 255, 255, 0.55);
+  color: #3c5377;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.surf-quick-pill:hover {
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--accent);
+}
+
+.surf-rail-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(37, 99, 235, 0.1);
+  -webkit-app-region: no-drag;
+}
+
+.surf-footer-btn {
+  position: relative;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #415678;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.surf-footer-btn:hover {
+  background: rgba(255, 255, 255, 0.62);
+  color: #16243d;
+}
+
+.surf-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22a06b;
+  display: inline-block;
+}
+
+.safety-dot {
+  width: 6.5px;
+  height: 6.5px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.safety-dot.plan { background: #3b82f6; }
+.safety-dot.confirm { background: #e09124; }
+.safety-dot.auto { background: #22a06b; }
+
+/* Surf Floating Pill Resize Handle on Right Edge of Cloud-Blue Sidebar */
+.rail-resize-handle {
+  width: 10px;
+  margin: 0 -5px;
+  height: 100%;
+  position: relative;
+  z-index: 35;
+  flex-shrink: 0;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+  -webkit-app-region: no-drag;
+}
+
+.rail-resize-handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3.5px;
+  height: 180px;
+  max-height: 44vh;
+  transform: translate(-50%, -50%) scaleY(0.84);
+  border-radius: 999px;
+  background: rgba(51, 65, 85, 0.34);
+  opacity: 0;
+  transition: opacity 0.16s ease, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), background 0.14s ease, width 0.14s ease;
+}
+
+.rail-resize-handle:hover::after {
+  opacity: 1;
+  transform: translate(-50%, -50%) scaleY(1);
+}
+
+.rail-resize-handle.dragging::after {
+  opacity: 1;
+  width: 4px;
+  transform: translate(-50%, -50%) scaleY(1.03);
+  background: var(--accent);
+}

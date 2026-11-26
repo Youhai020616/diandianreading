@@ -1,0 +1,141 @@
+/* ==================== Compact Collapsible Agent Tool Execution Trace ==================== */
+
+.tool-trace-box {
+  margin-bottom: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--canvas-subtle);
+  font-size: 12px;
+  color: var(--ink-secondary);
+  overflow: hidden;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.tool-trace-box.is-active {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.tool-trace-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
+.tool-trace-summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-trace-summary::after {
+  content: "▸";
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-subtle);
+  transition: transform 0.16s ease;
+}
+
+.tool-trace-box[open] .tool-trace-summary::after {
+  transform: rotate(90deg);
+}
+
+.tool-trace-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tool-trace-icon.done {
+  background: rgba(16, 185, 129, 0.14);
+  color: #059669;
+}
+
+.tool-trace-icon.active {
+  background: rgba(47, 110, 246, 0.16);
+  color: var(--accent);
+}
+
+.tool-trace-headline {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  color: var(--ink-secondary);
+}
+
+.tool-trace-box.is-active .tool-trace-headline {
+  color: var(--accent-hover);
+}
+
+.tool-trace-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 10px 8px 34px;
+  border-top: 1px solid var(--border);
+}
+
+.tool-trace-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  line-height: 1.4;
+}
+
+.tool-trace-step-dot {
+  display: inline-flex;
+  align-items: center;
+  color: #059669;
+  flex-shrink: 0;
+}
+
+.tool-trace-step.running .tool-trace-step-dot {
+  color: var(--accent);
+}
+
+.tool-trace-step-label {
+  color: var(--ink-secondary);
+}
+
+.tool-trace-step-count {
+  font-size: 10.5px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--ink-muted);
+}
+
+:root[data-theme="dark"] .tool-trace-box {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(203, 219, 245, 0.12);
+}
+
+:root[data-theme="dark"] .tool-trace-box.is-active {
+  background: rgba(91, 147, 255, 0.12);
+  border-color: rgba(91, 147, 255, 0.3);
+}
+
+:root[data-theme="dark"] .tool-trace-icon.done,
+:root[data-theme="dark"] .tool-trace-step-dot {
+  color: #34d399;
+}
+
+:root[data-theme="dark"] .tool-trace-icon.done {
+  background: rgba(16, 185, 129, 0.18);
+}
+
+:root[data-theme="dark"] .tool-trace-steps {
+  border-top-color: rgba(203, 219, 245, 0.1);
+}

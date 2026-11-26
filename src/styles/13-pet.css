@@ -1,0 +1,576 @@
+/* ==================== Floating Desktop Golden Retriever Pet (Theme-Synced + ChatGPT-Style Tactile UI) ==================== */
+
+html.pet-mode,
+body.pet-mode,
+body.pet-mode #root {
+  background: transparent !important;
+  overflow: hidden !important;
+}
+
+.pet-stage {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding: 10px 14px 12px;
+  gap: 10px;
+  background: transparent;
+  user-select: none;
+}
+
+.pet-stage.collapsed {
+  align-items: center;
+  padding: 6px 10px 10px;
+}
+
+.pet-chat-card {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px;
+  background: var(--surface);
+  border: 1px solid rgba(59, 118, 246, 0.22);
+  box-shadow: none;
+  color: var(--ink);
+  overflow: hidden;
+  user-select: text;
+}
+
+.pet-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 14px 10px;
+  background: linear-gradient(180deg, #fafcfe 0%, #f5f9ff 100%);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+
+.pet-drag-handle {
+  cursor: grab;
+  touch-action: none;
+}
+.pet-drag-handle:active {
+  cursor: grabbing;
+}
+
+.pet-chat-title {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.pet-chat-title strong {
+  font-family: var(--font-serif);
+  font-size: 14.5px;
+  color: var(--ink);
+}
+
+.pet-chat-title span {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+}
+
+.pet-chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.pet-icon-btn {
+  width: 27px;
+  height: 27px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--ink-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.pet-icon-btn:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.pet-chat-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--canvas);
+}
+
+.pet-chat-empty {
+  margin: auto 0;
+  text-align: center;
+  padding: 16px 10px;
+}
+
+.pet-chat-empty-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.pet-chat-empty p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-secondary);
+  line-height: 1.65;
+}
+
+.pet-msg {
+  max-width: 92%;
+  padding: 9px 13px;
+  border-radius: 16px;
+  font-size: 12.5px;
+  line-height: 1.62;
+  word-break: break-word;
+}
+
+.pet-msg.user {
+  align-self: flex-end;
+  background: #eaf2ff;
+  color: #16243d;
+  border-bottom-right-radius: 5px;
+  white-space: pre-wrap;
+}
+
+.pet-msg.assistant {
+  align-self: flex-start;
+  background: var(--canvas-subtle);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  border-bottom-left-radius: 5px;
+}
+
+.pet-msg.system {
+  align-self: stretch;
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: 11.5px;
+  border-radius: 12px;
+}
+
+.pet-msg-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 5px;
+}
+
+.pet-tool-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.pet-thinking {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.pet-md.md-root {
+  color: var(--ink);
+  font-family: var(--font-editorial);
+  font-size: 13px;
+  line-height: 1.72;
+  letter-spacing: 0.01em;
+}
+
+.pet-md .md-quote {
+  background: var(--accent-soft);
+  color: var(--ink-secondary);
+  border-left-color: var(--accent);
+}
+
+.pet-md .md-inline-code {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+/* ChatGPT-Style Floating Pill Composer */
+.pet-composer {
+  margin: 6px 12px 12px;
+  padding: 10px 10px 8px 14px;
+  border-radius: 22px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 2px 10px rgba(30, 58, 138, 0.06);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pet-composer:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 4px 16px rgba(59, 118, 246, 0.14), 0 0 0 2.5px rgba(59, 118, 246, 0.12);
+}
+
+.pet-composer textarea {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  resize: none;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.pet-composer textarea::placeholder {
+  color: var(--ink-muted);
+}
+
+.pet-composer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+
+.pet-composer-plus {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--canvas-subtle);
+  color: var(--ink-secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+
+.pet-composer-plus:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+/* ChatGPT-Inspired Crisp Circular Send / Stop Button */
+.pet-send-circle {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(59, 118, 246, 0.3);
+  transition: transform 0.12s ease, background 0.14s ease, opacity 0.14s ease;
+}
+
+.pet-send-circle:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: scale(1.05);
+}
+
+.pet-send-circle:disabled {
+  background: var(--border-strong);
+  color: var(--ink-muted);
+  box-shadow: none;
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.pet-send-circle.stop {
+  background: var(--ink);
+  color: var(--canvas);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.24);
+}
+
+.pet-dock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.pet-sprite-hit {
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: grab;
+  line-height: 0;
+  touch-action: none;
+  transition: transform 0.16s ease;
+}
+
+.pet-sprite-hit:hover {
+  transform: translateY(-2px) scale(1.03);
+}
+
+.pet-sprite-hit:active {
+  cursor: grabbing;
+  transform: scale(0.98);
+}
+
+/* ChatGPT-Inspired Luminous Floating Capsule Pill (Shadow-Free for Crisp Transparent Edges) */
+.pet-pill-row {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid rgba(59, 118, 246, 0.26);
+  box-shadow: none;
+  overflow: hidden;
+  transition: border-color 0.16s ease, background 0.2s ease;
+}
+
+.pet-pill-row:hover {
+  border-color: rgba(59, 118, 246, 0.46);
+}
+
+.pet-pill-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: none;
+  white-space: nowrap;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.pet-pill-main:active {
+  cursor: grabbing;
+}
+
+.pet-pill-main:hover {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.pet-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2.5px rgba(59, 118, 246, 0.18);
+}
+
+.pet-pill-dot.busy {
+  background: #f09c3c;
+  box-shadow: 0 0 8px rgba(240, 156, 60, 0.72);
+}
+
+.pet-pill-sub {
+  width: 30px;
+  height: 32px;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.pet-pill-sub:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Theme-Synced Spaced-Recall Nudge Card (Shadow-Free Crisp Border + Unclipped Layout) */
+.pet-nudge-card {
+  width: 100%;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid rgba(59, 118, 246, 0.24);
+  box-shadow: none;
+  padding: 13px 15px;
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.pet-nudge-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.pet-nudge-quote {
+  font-family: var(--font-serif);
+  font-size: 13px;
+  line-height: 1.56;
+  color: var(--ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pet-nudge-book {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  text-align: right;
+}
+
+.pet-nudge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.pet-nudge-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 27px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--canvas-subtle);
+  color: var(--ink-secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, transform 0.1s ease;
+}
+
+.pet-nudge-btn:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent-hover);
+}
+
+.pet-nudge-btn.primary {
+  background: linear-gradient(135deg, #4380fa 0%, #2c65e6 100%);
+  border-color: transparent;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(44, 101, 230, 0.25);
+}
+
+.pet-nudge-btn.primary:hover {
+  background: linear-gradient(135deg, #3573f5 0%, #2157d8 100%);
+  color: #ffffff;
+  transform: translateY(-0.5px);
+}
+
+.pet-nudge-btn.muted {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-muted);
+  padding: 0 8px;
+}
+
+.pet-nudge-btn.muted:hover {
+  background: var(--canvas-subtle);
+  border-color: transparent;
+  color: var(--ink-secondary);
+}
+
+.pet-quick-quote-bar {
+  margin: 8px 12px 0;
+  padding: 8px 11px;
+  border-radius: 13px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pet-quick-quote-text {
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  line-height: 1.45;
+}
+
+.pet-quick-quote-text strong {
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.pet-quick-quote-btns {
+  display: flex;
+  gap: 6px;
+}
+
+/* Dark Theme Overrides for Floating Pet Window (Shadow-Free, Synced Live with Pull-Cord Lamp) */
+:root[data-theme="dark"] .pet-chat-card {
+  background: #151a25;
+  border-color: rgba(148, 179, 232, 0.24);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .pet-chat-header {
+  background: linear-gradient(180deg, #19202e 0%, #151b27 100%);
+}
+
+:root[data-theme="dark"] .pet-msg.user {
+  background: #1d2940;
+  color: #edf3ff;
+}
+
+:root[data-theme="dark"] .pet-pill-row {
+  background: #161c28;
+  border-color: rgba(148, 179, 232, 0.26);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .pet-pill-row:hover {
+  border-color: rgba(91, 147, 255, 0.5);
+}
+
+:root[data-theme="dark"] .pet-nudge-card {
+  background: #161c28;
+  border-color: rgba(148, 179, 232, 0.26);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .pet-composer {
+  background: #1a2130;
+  border-color: rgba(203, 219, 245, 0.16);
+}
+
+:root[data-theme="dark"] .pet-send-circle.stop {
+  background: #e8eef8;
+  color: #12161f;
+}

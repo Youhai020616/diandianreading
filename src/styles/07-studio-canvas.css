@@ -1,0 +1,266 @@
+/* ==================== Studio Scroll — Surf Pure Document Canvas ==================== */
+
+.studio-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 30px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.surf-doc-container {
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-box {
+  position: relative;
+  flex: 1;
+}
+
+.search-box svg {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-muted);
+  pointer-events: none;
+}
+
+.search-box .input {
+  padding-left: 33px;
+  background: var(--canvas-subtle);
+  border-color: transparent;
+}
+.search-box .input:focus {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
+/* Clean Document Surface (Borderless on Pure White unless explicit group) */
+.editorial-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+
+.surf-plain-section {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pref-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin: 4px 2px -8px;
+}
+
+.book-hero {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.book-cover-box {
+  width: 60px;
+  height: 86px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: linear-gradient(155deg, #e7f0ff 0%, #d2e4ff 100%);
+  border: 1px solid rgba(59, 118, 246, 0.16);
+  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--accent);
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 20px;
+}
+
+.book-cover-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.book-hero-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.book-hero-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  color: var(--ink);
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.book-hero-meta {
+  font-size: 12.5px;
+  color: var(--ink-secondary);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+
+.book-hero-description {
+  margin: -4px 0 12px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--ink-secondary);
+}
+
+.book-hero-description p {
+  margin: 0;
+}
+
+.book-hero-description p.clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.book-hero-description button {
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.book-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.obsidian-export-setup,
+.obsidian-export-receipt,
+.obsidian-export-error {
+  order: 1;
+  flex: 1 0 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.obsidian-export-setup {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.obsidian-export-setup h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.obsidian-export-receipt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--sage-soft);
+  font-size: 12px;
+}
+
+.obsidian-export-receipt[data-status="conflict"] {
+  background: var(--amber-soft);
+}
+
+.obsidian-export-error {
+  color: var(--danger);
+  font-size: 12px;
+}
+
+/* Borderless Notion/Surf Style Highlights Stream */
+.highlight-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.highlight-card {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 16px 4px 14px;
+  transition: background 0.14s ease;
+}
+
+.highlight-card:last-child {
+  border-bottom: none;
+}
+
+.highlight-chapter {
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin-bottom: 7px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.highlight-quote {
+  font-family: var(--font-serif);
+  font-size: 15.5px;
+  line-height: 1.82;
+  color: var(--ink);
+  padding-left: 14px;
+  border-left: 2.5px solid var(--accent);
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.highlight-note {
+  margin-top: 10px;
+  padding: 9px 13px;
+  border-radius: 9px;
+  background: var(--canvas-subtle);
+  font-size: 13px;
+  line-height: 1.66;
+  color: var(--ink-secondary);
+}
+
+.highlight-footer {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  opacity: 0.45;
+  transition: opacity 0.15s ease;
+}
+
+.highlight-card:hover .highlight-footer {
+  opacity: 1;
+}

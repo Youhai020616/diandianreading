@@ -1,0 +1,161 @@
+/* ==================== Cinematic Slow Feathered Bulb-Origin Theme View Transition ==================== */
+
+@property --vt-progress {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: false;
+}
+
+/* Pause element transitions during the 1-frame View Transition capture so snapshots are razor-sharp */
+:root.theme-transitioning *,
+:root.theme-transitioning *::before,
+:root.theme-transitioning *::after {
+  transition: none !important;
+}
+
+::view-transition-group(root),
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* Lamp ON (Dark -> Light): soft 220px feathered daylight gently diffuses out from the bulb */
+:root.theme-to-light::view-transition-old(root) {
+  z-index: 1;
+}
+:root.theme-to-light::view-transition-new(root) {
+  z-index: 9999;
+  -webkit-mask-image: radial-gradient(
+    circle at var(--vt-x, 50%) var(--vt-y, 80px),
+    #000 max(0px, calc(var(--vt-progress) * var(--vt-max-r, 1600px) - 220px)),
+    transparent max(1px, calc(var(--vt-progress) * var(--vt-max-r, 1600px)))
+  );
+  mask-image: radial-gradient(
+    circle at var(--vt-x, 50%) var(--vt-y, 80px),
+    #000 max(0px, calc(var(--vt-progress) * var(--vt-max-r, 1600px) - 220px)),
+    transparent max(1px, calc(var(--vt-progress) * var(--vt-max-r, 1600px)))
+  );
+  animation: vtLightWashIn 940ms cubic-bezier(0.22, 0.82, 0.36, 1) both;
+}
+
+/* Lamp OFF (Light -> Dark): soft feathered daylight gently recedes back into the filament without 0px flash */
+:root.theme-to-dark::view-transition-old(root) {
+  z-index: 9999;
+  -webkit-mask-image: radial-gradient(
+    circle at var(--vt-x, 50%) var(--vt-y, 80px),
+    #000 max(0px, calc(var(--vt-progress) * var(--vt-max-r, 1600px) - 220px)),
+    transparent max(1px, calc(var(--vt-progress) * var(--vt-max-r, 1600px)))
+  );
+  mask-image: radial-gradient(
+    circle at var(--vt-x, 50%) var(--vt-y, 80px),
+    #000 max(0px, calc(var(--vt-progress) * var(--vt-max-r, 1600px) - 220px)),
+    transparent max(1px, calc(var(--vt-progress) * var(--vt-max-r, 1600px)))
+  );
+  animation: vtLightWashOut 880ms cubic-bezier(0.32, 0.06, 0.24, 1) both;
+}
+:root.theme-to-dark::view-transition-new(root) {
+  z-index: 1;
+}
+
+@keyframes vtLightWashIn {
+  0% {
+    --vt-progress: 0.001;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  100% {
+    --vt-progress: 1;
+    opacity: 1;
+  }
+}
+
+@keyframes vtLightWashOut {
+  0% {
+    --vt-progress: 1;
+    opacity: 1;
+  }
+  86% {
+    opacity: 1;
+  }
+  100% {
+    --vt-progress: 0.001;
+    opacity: 0;
+  }
+}
+
+/* Soft warm tungsten halo bloom radiating from the hanging bulb */
+.lamp-light-burst {
+  position: absolute;
+  top: 76px;
+  right: 40px;
+  width: 520px;
+  height: 520px;
+  margin-top: -260px;
+  margin-right: -260px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 24;
+  transform-origin: center;
+}
+
+.lamp-light-burst.is-on {
+  background: radial-gradient(
+    circle,
+    rgba(255, 226, 160, 0.38) 0%,
+    rgba(255, 206, 120, 0.16) 40%,
+    rgba(255, 224, 165, 0) 74%
+  );
+  animation: lampBloomOn 980ms cubic-bezier(0.22, 0.82, 0.36, 1) forwards;
+}
+
+.lamp-light-burst.is-off {
+  background: radial-gradient(
+    circle,
+    rgba(255, 168, 82, 0.28) 0%,
+    rgba(232, 120, 46, 0.1) 42%,
+    rgba(255, 130, 50, 0) 72%
+  );
+  animation: lampEmberOff 920ms cubic-bezier(0.32, 0.06, 0.24, 1) forwards;
+}
+
+@keyframes lampBloomOn {
+  0% {
+    opacity: 0;
+    transform: scale(0.18);
+  }
+  28% {
+    opacity: 0.92;
+    transform: scale(0.82);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.75);
+  }
+}
+
+@keyframes lampEmberOff {
+  0% {
+    opacity: 0.65;
+    transform: scale(1.15);
+  }
+  55% {
+    opacity: 0.42;
+    transform: scale(0.45);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.1);
+  }
+}
+
+.browser-more-btn {
+  border-radius: 999px !important;
+}
+
+.browser-more-btn.active {
+  background: var(--accent-soft) !important;
+  color: var(--accent) !important;
+}

@@ -1,0 +1,47 @@
+/* ==================== Pull-Cord Lamp Ceiling Dock (Option A) ==================== */
+
+.theme-lamp-dock {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 84px;
+  height: 164px;
+  z-index: 25;
+  pointer-events: none;
+}
+
+.theme-lamp-dock .pc {
+  min-height: 96px;
+  pointer-events: none;
+  cursor: default;
+}
+
+.theme-lamp-dock .pc-grip {
+  width: 30px;
+  height: 36px;
+  margin: -18px 0 0 -15px;
+  pointer-events: auto;
+  cursor: grab;
+}
+
+/* Top-right breathing room so header actions never sit beneath the hanging lamp */
+.view-header {
+  padding-right: 88px;
+}
+
+.discover-status-bar {
+  padding-right: 84px;
+}
+
+/* Smooth daylight <-> night-reading transition */
+.app-shell,
+.main-stage,
+.workspace-column,
+.surf-topbar,
+.surf-canvas-shell,
+.context-tree,
+.browser-toolbar,
+.discover-view,
+.chat-view {
+  transition: background-color 0.28s ease, color 0.22s ease, border-color 0.22s ease;
+}

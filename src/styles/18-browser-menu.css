@@ -1,0 +1,163 @@
+/* ==================== Design-System Consistent Browser Overflow Menu (#browser-menu) ==================== */
+
+.bmenu-stage {
+  width: 100vw;
+  height: 100vh;
+  padding: 6px;
+  background: transparent;
+  user-select: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.bmenu-card {
+  width: 100%;
+  border-radius: 16px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid rgba(59, 118, 246, 0.2);
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+:root[data-theme="dark"] .bmenu-card {
+  background: #171d29;
+  border-color: rgba(148, 179, 232, 0.22);
+}
+
+.bmenu-zoom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+}
+
+.bmenu-zoom-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.bmenu-zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.bmenu-zoom-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--canvas-subtle);
+  overflow: hidden;
+}
+
+.bmenu-zoom-step {
+  width: 28px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.bmenu-zoom-step:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.bmenu-zoom-step:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.bmenu-zoom-val {
+  min-width: 44px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  padding: 0 5px;
+  line-height: 26px;
+}
+
+.bmenu-zoom-reset {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--ink-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.bmenu-zoom-reset:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.bmenu-zoom-reset:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+
+.bmenu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 6px;
+}
+
+.bmenu-item {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.bmenu-item svg {
+  color: var(--ink-secondary);
+  flex-shrink: 0;
+}
+
+.bmenu-item:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.bmenu-item:hover:not(:disabled) svg {
+  color: var(--accent);
+}
+
+.bmenu-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

@@ -1,0 +1,218 @@
+/* ==================== Card Studio ==================== */
+
+.card-studio-layout {
+  display: grid;
+  grid-template-columns: minmax(270px, 336px) minmax(240px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 1180px) {
+  .card-studio-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.template-swatch-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.template-swatch {
+  border: 1.5px solid var(--border);
+  border-radius: 11px;
+  padding: 7px;
+  background: var(--surface);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: border-color 0.14s ease, transform 0.12s ease, box-shadow 0.14s ease;
+}
+
+.template-swatch:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-xs);
+}
+
+.template-swatch.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(59, 118, 246, 0.16);
+}
+
+.swatch-chip {
+  width: 100%;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  position: relative;
+  overflow: hidden;
+}
+
+.swatch-dot {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.swatch-name {
+  font-size: 11px;
+  color: var(--ink);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Soft Cool Mist Gallery Stage for 3:4 Prints */
+.card-preview-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 16px 16px;
+  border-radius: 16px;
+  background: radial-gradient(circle at 50% 25%, #f3f7fe 0%, #e9f0fb 100%);
+  border: 1px solid rgba(59, 118, 246, 0.08);
+}
+
+.live-card {
+  width: 100%;
+  max-width: 300px;
+  aspect-ratio: 3 / 4;
+  border-radius: 18px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.13), 0 4px 10px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.live-card-frame {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 18px 16px 14px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.live-card-eyebrow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.live-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px 0;
+  overflow: hidden;
+}
+
+.live-card-quote {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  line-height: 1.68;
+  font-weight: 600;
+  white-space: pre-wrap;
+  overflow: hidden;
+}
+
+.live-card-comment {
+  margin-top: 12px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  border-radius: 6px;
+}
+
+.live-card-footer {
+  padding-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.live-card-book {
+  font-family: var(--font-serif);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.live-card-author {
+  font-size: 10px;
+  opacity: 0.72;
+  margin-top: 2px;
+}
+
+.live-card-brand {
+  font-size: 9.5px;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+/* 5 Live Print Theme Styles (Kept Rich & Editorial) */
+.live-card.tpl-editorial-paper {
+  background: linear-gradient(180deg, #faf5eb 0%, #f3eadc 100%);
+  color: #201913;
+  border: 1px solid rgba(120, 88, 60, 0.2);
+}
+.live-card.tpl-editorial-paper .live-card-frame {
+  border: 1px solid rgba(154, 74, 43, 0.24);
+}
+.live-card.tpl-editorial-paper .live-card-eyebrow { color: #8f4729; border-bottom: 1px solid rgba(154, 74, 43, 0.18); padding-bottom: 8px; }
+.live-card.tpl-editorial-paper .live-card-comment { border-left: 2px solid #9a4a2b; background: rgba(255, 252, 245, 0.72); color: #4f4135; }
+.live-card.tpl-editorial-paper .live-card-footer { border-top: 1px solid rgba(154, 74, 43, 0.18); }
+
+.live-card.tpl-swiss-grid {
+  background: #fcfbf9;
+  color: #141416;
+  border: 1.5px solid #18181b;
+}
+.live-card.tpl-swiss-grid .live-card-frame { padding: 8px 4px; }
+.live-card.tpl-swiss-grid .live-card-eyebrow { font-weight: 700; border-bottom: 2px solid #18181b; padding-bottom: 8px; }
+.live-card.tpl-swiss-grid .live-card-quote { font-family: var(--font-sans); font-weight: 700; }
+.live-card.tpl-swiss-grid .live-card-comment { border-top: 1px dashed #a1a1aa; border-radius: 0; padding: 8px 0 0; color: #3f3f46; }
+.live-card.tpl-swiss-grid .live-card-footer { border-top: 2px solid #18181b; }
+
+.live-card.tpl-nocturne-ink {
+  background: linear-gradient(165deg, #1d1a18 0%, #100f0e 100%);
+  color: #f6f1e7;
+  border: 1px solid rgba(217, 164, 91, 0.34);
+}
+.live-card.tpl-nocturne-ink .live-card-frame { border: 1px solid rgba(217, 164, 91, 0.22); }
+.live-card.tpl-nocturne-ink .live-card-eyebrow { color: #d9a45b; }
+.live-card.tpl-nocturne-ink .live-card-comment { background: rgba(255, 255, 255, 0.06); border-left: 2px solid #d9a45b; color: #cfc6b8; }
+.live-card.tpl-nocturne-ink .live-card-footer { border-top: 1px solid rgba(217, 164, 91, 0.22); }
+
+.live-card.tpl-botanical-green {
+  background: linear-gradient(180deg, #f3f6f1 0%, #e7eee4 100%);
+  color: #1b2b20;
+  border: 1px solid rgba(45, 82, 60, 0.2);
+}
+.live-card.tpl-botanical-green .live-card-frame { background: rgba(255, 255, 255, 0.78); border: 1px solid rgba(45, 82, 60, 0.14); }
+.live-card.tpl-botanical-green .live-card-eyebrow { color: #2d523c; font-weight: 600; }
+.live-card.tpl-botanical-green .live-card-comment { background: #edf4eb; color: #354c3e; }
+.live-card.tpl-botanical-green .live-card-footer { border-top: 1px solid rgba(45, 82, 60, 0.16); }
+
+.live-card.tpl-magazine-glass {
+  background: radial-gradient(circle at 12% 14%, rgba(232, 121, 66, 0.25), transparent 48%), linear-gradient(145deg, #fff9f2 0%, #fae9d8 100%);
+  color: #211610;
+  border: 1px solid rgba(200, 85, 39, 0.2);
+}
+.live-card.tpl-magazine-glass .live-card-frame { background: rgba(255, 253, 250, 0.8); border: 1px solid rgba(255, 255, 255, 0.92); }
+.live-card.tpl-magazine-glass .live-card-eyebrow { color: #c85527; font-weight: 700; }
+.live-card.tpl-magazine-glass .live-card-comment { background: rgba(200, 85, 39, 0.08); color: #4f372a; }
+.live-card.tpl-magazine-glass .live-card-footer { border-top: 1px solid rgba(200, 85, 39, 0.16); }
