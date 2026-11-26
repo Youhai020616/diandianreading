@@ -22,6 +22,10 @@ export interface PublicModelSettings {
   baseUrl: string;
   hasApiKey: boolean;
   apiKeySource: "saved" | "env" | "none";
+  /** How the saved key sits on disk; "plain" means the system keychain was unavailable. */
+  apiKeyStorage: "encrypted" | "plain" | "none";
+  /** Whether a newly entered key would be encrypted. */
+  secureStorageAvailable: boolean;
 }
 
 export interface TwinProfileState {
@@ -631,6 +635,8 @@ export interface DesktopBridgeApi {
       baseUrl: string;
       apiKey?: string;
       clearApiKey?: boolean;
+      /** Required to store a new key while the system keychain is unavailable. */
+      allowPlaintextKey?: boolean;
     }): Promise<PublicModelSettings>;
     testModel(input: {
       baseUrl: string;

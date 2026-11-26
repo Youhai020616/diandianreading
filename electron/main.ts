@@ -252,6 +252,7 @@ function wireIpcHandlers(): void {
         baseUrl: string;
         apiKey?: string;
         clearApiKey?: boolean;
+        allowPlaintextKey?: boolean;
       },
     ) => {
       if (!settingsStore) throw new Error("Settings store not initialized");

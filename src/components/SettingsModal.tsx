@@ -143,6 +143,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, initial, onC
   const [showKey, setShowKey] = useState(false);
   const [editingKey, setEditingKey] = useState(false);
   const [pendingClear, setPendingClear] = useState(false);
+  const [plaintextConsent, setPlaintextConsent] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -160,6 +161,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, initial, onC
     setApiKey("");
     setShowKey(false);
     setEditingKey(!initial?.hasApiKey);
+    setPlaintextConsent(false);
     setPendingClear(false);
     setAdvancedOpen(detected === "custom");
     setTestResult(null);
@@ -254,6 +256,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, initial, onC
         baseUrl: baseUrl.trim(),
         ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
         ...(pendingClear ? { clearApiKey: true } : {}),
+        ...(plaintextConsent ? { allowPlaintextKey: true } : {}),
       });
       onSaved(saved);
       onClose();
@@ -357,7 +360,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, initial, onC
                 <div className="mset-saved-left">
                   <span className="mset-saved-dot" />
                   <span>
-                    {initial?.apiKeySource === "env" ? "已读取本机环境变量密钥" : "已加密保存在本机"}
+                    {initial?.apiKeySource === "env"
+                      ? "已读取本机环境变量密钥（不会写入磁盘）"
+                      : initial?.apiKeyStorage === "plain" ? "已保存在本机（未加密）" : "已加密保存在本机"}
                   </span>
                 </div>
                 <div className="mset-saved-actions">
@@ -439,10 +444,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, initial, onC
               </div>
             )}
 
-            <div className="mset-privacy-note">
-              <IconShield size={12} />
-              <span>密钥仅使用系统加密保存在本机，不会上传至任何第三方服务器</span>
-            </div>
+            {initial && !initial.secureStorageAvailable ? (
+              <div className="mset-plaintext-warning" role="alert">
+                <strong>这台电脑的系统钥匙串不可用</strong>
+                <span>
+                  新填写的 API Key 只能以明文保存在本机配置文件中，能读取你用户目录的程序都可以看到它。
+                  也可以改用环境变量 DEEPSEEK_API_KEY / OPENAI_API_KEY，密钥就不会写入磁盘。
+                </span>
+                {apiKey.trim() && (
+                  <label>
+                    <input type="checkbox" checked={plaintextConsent} onChange={(e) => setPlaintextConsent(e.target.checked)} />
+                    我了解风险，允许以明文保存
+                  </label>
+                )}
+              </div>
+            ) : (
+              <div className="mset-privacy-note">
+                <IconShield size={12} />
+                <span>密钥使用系统钥匙串加密保存在本机，只会发送给你选择的模型服务</span>
+              </div>
+            )}
           </div>
 
           {/* 4. Collapsible Advanced Options (hidden by default for presets) */}
@@ -512,7 +533,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ open, initial, onC
               <button type="button" className="btn" disabled={saving} onClick={onClose}>
                 取消
               </button>
-              <button type="submit" className="btn primary" disabled={saving || testing}>
+              <button type="submit" className="btn primary"
+                disabled={saving || testing || Boolean(initial && !initial.secureStorageAvailable && apiKey.trim() && !plaintextConsent)}>
                 <IconCheck size={14} />
                 <span>{saving ? "保存中…" : "保存并生效"}</span>
               </button>

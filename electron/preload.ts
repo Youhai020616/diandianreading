@@ -41,6 +41,7 @@ const desktopApi = {
       baseUrl: string;
       apiKey?: string;
       clearApiKey?: boolean;
+      allowPlaintextKey?: boolean;
     }) => ipcRenderer.invoke("settings:save-model", input),
     testModel: (input: {
       baseUrl: string;

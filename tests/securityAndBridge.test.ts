@@ -7,7 +7,7 @@ import { BridgeRejection, LocalBridgeServer } from "../electron/agent/bridgeServ
 import { resolveNodeRuntime } from "../electron/agent/nodeRuntime";
 import { buildOverlayYaml, ROUTE_PROVIDER_ID, writeOverlayPatch } from "../electron/agent/overlay";
 import { normalizeAllowedWebUrl } from "../electron/browser/urlPolicy";
-import { ModelSettingsStore, normalizeBaseUrl } from "../electron/security/secretStore";
+import { ModelSettingsStore, normalizeBaseUrl, PLAINTEXT_KEY_CONSENT_REQUIRED } from "../electron/security/secretStore";
 import { matchesTrustedAppUrl } from "../electron/security/urlMatch";
 
 const tempDirs: string[] = [];
@@ -88,6 +88,47 @@ describe("ModelSettingsStore", () => {
       clearApiKey: true,
     });
     expect(cleared.apiKeySource).not.toBe("saved");
+  });
+
+  it("asks before storing a new key in plain text and reports how the key is stored", () => {
+    const dir = makeTempDir();
+    const noKeychain = {
+      isEncryptionAvailable: () => false,
+      encryptString: () => { throw new Error("unavailable"); },
+      decryptString: () => { throw new Error("unavailable"); },
+    };
+    const store = new ModelSettingsStore(dir, noKeychain);
+    const base = { provider: "deepseek", model: "deepseek-chat", baseUrl: "https://api.deepseek.com/v1" } as const;
+    expect(store.readPublic()).toMatchObject({ apiKeyStorage: "none", secureStorageAvailable: false });
+    expect(() => store.save({ ...base, apiKey: "sk-plain-123456" })).toThrow(PLAINTEXT_KEY_CONSENT_REQUIRED);
+    expect(fs.existsSync(path.join(dir, "config", "model-settings.json"))).toBe(false);
+
+    const saved = store.save({ ...base, apiKey: "sk-plain-123456", allowPlaintextKey: true });
+    expect(saved).toMatchObject({ apiKeyStorage: "plain", apiKeySource: "saved", hasApiKey: true });
+    expect(JSON.stringify(saved)).not.toContain("sk-plain-123456");
+    // Switching models keeps the consented key without asking again.
+    expect(store.save({ ...base, model: "deepseek-reasoner" }).apiKeyStorage).toBe("plain");
+  });
+
+  it("never writes a key that only came from the environment", () => {
+    const dir = makeTempDir();
+    const previous = process.env.DEEPSEEK_API_KEY;
+    process.env.DEEPSEEK_API_KEY = "sk-env-only-987654";
+    try {
+      const store = new ModelSettingsStore(dir, {
+        isEncryptionAvailable: () => true,
+        encryptString: (v: string) => Buffer.from(`enc:${v}`, "utf8"),
+        decryptString: (b: Buffer) => b.toString("utf8").replace(/^enc:/, ""),
+      });
+      const saved = store.save({ provider: "deepseek", model: "deepseek-chat", baseUrl: "https://api.deepseek.com/v1" });
+      expect(saved).toMatchObject({ apiKeySource: "env", apiKeyStorage: "none", hasApiKey: true, secureStorageAvailable: true });
+      const disk = fs.readFileSync(path.join(dir, "config", "model-settings.json"), "utf8");
+      expect(disk).not.toContain("sk-env-only-987654");
+      expect(disk).not.toContain(Buffer.from("enc:sk-env-only-987654").toString("base64"));
+    } finally {
+      if (previous === undefined) delete process.env.DEEPSEEK_API_KEY;
+      else process.env.DEEPSEEK_API_KEY = previous;
+    }
   });
 
   it("rejects credentials embedded in baseUrl", () => {
