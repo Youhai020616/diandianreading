@@ -224,9 +224,9 @@ export const App: React.FC = () => {
           author: ev.author ?? "",
         });
       } else if (ev.kind === "ask") {
+        // Like every other "问点点" entry: prefill the composer, the user edits or sends it.
         setPendingPrompt({
           text: `关于《${ev.title}》中我选中的这段话：\n\n「${ev.text}」\n\n请帮我深度解读并给一个延伸反问。`,
-          autoSend: true,
         });
         setAiOpen(true);
       }
