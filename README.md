@@ -52,12 +52,12 @@ pnpm dist:mac   # → release/<version>/点点读书-<version>-mac-arm64.dmg
 |---|---|---|
 | `zlib/` | `heartleo/zlib` CLI v0.0.16 | GitHub Release，SHA-256 固定在 `scripts/fetch-binaries.mjs` |
 | `node/` | Node.js v24.22.3，运行 DeepSeek Harness | nodejs.org，SHA-256 同上 |
-| `node_modules/` | 生产依赖（扁平布局），去掉了 Harness 的 LibreOffice 引擎（约 300MB） | 按同一份 `pnpm-lock.yaml` 安装，见 `scripts/stage-runtime.mjs` |
+| `node_modules/` | 生产依赖（扁平布局），只保留 Harness `sdk` 配置用到的部分 | 按同一份 `pnpm-lock.yaml` 安装后裁剪，见 `scripts/stage-runtime.mjs` |
 
 说明：
 
 - Harness 依赖的原生模块 `node-addon-require-builtin` 不支持 Electron 45 内置的 Node，所以单独带一份 Node.js；打包后的应用只用这份，不会用到用户机器上的 Node。
-- 点点读书没有 Office 文档流程，所以在 overlay 里关掉了 Harness 的 Office 插件（`DISABLED_HARNESS_PLUGINS`，见 `electron/agent/overlay.ts`），打包时也不带它们需要的 LibreOffice 引擎。
+- `@deepseek-ai/dsh` 把所有 dsh 形态（网页界面、ACP、调试面板、语音输入、电脑操控、终端等）都声明成了依赖，点点读书只运行其中的 `sdk` 配置。打包时按 `stage-runtime.mjs` 里列出的清单（每项都注明了理由）去掉其余部分；Office 插件在 overlay 里关掉（`DISABLED_HARNESS_PLUGINS`），也不带 LibreOffice 引擎。升级 Harness 时要重新核对这份清单。
 - 依赖由 `scripts/before-build.mjs`（electron-builder 的 `beforeBuild` 钩子）准备。electron-builder 自带的依赖收集器处理不了这棵依赖树（pnpm 收集器内存溢出，回退方案漏掉 peer 依赖）。
 - 目前只能打当前机器的平台和架构；签名与公证尚未配置，未签名的安装包在其他电脑上会被 macOS 拦截。
 
