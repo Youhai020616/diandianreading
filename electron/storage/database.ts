@@ -13,7 +13,7 @@ import type {
 } from "./records";
 import { escapeFtsPhrase, extractSearchTermsFromDraft } from "./searchTerms";
 import { bookHighlightFingerprint, computeHighlightFingerprint } from "./fingerprints";
-import { migrateBookIdentities, migrateDownloadCoverHints } from "./migrations";
+import { migrateBookIdentities, migrateDownloadCoverHints, migrateKindleChapterLabels } from "./migrations";
 import { applySchema, installHighlightsSearch } from "./schema";
 import { nowIso, type BoundToDb, type SqlContext } from "./sqlite";
 import {
@@ -78,6 +78,7 @@ export class KnowledgeDatabase {
     applySchema(this.sql);
     migrateBookIdentities(this.sql, this.identities);
     migrateDownloadCoverHints(this.sql);
+    migrateKindleChapterLabels(this.sql);
     migrateTranslationCache(this.sql, this.translationCacheLimit);
     this.ftsAvailable = installHighlightsSearch(this.sql);
   }

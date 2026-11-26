@@ -392,8 +392,8 @@ export const App: React.FC = () => {
     [modelSettings, notify],
   );
 
-  const handleSendToChat = (prompt: string, autoSend = false) => {
-    setPendingPrompt({ text: prompt, autoSend });
+  const handleSendToChat = (prompt: string, autoSend = false, standalone = false) => {
+    setPendingPrompt({ text: prompt, autoSend, standalone });
     setAiOpen(true);
   };
 
@@ -700,7 +700,7 @@ export const App: React.FC = () => {
                     onViewModeChange={setLibraryMode}
                     onDataChanged={() => void refreshWorkspaceData()}
                     onModalToggle={setChildModalOpen}
-                    onSendToChat={(p) => handleSendToChat(p, false)}
+                    onSendToChat={(p, options) => handleSendToChat(p, false, options?.standalone)}
                     onSendToDraft={(data) => void handleSendQuoteToDraft(data)}
                     onNotify={notify}
                     menuCommand={libraryMenuCommand}

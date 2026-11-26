@@ -27,6 +27,20 @@ interface ImportOptions {
 /**
  * Parse Kindle `My Clippings.txt` (supports both English and Chinese Kindle headers).
  */
+/**
+ * Kindle gives no chapter, only a metadata line ("Your Highlight on page 19 | Location 280-282 | Added on
+ * …", "您在第 12 页（位置 #170-171）的标注 | 添加于 …"). Keep where the passage is, e.g. "第 19 页 · 位置
+ * 280-282"; the import date is not a chapter.
+ */
+export function kindleLocationLabel(metaLine: string): string {
+  const meta = metaLine.replace(/^-\s*/, "").trim();
+  const page = /\bpage\s+([\w-]+)/i.exec(meta)?.[1] ?? /第\s*([\w-]+)\s*页/.exec(meta)?.[1];
+  const location = /\blocation\s+#?([\d-]+)/i.exec(meta)?.[1] ?? /位置\s*#?\s*([\d-]+)/.exec(meta)?.[1];
+  const parts = [page ? `第 ${page} 页` : "", location ? `位置 ${location}` : ""].filter(Boolean);
+  if (parts.length > 0) return parts.join(" · ");
+  return (meta.split("|")[0] ?? "").trim().slice(0, 80);
+}
+
 export function parseKindleClippings(rawText: string): ParsedHighlightItem[] {
   const normalized = rawText.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
   const blocks = normalized
@@ -65,7 +79,7 @@ export function parseKindleClippings(rawText: string): ParsedHighlightItem[] {
     items.push({
       bookTitle: bookTitle || "未命名 Kindle 书籍",
       bookAuthor,
-      chapter: metaLine.replace(/^-\s*/, "").slice(0, 80),
+      chapter: kindleLocationLabel(metaLine),
       quote: body,
       note: "",
       source: "kindle",

@@ -164,7 +164,8 @@ export function registerLibraryIpc(): void {
       chapter: snap.title,
       quote,
       note: input?.note ?? "",
-      source: book.source,
+      // Where this highlight came from (the page), not how the book first entered the library.
+      source: snap.url.includes("weread.qq.com") ? "weread" : "manual",
     });
     return {
       book,

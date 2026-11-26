@@ -45,7 +45,7 @@ interface LibraryViewProps {
   onViewModeChange?: (mode: "shelf" | "collision") => void;
   onDataChanged?: () => void;
   onModalToggle: (open: boolean) => void;
-  onSendToChat: (prompt: string) => void;
+  onSendToChat: (prompt: string, options?: { standalone?: boolean }) => void;
   onSendToDraft: (payload: { quote: string; comment: string; bookTitle: string; author: string }) => void;
   onNotify: (msg: string, tone?: "info" | "success" | "error") => void;
   /** One-shot command from the native app menu (文件 → 新建书目 / 导入笔记). */
@@ -247,6 +247,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         chapter: newChapter.trim(),
         quote: newQuote.trim(),
         note: newNote.trim(),
+        source: "manual",
       });
       setNewQuote("");
       setNewNote("");
@@ -301,6 +302,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
     onSendToChat(
       `请围绕主题「${topicLabel}」，对我的阅读笔记里来自 ${groupedCollision.length} 本不同书籍的划线做一次深度「跨书观点碰撞分析」，严格遵守我的 STYLE.md 风格：\n1. 这些书之间有哪些**核心共识与互相印证**？\n2. 哪几本书的观点存在**明显分歧或适用边界张力**？\n3. 结合我写下的个人批注，提炼一个属于我自己的判断框架，并调用 draft_create_or_revise 存成一篇专题主题对照草稿（kind: "note"）。\n\n以下是命中的跨书划线：\n\n${snippet}`,
+      // The prompt lists every matched highlight; the book selected earlier would only mislead the agent.
+      { standalone: true },
     );
   };
 

@@ -224,10 +224,12 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
 
   useEffect(() => {
     if (!pendingPrompt) return;
-    const { text, autoSend } = pendingPrompt;
+    const { text, autoSend, standalone } = pendingPrompt;
     onConsumePendingPrompt();
+    // A self-contained prompt hides the automatic context chip; the user can still add it back.
+    if (standalone && autoContext) setDismissedAutoId(autoContext.id);
     if (autoSend && modelSettings?.hasApiKey && !running) {
-      void sendPrompt(text, undefined, undefined, contextSubject(autoContext));
+      void sendPrompt(text, undefined, undefined, standalone ? "" : contextSubject(autoContext));
     } else {
       setInput(text);
       setComposerFocusTick((n) => n + 1);

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   detectAndParseNotes,
   importNotesIntoDatabase,
+  kindleLocationLabel,
   parseKindleClippings,
   parseWeReadNotes,
 } from "../electron/importers/notesImporter";
@@ -143,6 +144,36 @@ describe("Kindle & WeRead notes importers", () => {
       expect(r2.deduplicatedCount).toBe(2);
     } finally {
       db.close();
+    }
+  });
+});
+
+describe("Kindle location labels", () => {
+  it("keeps page and location and drops the import date", () => {
+    expect(kindleLocationLabel("- Your Highlight on page 19 | Location 280-282 | Added on Monday, January 1, 2024 10:00:00 AM")).toBe("第 19 页 · 位置 280-282");
+    expect(kindleLocationLabel("- Your Highlight at location 1234-1235 | Added on Tuesday, 2 January 2024")).toBe("位置 1234-1235");
+    expect(kindleLocationLabel("- 您在位置 #123-125的标注 | 添加于 2024年5月1日星期三 下午9:12:00")).toBe("位置 123-125");
+    expect(kindleLocationLabel("- 您在第 12 页（位置 #170-171）的标注 | 添加于 2024年5月1日")).toBe("第 12 页 · 位置 170-171");
+    expect(kindleLocationLabel("- Something unexpected | Added on today")).toBe("Something unexpected");
+  });
+
+  it("labels parsed clippings and fixes highlights imported before", () => {
+    const parsed = parseKindleClippings("活着 (余华)\n- 您在位置 #123-125的标注 | 添加于 2024年5月1日\n\n人是为活着本身而活着。\n==========\n");
+    expect(parsed[0]?.chapter).toBe("位置 123-125");
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dd-kindle-labels-"));
+    const file = path.join(dir, "diandian.sqlite3");
+    let db = new KnowledgeDatabase(file);
+    const book = db.findOrCreateBook({ title: "活着", author: "余华", source: "kindle" });
+    const { record } = db.addHighlight({ bookId: book.id, quote: "少年去游荡。", chapter: "您在位置 #300-301的标注 | 添加于 2024年5月2日", source: "kindle" });
+    db.setSetting("schema.kindle-chapter-labels.v1", ""); // as before this release
+    db.close();
+    db = new KnowledgeDatabase(file);
+    try {
+      expect(db.listHighlights(book.id).find((h) => h.id === record.id)?.chapter).toBe("位置 300-301");
+    } finally {
+      db.close();
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 });

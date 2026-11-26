@@ -3,6 +3,8 @@
 export interface PendingPromptPayload {
   text: string;
   autoSend?: boolean;
+  /** The prompt already carries its material (e.g. a cross-book collision); don't attach the current book or page. */
+  standalone?: boolean;
 }
 
 export interface ToolTraceEntry {
@@ -21,27 +23,52 @@ export interface ChatMessage {
   streaming?: boolean;
 }
 
+/**
+ * User-facing names for every tool the agent is offered: 点点读书's plugins (tests/toolLabels.test.ts keeps
+ * these in sync with each plugins/<name>/index.mjs) and the Harness tools the overlay leaves on.
+ */
 export const TOOL_LABEL_MAP: Record<string, string> = {
+  // plugins/reading-browser
   browser_read_page: "读取当前阅读页",
-  browser_read_content: "读取当前阅读页",
   browser_state: "查看浏览器标签",
   browser_open: "打开网页",
   browser_navigate: "控制浏览器页面",
+  // plugins/reading-studio
   library_list_books: "查看阅读笔记书目",
+  library_get_highlights: "读取书籍划线",
   library_search_highlights: "检索历史划线",
-  library_get_book_notes: "读取书籍笔记",
   library_save_highlight: "存入本地划线",
-  library_import_highlights: "导入读书划线",
   draft_list: "查看创作草稿",
-  draft_read: "读取草稿内容",
   draft_create_or_revise: "写入创作草稿",
-  obsidian_status: "检查 Obsidian 状态",
-  obsidian_sync_book: "同步到 Obsidian",
+  obsidian_export_book: "导出书籍到 Obsidian",
+  obsidian_export_draft: "导出草稿到 Obsidian",
+  book_router_search: "搜索书源",
+  book_router_status: "检查书源状态",
+  // Harness
   web_fetch: "查阅网页资料",
-  web_search: "搜索公开资料",
+  web_search: "联网搜索",
   read: "读取本地资料",
+  read_image: "查看图片",
   grep: "检索本地资料",
   glob: "查找本地文件",
+  present: "交付文件",
+  todo_write: "整理待办事项",
+  ask_user_question: "向你确认问题",
+  subagent: "派出子任务",
+  subagent_fork: "派出子任务",
+  send_message: "协调子任务",
+  wait_agent: "等待子任务",
+  list_agents: "查看子任务",
+  create_goal: "设定目标",
+  get_goal: "查看目标",
+  update_goal: "更新目标",
+  schedule_create: "创建定时任务",
+  schedule_edit: "修改定时任务",
+  schedule_list: "查看定时任务",
+  schedule_view: "查看定时任务",
+  job_list: "查看后台任务",
+  job_output: "读取后台任务输出",
+  job_kill: "结束后台任务",
 };
 
 export function formatToolLabel(rawName: string): string {

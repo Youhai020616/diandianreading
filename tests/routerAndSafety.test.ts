@@ -6,6 +6,7 @@ import { buildOverlayYaml, webSearchEndpoint } from "../electron/agent/overlay";
 import {
   bundledZlibCandidates,
   extractDownloadedFilePath,
+  htmlToPlainText,
   isValidZlibBookRef,
   parseZlibSearchJson,
 } from "../electron/router/zlibCliService";
@@ -214,5 +215,18 @@ describe("Web search wiring (#54)", () => {
     const yaml = buildOverlayYaml({ dshHome: dir, settings: { ...settings, provider: "openai-compatible", baseUrl: "https://api.openai.com/v1" } });
     expect(yaml).not.toContain("web-deepseek-api");
     expect(yaml).not.toContain("sk-must-not-leak");
+  });
+});
+
+describe("Book descriptions from the zlib CLI", () => {
+  it("turns entity-encoded HTML into plain paragraphs", () => {
+    const raw = "&lt;p&gt; (&quot;Raymond&quot;校对、批评版)&lt;/p&gt;&lt;p&gt;《百年孤独》是魔幻现实主义文学的代表作，&lt;br&gt;描写了布恩迪亚家族七代人的传奇故事。&lt;br&gt;&lt;/p&gt;";
+    expect(htmlToPlainText(raw)).toBe('("Raymond"校对、批评版)\n《百年孤独》是魔幻现实主义文学的代表作，\n描写了布恩迪亚家族七代人的传奇故事。');
+  });
+
+  it("handles double encoding, stray tags and literal ampersands", () => {
+    expect(htmlToPlainText("&amp;lt;p&amp;gt;A &amp;amp; B&amp;lt;/p&amp;gt;")).toBe("A & B");
+    expect(htmlToPlainText("<div><b>粗体</b>说明</div><ul><li>一</li><li>二</li></ul>")).toBe("粗体说明\n一\n二");
+    expect(htmlToPlainText("")).toBe("");
   });
 });

@@ -92,6 +92,29 @@ export function decodeHtmlEntities(input: string): string {
     .trim();
 }
 
+/**
+ * Book descriptions arrive as entity-encoded HTML ("&lt;p&gt;…&lt;br&gt;"). Decoding alone left literal
+ * <p> tags in the detail sheet, so turn paragraphs and line breaks into newlines and drop the other tags.
+ */
+export function htmlToPlainText(input: string): string {
+  const decode = (text: string) => text
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#(?:39|x27);/gi, "'")
+    .replace(/&nbsp;/gi, " ");
+  // Some sources encode twice ("&amp;lt;p&amp;gt;"); decode until the markup is real tags, then strip them.
+  return decode(decode(input))
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\/\s*(p|div|li|h[1-6])\s*>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function formatAuthors(raw: unknown): string {
   if (Array.isArray(raw)) {
     return raw
@@ -150,7 +173,7 @@ export function parseBookItem(raw: unknown): ZlibBookItem | null {
   const safeUrl = /^https:\/\//i.test(rawUrl) ? rawUrl : "";
   const rawRating = String(r.rating ?? "").trim();
   const rating = rawRating && rawRating !== "0" && rawRating !== "0.0" ? rawRating : "";
-  const rawDesc = decodeHtmlEntities(String(r.description ?? ""));
+  const rawDesc = htmlToPlainText(String(r.description ?? ""));
 
   return {
     bookRef,

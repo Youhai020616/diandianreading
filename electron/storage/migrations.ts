@@ -2,6 +2,21 @@
 import type { BookIdentityIndex } from "./bookIdentity";
 import { bookHighlightFingerprint, computeHighlightFingerprint } from "./fingerprints";
 import type { SqlContext } from "./sqlite";
+import { kindleLocationLabel } from "../importers/notesImporter";
+
+/** Earlier Kindle imports stored the whole metadata line ("您在位置 #… | 添加于 …") as the chapter. */
+export function migrateKindleChapterLabels(ctx: SqlContext): void {
+  const version = "schema.kindle-chapter-labels.v1";
+  ctx.transaction(() => {
+    if (ctx.getSetting(version)) return;
+    const rows = ctx.db
+      .prepare("SELECT id, chapter FROM highlights WHERE source = 'kindle' AND (chapter LIKE '%Added on%' OR chapter LIKE '%添加于%')")
+      .all() as Array<{ id: string; chapter: string }>;
+    const update = ctx.db.prepare("UPDATE highlights SET chapter = ? WHERE id = ?");
+    for (const row of rows) update.run(kindleLocationLabel(row.chapter), row.id);
+    ctx.setSetting(version, "1");
+  });
+}
 
 export function migrateDownloadCoverHints(ctx: SqlContext): void {
   ctx.transaction(() => {

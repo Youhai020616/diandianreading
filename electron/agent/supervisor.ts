@@ -288,6 +288,9 @@ export class AgentSupervisor {
           }
           return;
         }
+        // An engine we disposed (stop, reload) still flushes its last lines, e.g. "runtime exited"; they are
+        // stale and would show the user an internal error for a stop they asked for.
+        if (this.child !== child) return;
         if (msg.kind === "status") {
           this.running = msg.running;
           if (!msg.running && this.reloadWhenIdle) queueMicrotask(() => void this.restartForCodeChange());
@@ -302,11 +305,18 @@ export class AgentSupervisor {
 
       child.once("exit", (code) => {
         rl.close();
-        if (this.child === child) {
-          this.child = null;
-          this.readyPromise = null;
-          this.running = false;
+        if (this.child !== child) {
+          // Disposed on purpose; whoever disposed it reports the state (e.g. stopCurrentTurn).
+          if (!settled) {
+            settled = true;
+            clearTimeout(bootTimer);
+            reject(new Error("DeepSeek Harness 引擎已关闭"));
+          }
+          return;
         }
+        this.child = null;
+        this.readyPromise = null;
+        this.running = false;
         const tail = this.stderrTail.slice(-6).join("\n");
         if (!settled) {
           failBoot(`Harness 进程提前退出 (code=${code ?? "signal"})${tail ? `\n${tail}` : ""}`);
