@@ -14,11 +14,25 @@ export const READING_PERSONA = [
 export const ROUTE_PROVIDER_ID = "diandian-openai";
 
 /**
- * Harness plugins the SDK profile loads that 点点读书 turns off. The Office tools and skill need the
- * LibreOffice engine (~300MB), which the installer leaves out (scripts/stage-runtime.mjs); the app has no
- * Office workflow, so the model should not be offered tools that can only fail.
+ * Harness plugins the SDK profile loads that 点点读书 turns off, so the model is not offered tools that can
+ * only fail or that the app forbids. runtime-safety's alwaysDenied list stays as the backstop.
  */
-export const DISABLED_HARNESS_PLUGINS = ["office-kit", "tool-office", "skill-office"] as const;
+export const DISABLED_HARNESS_PLUGINS = [
+  // Office tools and skill: they need the LibreOffice engine (~300MB) the installer leaves out
+  // (scripts/stage-runtime.mjs), and the app has no Office workflow.
+  "office-kit",
+  "tool-office",
+  "skill-office",
+  // Shell tools, always denied by runtime-safety; tool-pwsh is the Windows counterpart of tool-bash.
+  "tool-bash",
+  "tool-pwsh",
+  // plugin_manager installs and toggles Harness plugins. Each call needs an approval channel the app does
+  // not provide, and letting the model change the agent's own plugins is not a reading feature.
+  "tool-plugin-manager",
+] as const;
+
+/** tool-fs keeps read and read_image; its write and edit tools are always denied by runtime-safety. */
+const READ_ONLY_FS_PATCH = ["- id: tool-fs", "  config:", "    write: false", "    edit: false", ""];
 
 export interface PluginOverlayEntry {
   id: string;
@@ -69,6 +83,7 @@ export function buildOverlayYaml(options: OverlayOptions): string {
     `    model: ${JSON.stringify(settings.model)}`,
     ``,
     ...DISABLED_HARNESS_PLUGINS.flatMap((id) => [`- id: ${id}`, `  disabled: true`, ``]),
+    ...READ_ONLY_FS_PATCH,
   ];
 
   if (existingPlugins.length > 0) {

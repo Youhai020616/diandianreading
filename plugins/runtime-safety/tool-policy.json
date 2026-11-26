@@ -1,6 +1,6 @@
 {
   "$comment": "Single source for the agent tool guard. Read by plugins/runtime-safety/index.mjs (the enforcing guard in the Harness process) and electron/security/safetyPolicy.ts. Ebook downloads are not an agent tool: they run only from the UI over the router:download IPC.",
-  "alwaysDenied": ["bash", "write", "edit", "multi_edit", "notebook_edit", "shell"],
+  "alwaysDenied": ["bash", "pwsh", "shell", "write", "edit", "apply_patch", "multi_edit", "notebook_edit", "plugin_manager"],
   "planDenied": [
     "library_save_highlight",
     "draft_create_or_revise",

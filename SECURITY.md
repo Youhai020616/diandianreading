@@ -62,7 +62,8 @@
 ### AI 引擎与工具守卫
 
 - DeepSeek Harness 始终运行在独立的 Node 子进程（`electron/agent/sdkBridge.mjs`）。模型密钥只通过环境变量注入该子进程，不写入日志、overlay 配置文件或对话上下文。
-- `plugins/runtime-safety` 在 Harness 内用 `ctx.tools.guard` 拦截工具调用：底层系统工具（`bash`、`shell`、`write`、`edit` 等）在所有模式下禁用；`plan` 模式禁止写入和导航，`confirm` 模式禁止 Obsidian 外部写入。名单只有一份：`plugins/runtime-safety/tool-policy.json`，主进程的 `safetyPolicy.ts` 读取同一文件，测试会检查名单里的工具确实已注册。
+- 模型拿不到用不上或不允许的工具：overlay（`electron/agent/overlay.ts`）关掉了 Harness 的 shell 工具（`bash`、Windows 上的 `pwsh`）、插件管理工具 `plugin_manager` 和 Office 工具，文件工具只保留 `read`、`read_image`（去掉 `write`、`edit`）。
+- `plugins/runtime-safety` 在 Harness 内用 `ctx.tools.guard` 拦截工具调用，作为第二道防线：底层系统工具（`bash`、`pwsh`、`shell`、`write`、`edit`、`plugin_manager` 等）在所有模式下禁用；`plan` 模式禁止写入和导航，`confirm` 模式禁止 Obsidian 外部写入。名单只有一份：`plugins/runtime-safety/tool-policy.json`，主进程的 `safetyPolicy.ts` 读取同一文件，测试会检查名单里的工具确实已注册。
 - 电子书下载不是 AI 工具，只能由用户在界面上触发。
 
 ### 密钥存储
