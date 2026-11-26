@@ -5,173 +5,27 @@ import { DatabaseSync } from "node:sqlite";
 import { BookIdentityIndex } from "./bookIdentity";
 import type { ReaderAnnotation, ReaderAnnotationInput } from "../../src/types/desktop";
 import { isReaderHighlightColor, type ReaderHighlightColor } from "./highlightColors";
+import * as chatHistory from "./chatHistory";
+import * as notebooks from "./notebooks";
+import type {
+  BookPatch, BookRecord, BookSource, DraftKind, DraftRecord, DraftRevisionRecord, HighlightRecord, NewBook, NewHighlight,
+  ObsidianExportMapping, ReadingStatsSummary, RecallHighlightItem, RelatedHighlightItem, RevisionAuthorKind,
+} from "./records";
+import { escapeFtsPhrase, extractSearchTermsFromDraft } from "./searchTerms";
+import { bookHighlightFingerprint, computeHighlightFingerprint } from "./fingerprints";
+import { migrateBookIdentities, migrateDownloadCoverHints } from "./migrations";
+import { applySchema, installHighlightsSearch } from "./schema";
+import { nowIso, type BoundToDb, type SqlContext } from "./sqlite";
+import {
+  migrateTranslationCache, READER_TRANSLATION_CACHE_LIMIT, readReaderTranslations, saveReaderTranslations,
+} from "./translationCache";
 
-export type BookSource = "weread" | "kindle" | "local" | "zlib" | "manual";
-export type DraftKind = "review" | "card_copy" | "thread" | "script" | "note";
-export type RevisionAuthorKind = "ai" | "human";
+export { computeHighlightFingerprint, READER_TRANSLATION_CACHE_LIMIT };
 
-export interface BookRecord {
-  id: string;
-  title: string;
-  author: string;
-  isbn: string;
-  publisher: string;
-  publishedYear: string;
-  description: string;
-  tags: string[];
-  coverUrl: string;
-  source: BookSource;
-  sourceLocator: string;
-  createdAt: string;
-  updatedAt: string;
-  highlightCount: number;
-  draftCount: number;
-}
+export { extractSearchTermsFromDraft };
 
-type BookPatch = Partial<Pick<BookRecord,
-  "title" | "author" | "isbn" | "publisher" | "publishedYear" | "description" | "tags" | "coverUrl"
->>;
-type NewBook = BookPatch & { title: string; source?: BookSource; sourceLocator?: string };
+export * from "./records";
 
-export interface HighlightRecord {
-  id: string;
-  bookId: string;
-  chapter: string;
-  quote: string;
-  note: string;
-  source: BookSource;
-  fingerprint: string;
-  cfi?: string;
-  isHighlighted?: boolean;
-  color?: ReaderHighlightColor;
-  createdAt: string;
-}
-
-type NewHighlight = Pick<HighlightRecord, "bookId" | "quote"> &
-  Partial<Pick<HighlightRecord, "chapter" | "note" | "source" | "createdAt">>;
-
-export interface DraftRevisionRecord {
-  id: string;
-  draftId: string;
-  revisionNo: number;
-  authorKind: RevisionAuthorKind;
-  content: string;
-  sourceHighlightIds: string[];
-  promptSummary: string;
-  createdAt: string;
-}
-
-export interface DraftRecord {
-  id: string;
-  bookId: string | null;
-  bookTitle: string;
-  title: string;
-  kind: DraftKind;
-  createdAt: string;
-  updatedAt: string;
-  latestRevisionNo: number;
-  latestAuthorKind: RevisionAuthorKind;
-  latestContent: string;
-  revisions?: DraftRevisionRecord[];
-}
-
-export interface ObsidianExportMapping {
-  stableId: string;
-  vaultPath: string;
-  relativePath: string;
-  lastExportedSha256: string;
-  updatedAt: string;
-}
-
-export interface RecallHighlightItem extends HighlightRecord {
-  bookTitle: string;
-  bookAuthor: string;
-  daysAgo: number;
-}
-
-export interface RelatedHighlightItem extends HighlightRecord {
-  bookTitle: string;
-  bookAuthor: string;
-  matchedTerms: string[];
-}
-
-export type NotebookItemKind = "book" | "draft" | "web";
-
-export interface NotebookItemRecord {
-  id: string;
-  notebookId: string;
-  itemKind: NotebookItemKind;
-  itemRef: string;
-  title: string;
-  meta: string;
-  createdAt: string;
-}
-
-export interface NotebookRecord {
-  id: string;
-  name: string;
-  icon: string;
-  description: string;
-  createdAt: string;
-  updatedAt: string;
-  items: NotebookItemRecord[];
-}
-
-export interface ChatMessageToolState {
-  name: string;
-  status: "running" | "done";
-}
-
-export interface ChatMessageRecord {
-  id: string;
-  sessionId: string;
-  role: "user" | "assistant" | "system";
-  text: string;
-  reasoning: string;
-  contexts: string[];
-  tools: ChatMessageToolState[];
-  createdAt: string;
-}
-
-export interface ChatSessionSummary {
-  id: string;
-  title: string;
-  harnessSessionId: string;
-  /** The book, page or draft the conversation started from; used to group history. */
-  contextLabel: string;
-  messageCount: number;
-  preview: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ChatSessionDetail extends ChatSessionSummary {
-  messages: ChatMessageRecord[];
-}
-
-export interface ReadingStatsSummary {
-  monthKey: string;
-  totalBooks: number;
-  totalHighlights: number;
-  totalDrafts: number;
-  monthBooksCount: number;
-  monthHighlightsCount: number;
-  monthBooks: Array<{ id: string; title: string; author: string; highlightCount: number }>;
-  featuredQuotes: Array<{ quote: string; note: string; bookTitle: string; bookAuthor: string }>;
-  suggestedKeywords: string[];
-}
-
-export function computeHighlightFingerprint(bookKey: string, quote: string, note: string): string {
-  const norm = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
-  return crypto
-    .createHash("sha256")
-    .update(`${norm(bookKey)}\n${norm(quote)}\n${norm(note)}`)
-    .digest("hex");
-}
-
-function bookHighlightFingerprint(bookId: string, quote: string, note: string): string {
-  return "v2:" + computeHighlightFingerprint(bookId, quote, note);
-}
 
 function requireReaderCfi(value: string): string {
   if (typeof value !== "string" || value.length > 16_384 || !/^epubcfi\(\/[\s\S]+\)$/.test(value)) {
@@ -180,80 +34,7 @@ function requireReaderCfi(value: string): string {
   return value;
 }
 
-/** Roughly 20 MB of paragraph translations. */
-export const READER_TRANSLATION_CACHE_LIMIT = 40_000;
 
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
-const RELATED_STOPWORDS = new Set([
-  "我们", "你们", "他们", "自己", "这个", "那个", "什么", "怎么", "为什么", "因为", "所以", "但是", "如果", "可以",
-  "应该", "需要", "已经", "还是", "或者", "以及", "一个", "一些", "这种", "那种", "时候", "地方", "东西", "问题",
-  "觉得", "认为", "发现", "感觉", "其实", "就是", "不是", "没有", "不要", "不能", "不会", "这里", "那里", "现在",
-  "以前", "以后", "通过", "关于", "对于", "进行", "开始", "使用", "非常", "比较", "可能", "一定", "很多", "大家",
-  "the", "and", "for", "that", "this", "with", "from", "have", "your", "about", "into", "more", "some", "what",
-]);
-
-export function extractSearchTermsFromDraft(rawText: string): { ftsTerms: string[]; shortTerms: string[] } {
-  const cleaned = rawText
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/https?:\/\/\S+/g, " ")
-    .replace(/^>\s*.*$/gm, " ") // Skip already-quoted lines so we surface fresh highlights
-    .replace(/[#*_`~>\[\]()（）《》「」『』“”"'，。！？、：；,.!?;:|/\\+-]/g, " ")
-    .trim();
-
-  const ftsCounts = new Map<string, number>();
-  const shortCounts = new Map<string, number>();
-
-  // 1. English / alphanumeric tokens (>= 3 chars)
-  for (const m of cleaned.matchAll(/[A-Za-z][A-Za-z0-9_-]{2,20}/g)) {
-    const token = m[0].toLowerCase();
-    if (RELATED_STOPWORDS.has(token)) continue;
-    ftsCounts.set(token, (ftsCounts.get(token) ?? 0) + 2);
-  }
-
-  // 2. Chinese runs: extract clean 2-4 char candidate spans
-  for (const m of cleaned.matchAll(/[\u4e00-\u9fff]{2,}/g)) {
-    const run = m[0];
-    if (run.length <= 4) {
-      if (!RELATED_STOPWORDS.has(run)) {
-        if (run.length >= 3) ftsCounts.set(run, (ftsCounts.get(run) ?? 0) + 3);
-        else shortCounts.set(run, (shortCounts.get(run) ?? 0) + 2);
-      }
-      continue;
-    }
-    // Extract 2-char and 3-char sliding tokens along longer Chinese phrases
-    for (let i = 0; i <= run.length - 3; i++) {
-      const tri = run.slice(i, i + 3);
-      if (!RELATED_STOPWORDS.has(tri)) {
-        ftsCounts.set(tri, (ftsCounts.get(tri) ?? 0) + 1);
-      }
-    }
-    for (let i = 0; i <= run.length - 2; i += 2) {
-      const bi = run.slice(i, i + 2);
-      if (!RELATED_STOPWORDS.has(bi)) {
-        shortCounts.set(bi, (shortCounts.get(bi) ?? 0) + 1);
-      }
-    }
-  }
-
-  const ftsTerms = [...ftsCounts.entries()]
-    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
-    .slice(0, 10)
-    .map(([t]) => t);
-
-  const shortTerms = [...shortCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 8)
-    .map(([t]) => t);
-
-  return { ftsTerms, shortTerms };
-}
-
-function escapeFtsPhrase(term: string): string {
-  return `"${term.replace(/"/g, '""')}"`;
-}
 
 export class KnowledgeDatabase {
   private readonly db: DatabaseSync;
@@ -261,6 +42,8 @@ export class KnowledgeDatabase {
   readonly dbPath: string;
   private ftsAvailable = false;
   private readonly translationCacheLimit: number;
+  /** What the schema, migration and cache modules use to reach this connection. */
+  private readonly sql: SqlContext;
 
   constructor(dbPath: string, options: { translationCacheLimit?: number } = {}) {
     this.dbPath = dbPath;
@@ -271,6 +54,13 @@ export class KnowledgeDatabase {
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec("PRAGMA foreign_keys = ON;");
     this.identities = new BookIdentityIndex(this.db);
+    this.sql = {
+      db: this.db,
+      transaction: (work) => this.transaction(work),
+      getSetting: (key) => this.getSetting(key),
+      setSetting: (key, value) => this.setSetting(key, value),
+      deleteSetting: (key) => this.deleteSetting(key),
+    };
     this.migrate();
   }
 
@@ -278,186 +68,26 @@ export class KnowledgeDatabase {
     this.db.close();
   }
 
+  /** Expose a storage-module function as a method on this connection. */
+  private bindDb<F extends (db: DatabaseSync, ...args: never[]) => unknown>(fn: F): BoundToDb<F> {
+    return ((...args: never[]) => fn(this.db, ...args)) as BoundToDb<F>;
+  }
+
+
   private migrate(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS app_kv (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
+    applySchema(this.sql);
+    migrateBookIdentities(this.sql, this.identities);
+    migrateDownloadCoverHints(this.sql);
+    migrateTranslationCache(this.sql, this.translationCacheLimit);
+    this.ftsAvailable = installHighlightsSearch(this.sql);
+  }
 
-      CREATE TABLE IF NOT EXISTS books (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        author TEXT NOT NULL DEFAULT '',
-        isbn TEXT NOT NULL DEFAULT '',
-        publisher TEXT NOT NULL DEFAULT '',
-        published_year TEXT NOT NULL DEFAULT '',
-        description TEXT NOT NULL DEFAULT '',
-        tags_json TEXT NOT NULL DEFAULT '[]',
-        cover_url TEXT NOT NULL DEFAULT '',
-        source TEXT NOT NULL DEFAULT 'manual',
-        source_locator TEXT NOT NULL DEFAULT '',
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
+  readReaderTranslations(keys: readonly string[]): (string | null)[] {
+    return readReaderTranslations(this.sql, keys);
+  }
 
-      CREATE TABLE IF NOT EXISTS book_identity (
-        book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
-        kind TEXT NOT NULL,
-        value TEXT NOT NULL,
-        PRIMARY KEY (book_id, kind, value)
-      );
-      CREATE INDEX IF NOT EXISTS idx_book_identity_lookup ON book_identity(kind, value);
-
-      CREATE TABLE IF NOT EXISTS highlights (
-        id TEXT PRIMARY KEY,
-        book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
-        chapter TEXT NOT NULL DEFAULT '',
-        quote TEXT NOT NULL,
-        note TEXT NOT NULL DEFAULT '',
-        source TEXT NOT NULL DEFAULT 'manual',
-        fingerprint TEXT NOT NULL UNIQUE,
-        created_at TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_highlights_book ON highlights(book_id, created_at DESC);
-
-      CREATE TABLE IF NOT EXISTS reader_documents (
-        id TEXT PRIMARY KEY,
-        file_path TEXT NOT NULL,
-        byte_length INTEGER NOT NULL,
-        location TEXT NOT NULL DEFAULT '',
-        book_id TEXT REFERENCES books(id) ON DELETE SET NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS reader_file_revisions (
-        content_hash TEXT PRIMARY KEY,
-        document_id TEXT NOT NULL REFERENCES reader_documents(id) ON DELETE CASCADE,
-        byte_length INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_reader_revisions_document ON reader_file_revisions(document_id, byte_length);
-
-      CREATE TABLE IF NOT EXISTS reader_translation_cache (
-        cache_key TEXT PRIMARY KEY,
-        translation TEXT NOT NULL,
-        used_at INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_reader_translation_used ON reader_translation_cache(used_at);
-
-      CREATE TABLE IF NOT EXISTS drafts (
-        id TEXT PRIMARY KEY,
-        book_id TEXT REFERENCES books(id) ON DELETE SET NULL,
-        title TEXT NOT NULL,
-        kind TEXT NOT NULL DEFAULT 'review',
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_drafts_updated ON drafts(updated_at DESC);
-
-      CREATE TABLE IF NOT EXISTS draft_revisions (
-        id TEXT PRIMARY KEY,
-        draft_id TEXT NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
-        revision_no INTEGER NOT NULL,
-        author_kind TEXT NOT NULL CHECK (author_kind IN ('ai', 'human')),
-        content TEXT NOT NULL,
-        source_highlight_ids_json TEXT NOT NULL DEFAULT '[]',
-        prompt_summary TEXT NOT NULL DEFAULT '',
-        created_at TEXT NOT NULL,
-        UNIQUE(draft_id, revision_no)
-      );
-
-      CREATE TABLE IF NOT EXISTS obsidian_export_map (
-        stable_id TEXT NOT NULL,
-        vault_path TEXT NOT NULL,
-        relative_path TEXT NOT NULL,
-        last_exported_sha256 TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        PRIMARY KEY (stable_id, vault_path)
-      );
-
-      CREATE TABLE IF NOT EXISTS notebooks (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        icon TEXT NOT NULL DEFAULT '✦',
-        description TEXT NOT NULL DEFAULT '',
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS notebook_items (
-        id TEXT PRIMARY KEY,
-        notebook_id TEXT NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
-        item_kind TEXT NOT NULL CHECK (item_kind IN ('book', 'draft', 'web')),
-        item_ref TEXT NOT NULL,
-        title TEXT NOT NULL,
-        meta TEXT NOT NULL DEFAULT '',
-        created_at TEXT NOT NULL,
-        UNIQUE(notebook_id, item_kind, item_ref)
-      );
-      CREATE INDEX IF NOT EXISTS idx_notebook_items_nb ON notebook_items(notebook_id, created_at DESC);
-
-      CREATE TABLE IF NOT EXISTS chat_sessions (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        harness_session_id TEXT NOT NULL DEFAULT '',
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated ON chat_sessions(updated_at DESC);
-
-      CREATE TABLE IF NOT EXISTS chat_messages (
-        id TEXT PRIMARY KEY,
-        session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
-        seq INTEGER NOT NULL DEFAULT 0,
-        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
-        text TEXT NOT NULL,
-        reasoning TEXT NOT NULL DEFAULT '',
-        contexts_json TEXT NOT NULL DEFAULT '[]',
-        tools_json TEXT NOT NULL DEFAULT '[]',
-        created_at TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, seq ASC);
-    `);
-
-    this.transaction(() => {
-      const columns = this.db.prepare("PRAGMA table_info(highlights)").all();
-      if (!columns.some(column => column.name === "reader_document_id")) {
-        this.db.exec("ALTER TABLE highlights ADD COLUMN reader_document_id TEXT REFERENCES reader_documents(id)");
-        this.db.exec("ALTER TABLE highlights ADD COLUMN reader_cfi TEXT");
-      }
-      if (!columns.some(column => column.name === "reader_highlighted")) {
-        this.db.exec("ALTER TABLE highlights ADD COLUMN reader_highlighted INTEGER NOT NULL DEFAULT 1 CHECK (reader_highlighted IN (0, 1))");
-      }
-      if (!columns.some(column => column.name === "reader_color")) {
-        this.db.exec("ALTER TABLE highlights ADD COLUMN reader_color TEXT");
-      }
-      const sessionColumns = this.db.prepare("PRAGMA table_info(chat_sessions)").all();
-      if (!sessionColumns.some(column => column.name === "context_label")) {
-        this.db.exec("ALTER TABLE chat_sessions ADD COLUMN context_label TEXT NOT NULL DEFAULT ''");
-      }
-      this.db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reader_highlight_location
-        ON highlights(reader_document_id, reader_cfi) WHERE reader_document_id IS NOT NULL`);
-    });
-    this.migrateBookIdentities();
-    this.migrateDownloadCoverHints();
-    this.migrateTranslationCache();
-
-    // SQLite FTS5 trigram full-text index for fast Chinese substring search (inspired by MoreCut)
-    try {
-      this.db.exec(`
-        CREATE VIRTUAL TABLE IF NOT EXISTS highlights_fts USING fts5(
-          highlight_id UNINDEXED,
-          quote,
-          note,
-          book_title,
-          tokenize='trigram'
-        );
-      `);
-      this.ftsAvailable = true;
-    } catch {
-      this.ftsAvailable = false;
-    }
-    if (this.ftsAvailable) this.installHighlightsFtsTriggers();
+  saveReaderTranslations(entries: ReadonlyArray<readonly [key: string, translation: string]>): void {
+    saveReaderTranslations(this.sql, this.translationCacheLimit, entries);
   }
 
   transaction<T>(work: () => T): T {
@@ -473,154 +103,14 @@ export class KnowledgeDatabase {
     }
   }
 
-  private migrateDownloadCoverHints(): void {
-    this.transaction(() => {
-      const version = "schema.download-cover-hints.v2";
-      if (this.getSetting(version)) return;
-      // The old key was a one-way hash of the path. Its value includes the
-      // filesystem revision, which survives a rename even before the upgrade.
-      const rows = this.db.prepare("SELECT value FROM app_kv WHERE key GLOB 'download.cover.*' ORDER BY updated_at").all();
-      for (const row of rows) {
-        let saved;
-        try { saved = JSON.parse(String(row.value)); } catch { continue; }
-        if (typeof saved?.revision === "string" && saved.hint && saved.revision.split(":")[1] !== "0") {
-          this.setSetting("download.cover-legacy." + saved.revision, JSON.stringify(saved.hint));
-        }
-      }
-      this.setSetting(version, "1");
-    });
-    this.transaction(() => {
-      const version = "schema.download-cover-hints.v3";
-      if (this.getSetting(version)) return;
-      // Path keys with an inode were copied to revision keys above and are no longer read.
-      // Consumed revision keys used to be blanked instead of removed.
-      const remove = this.db.prepare("DELETE FROM app_kv WHERE key = ?");
-      for (const row of this.db.prepare("SELECT key, value FROM app_kv WHERE key GLOB 'download.cover.*'").all()) {
-        let saved;
-        try { saved = JSON.parse(String(row.value)); } catch { continue; }
-        if (typeof saved?.revision === "string" && saved.revision.split(":")[1] !== "0") remove.run(String(row.key));
-      }
-      this.db.exec("DELETE FROM app_kv WHERE key GLOB 'download.cover-legacy.*' AND value = ''");
-      this.setSetting(version, "1");
-    });
-  }
 
-  /** Move per-paragraph translations out of the settings table into the bounded cache. */
-  private migrateTranslationCache(): void {
-    this.transaction(() => {
-      this.db.exec(`INSERT OR IGNORE INTO reader_translation_cache (cache_key, translation, used_at)
-        SELECT key, value, COALESCE(CAST(strftime('%s', updated_at) AS INTEGER) * 1000, 0)
-        FROM app_kv WHERE key GLOB 'reader.translation.v1.*'`);
-      this.db.exec("DELETE FROM app_kv WHERE key GLOB 'reader.translation.v1.*'");
-      this.pruneReaderTranslations();
-    });
-  }
 
-  readReaderTranslations(keys: readonly string[]): (string | null)[] {
-    return this.transaction(() => {
-      const read = this.db.prepare("SELECT translation FROM reader_translation_cache WHERE cache_key = ?");
-      const touch = this.db.prepare("UPDATE reader_translation_cache SET used_at = ? WHERE cache_key = ?");
-      const now = Date.now();
-      return keys.map(key => {
-        const row = read.get(key) as { translation: string } | undefined;
-        if (!row) return null;
-        touch.run(now, key);
-        return row.translation;
-      });
-    });
-  }
 
-  saveReaderTranslations(entries: ReadonlyArray<readonly [key: string, translation: string]>): void {
-    this.transaction(() => {
-      const write = this.db.prepare(`INSERT INTO reader_translation_cache (cache_key, translation, used_at) VALUES (?, ?, ?)
-        ON CONFLICT(cache_key) DO UPDATE SET translation = excluded.translation, used_at = excluded.used_at`);
-      const now = Date.now();
-      for (const [key, translation] of entries) write.run(key, translation, now);
-      this.pruneReaderTranslations();
-    });
-  }
 
-  /** Keep the most recently read translations; older paragraphs can be translated again on demand. */
-  private pruneReaderTranslations(): void {
-    this.db.prepare(`DELETE FROM reader_translation_cache WHERE cache_key IN (
-      SELECT cache_key FROM reader_translation_cache ORDER BY used_at DESC LIMIT -1 OFFSET ?)`)
-      .run(this.translationCacheLimit);
-  }
 
-  private migrateBookIdentities(): void {
-    const versionKey = "schema.book-identity.v1";
-    this.transaction(() => {
-      if (this.getSetting(versionKey)) return;
-      const books = this.db.prepare("SELECT id, title, isbn, source_locator AS sourceLocator FROM books").all() as
-        Array<{ id: string; title: string; isbn: string; sourceLocator: string }>;
-      const readHighlights = this.db.prepare("SELECT id, quote, note, fingerprint FROM highlights WHERE book_id = ? AND reader_document_id IS NULL ORDER BY created_at, id");
-      const writeFingerprint = this.db.prepare("UPDATE highlights SET fingerprint = ? WHERE id = ?");
-      for (const book of books) {
-        this.identities.indexLegacyBook(book.id, book);
-        // Old digests can prove a previous title, e.g. before an edition label or subtitle was added.
-        const prefixes = [...book.title.matchAll(/[:：(（]/g)].map(match => book.title.slice(0, match.index).trim()).filter(Boolean);
-        const seen = new Set<string>();
-        for (const row of readHighlights.all(book.id) as Array<{ id: string; quote: string; note: string; fingerprint: string }>) {
-          for (const title of prefixes) {
-            if (computeHighlightFingerprint(title, row.quote, row.note) === row.fingerprint) {
-              this.identities.remember(book.id, { title });
-            }
-          }
-          const key = bookHighlightFingerprint(book.id, row.quote, row.note);
-          // Preserve separately referenced legacy duplicates while deduplicating future imports.
-          writeFingerprint.run(seen.has(key) ? key + ":" + row.id : key, row.id);
-          seen.add(key);
-        }
-      }
-      this.setSetting(versionKey, "1");
-    });
-  }
 
-  /**
-   * Keep highlights_fts in step with highlights and book titles inside the same statement, so a
-   * failed index write fails the change itself instead of leaving the search index silently stale.
-   */
-  private installHighlightsFtsTriggers(): void {
-    const titleOf = "COALESCE((SELECT title FROM books WHERE id = new.book_id), '')";
-    this.transaction(() => {
-      this.db.exec(`
-        CREATE TRIGGER IF NOT EXISTS highlights_fts_after_insert AFTER INSERT ON highlights BEGIN
-          INSERT INTO highlights_fts (highlight_id, quote, note, book_title)
-          VALUES (new.id, new.quote, new.note, ${titleOf});
-        END;
-        CREATE TRIGGER IF NOT EXISTS highlights_fts_after_update AFTER UPDATE OF quote, note, book_id ON highlights BEGIN
-          DELETE FROM highlights_fts WHERE highlight_id = old.id;
-          INSERT INTO highlights_fts (highlight_id, quote, note, book_title)
-          VALUES (new.id, new.quote, new.note, ${titleOf});
-        END;
-        CREATE TRIGGER IF NOT EXISTS highlights_fts_after_delete AFTER DELETE ON highlights BEGIN
-          DELETE FROM highlights_fts WHERE highlight_id = old.id;
-        END;
-        CREATE TRIGGER IF NOT EXISTS books_title_fts_after_update AFTER UPDATE OF title ON books BEGIN
-          UPDATE highlights_fts SET book_title = new.title
-          WHERE highlight_id IN (SELECT id FROM highlights WHERE book_id = new.id);
-        END;
-      `);
-      const version = "schema.highlights-fts-triggers.v1";
-      // Indexes built before the triggers may be stale (e.g. book titles were never updated).
-      if (!this.getSetting(version) || !this.highlightsFtsCountsMatch()) {
-        if (this.getSetting(version)) console.warn("[diandian] highlights_fts was out of step; rebuilding the search index.");
-        this.rebuildHighlightsFts();
-        this.setSetting(version, "1");
-      }
-    });
-  }
 
-  private highlightsFtsCountsMatch(): boolean {
-    const count = (table: string) => Number((this.db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get() as { c: number }).c);
-    return count("highlights") === count("highlights_fts");
-  }
 
-  private rebuildHighlightsFts(): void {
-    this.db.exec("DELETE FROM highlights_fts");
-    this.db.exec(`INSERT INTO highlights_fts (highlight_id, quote, note, book_title)
-      SELECT h.id, h.quote, h.note, COALESCE(b.title, '') FROM highlights h LEFT JOIN books b ON b.id = h.book_id`);
-  }
 
   getSetting(key: string): string | null {
     const row = this.db.prepare("SELECT value FROM app_kv WHERE key = ?").get(key) as
@@ -1488,272 +978,18 @@ export class KnowledgeDatabase {
     };
   }
 
-  // ---------- Surf-Style Topic Notebooks ----------
+  // ---------- Topic notebooks (electron/storage/notebooks.ts) ----------
 
-  listNotebooks(): NotebookRecord[] {
-    const nbs = this.db
-      .prepare("SELECT * FROM notebooks ORDER BY updated_at DESC")
-      .all() as Array<Record<string, unknown>>;
-    const allItems = this.db
-      .prepare("SELECT * FROM notebook_items ORDER BY created_at DESC")
-      .all() as Array<Record<string, unknown>>;
+  readonly listNotebooks = this.bindDb(notebooks.listNotebooks);
+  readonly createNotebook = this.bindDb(notebooks.createNotebook);
+  readonly deleteNotebook = this.bindDb(notebooks.deleteNotebook);
+  readonly addNotebookItem = this.bindDb(notebooks.addNotebookItem);
+  readonly removeNotebookItem = this.bindDb(notebooks.removeNotebookItem);
 
-    const byNb = new Map<string, NotebookItemRecord[]>();
-    for (const r of allItems) {
-      const nbId = String(r.notebook_id);
-      const list = byNb.get(nbId) ?? [];
-      list.push({
-        id: String(r.id),
-        notebookId: nbId,
-        itemKind: String(r.item_kind) as NotebookItemKind,
-        itemRef: String(r.item_ref),
-        title: String(r.title),
-        meta: String(r.meta ?? ""),
-        createdAt: String(r.created_at),
-      });
-      byNb.set(nbId, list);
-    }
+  // ---------- Conversation history (electron/storage/chatHistory.ts) ----------
 
-    return nbs.map((r) => {
-      const id = String(r.id);
-      return {
-        id,
-        name: String(r.name),
-        icon: String(r.icon ?? "✦"),
-        description: String(r.description ?? ""),
-        createdAt: String(r.created_at),
-        updatedAt: String(r.updated_at),
-        items: byNb.get(id) ?? [],
-      };
-    });
-  }
-
-  createNotebook(input: { name: string; icon?: string; description?: string }): NotebookRecord {
-    const name = input.name.trim();
-    if (!name) throw new Error("主题空间名称不能为空");
-    const id = `nb_${crypto.randomUUID().replace(/-/g, "").slice(0, 14)}`;
-    const ts = nowIso();
-    this.db
-      .prepare(
-        "INSERT INTO notebooks (id, name, icon, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-      )
-      .run(id, name, (input.icon || "✦").trim().slice(0, 4), (input.description ?? "").trim(), ts, ts);
-    return this.listNotebooks().find((n) => n.id === id)!;
-  }
-
-  deleteNotebook(id: string): void {
-    this.db.prepare("DELETE FROM notebooks WHERE id = ?").run(id);
-  }
-
-  addNotebookItem(
-    notebookId: string,
-    input: { itemKind: NotebookItemKind; itemRef: string; title: string; meta?: string },
-  ): NotebookRecord {
-    const exists = this.db.prepare("SELECT id FROM notebooks WHERE id = ?").get(notebookId);
-    if (!exists) throw new Error("主题空间不存在");
-    const ref = input.itemRef.trim();
-    const title = input.title.trim();
-    if (!ref || !title) throw new Error("条目标识与标题不能为空");
-    const id = `nbi_${crypto.randomUUID().replace(/-/g, "").slice(0, 14)}`;
-    const ts = nowIso();
-    this.db
-      .prepare(
-        `INSERT INTO notebook_items (id, notebook_id, item_kind, item_ref, title, meta, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(notebook_id, item_kind, item_ref) DO UPDATE SET title = excluded.title, meta = excluded.meta`,
-      )
-      .run(id, notebookId, input.itemKind, ref, title, (input.meta ?? "").trim(), ts);
-    this.db.prepare("UPDATE notebooks SET updated_at = ? WHERE id = ?").run(ts, notebookId);
-    return this.listNotebooks().find((n) => n.id === notebookId)!;
-  }
-
-  removeNotebookItem(notebookId: string, itemId: string): NotebookRecord | null {
-    this.db
-      .prepare("DELETE FROM notebook_items WHERE id = ? AND notebook_id = ?")
-      .run(itemId, notebookId);
-    this.db.prepare("UPDATE notebooks SET updated_at = ? WHERE id = ?").run(nowIso(), notebookId);
-    return this.listNotebooks().find((n) => n.id === notebookId) ?? null;
-  }
-
-  // ---------- Persistent Agent Chat History ----------
-
-  listChatSessions(limit = 40): ChatSessionSummary[] {
-    const cap = Math.max(1, Math.min(100, Math.floor(limit)));
-    const rows = this.db
-      .prepare(
-        `SELECT s.id, s.title, s.harness_session_id, s.context_label, s.created_at, s.updated_at,
-                (SELECT COUNT(*) FROM chat_messages m WHERE m.session_id = s.id) AS message_count,
-                COALESCE(
-                  (SELECT m.text FROM chat_messages m WHERE m.session_id = s.id AND m.role = 'assistant' AND length(trim(m.text)) > 0 ORDER BY m.seq DESC LIMIT 1),
-                  (SELECT m.text FROM chat_messages m WHERE m.session_id = s.id ORDER BY m.seq DESC LIMIT 1),
-                  ''
-                ) AS preview
-         FROM chat_sessions s
-         ORDER BY s.updated_at DESC
-         LIMIT ?`,
-      )
-      .all(cap) as Array<Record<string, unknown>>;
-
-    return rows.map((r) => ({
-      id: String(r.id),
-      title: String(r.title || "未命名对话"),
-      harnessSessionId: String(r.harness_session_id ?? ""),
-      contextLabel: String(r.context_label ?? ""),
-      messageCount: Number(r.message_count ?? 0),
-      preview: String(r.preview ?? "").replace(/\s+/g, " ").trim().slice(0, 120),
-      createdAt: String(r.created_at),
-      updatedAt: String(r.updated_at),
-    }));
-  }
-
-  getChatSession(id: string): ChatSessionDetail | null {
-    const row = this.db
-      .prepare(
-        `SELECT id, title, harness_session_id, context_label, created_at, updated_at
-         FROM chat_sessions WHERE id = ?`,
-      )
-      .get(id) as Record<string, unknown> | undefined;
-    if (!row) return null;
-
-    const msgRows = this.db
-      .prepare(
-        `SELECT id, session_id, role, text, reasoning, contexts_json, tools_json, created_at
-         FROM chat_messages
-         WHERE session_id = ?
-         ORDER BY seq ASC`,
-      )
-      .all(id) as Array<Record<string, unknown>>;
-
-    const messages: ChatMessageRecord[] = msgRows.map((m) => {
-      let contexts: string[] = [];
-      let tools: ChatMessageToolState[] = [];
-      try {
-        const parsed = JSON.parse(String(m.contexts_json ?? "[]"));
-        if (Array.isArray(parsed)) contexts = parsed.map(String);
-      } catch {
-        contexts = [];
-      }
-      try {
-        const parsed = JSON.parse(String(m.tools_json ?? "[]"));
-        if (Array.isArray(parsed)) {
-          tools = parsed
-            .filter((t): t is Record<string, unknown> => Boolean(t && typeof t === "object"))
-            .map((t) => ({
-              name: String(t.name ?? "tool"),
-              status: t.status === "running" ? "running" : "done",
-            }));
-        }
-      } catch {
-        tools = [];
-      }
-      const rawRole = String(m.role ?? "user");
-      const role: ChatMessageRecord["role"] =
-        rawRole === "assistant" || rawRole === "system" ? rawRole : "user";
-      return {
-        id: String(m.id),
-        sessionId: String(m.session_id),
-        role,
-        text: String(m.text ?? ""),
-        reasoning: String(m.reasoning ?? ""),
-        contexts,
-        tools,
-        createdAt: String(m.created_at),
-      };
-    });
-
-    const lastPreview =
-      [...messages].reverse().find((m) => m.role === "assistant" && m.text.trim())?.text
-      ?? messages[messages.length - 1]?.text
-      ?? "";
-
-    return {
-      id: String(row.id),
-      title: String(row.title || "未命名对话"),
-      harnessSessionId: String(row.harness_session_id ?? ""),
-      contextLabel: String(row.context_label ?? ""),
-      messageCount: messages.length,
-      preview: lastPreview.replace(/\s+/g, " ").trim().slice(0, 120),
-      createdAt: String(row.created_at),
-      updatedAt: String(row.updated_at),
-      messages,
-    };
-  }
-
-  upsertChatSession(input: {
-    id: string;
-    title: string;
-    harnessSessionId?: string;
-    contextLabel?: string;
-    messages: Array<{
-      id: string;
-      role: "user" | "assistant" | "system";
-      text: string;
-      reasoning?: string;
-      contexts?: string[];
-      tools?: ChatMessageToolState[];
-      createdAt?: string;
-    }>;
-  }): ChatSessionSummary {
-    const id = input.id.trim() || `chat_${crypto.randomUUID().replace(/-/g, "").slice(0, 14)}`;
-    const title = (input.title || "新对话").replace(/\s+/g, " ").trim().slice(0, 48) || "新对话";
-    const ts = nowIso();
-    const incomingHarnessId = (input.harnessSessionId ?? "").trim();
-    const contextLabel = (input.contextLabel ?? "").replace(/\s+/g, " ").trim().slice(0, 60);
-
-    this.db.exec("BEGIN");
-    try {
-      const existing = this.db
-        .prepare("SELECT harness_session_id, created_at FROM chat_sessions WHERE id = ?")
-        .get(id) as Record<string, unknown> | undefined;
-
-      const harnessId = incomingHarnessId || String(existing?.harness_session_id ?? "");
-      const createdAt = existing ? String(existing.created_at) : ts;
-
-      this.db
-        .prepare(
-          `INSERT INTO chat_sessions (id, title, harness_session_id, context_label, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?)
-           ON CONFLICT(id) DO UPDATE SET
-             title = excluded.title,
-             harness_session_id = CASE WHEN excluded.harness_session_id != '' THEN excluded.harness_session_id ELSE chat_sessions.harness_session_id END,
-             -- The context a conversation started from stays its group.
-             context_label = CASE WHEN chat_sessions.context_label = '' THEN excluded.context_label ELSE chat_sessions.context_label END,
-             updated_at = excluded.updated_at`,
-        )
-        .run(id, title, harnessId, contextLabel, createdAt, ts);
-
-      this.db.prepare("DELETE FROM chat_messages WHERE session_id = ?").run(id);
-      const insertMsg = this.db.prepare(
-        `INSERT INTO chat_messages (id, session_id, seq, role, text, reasoning, contexts_json, tools_json, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      );
-      for (let seq = 0; seq < input.messages.length; seq += 1) {
-        const m = input.messages[seq]!;
-        const msgId = (m.id || `m_${crypto.randomUUID().slice(0, 10)}`).trim();
-        const role = m.role === "assistant" || m.role === "system" ? m.role : "user";
-        insertMsg.run(
-          msgId,
-          id,
-          seq,
-          role,
-          String(m.text ?? ""),
-          String(m.reasoning ?? ""),
-          JSON.stringify(Array.isArray(m.contexts) ? m.contexts.map(String) : []),
-          JSON.stringify(Array.isArray(m.tools) ? m.tools : []),
-          m.createdAt || ts,
-        );
-      }
-
-      this.db.exec("COMMIT");
-    } catch (error) {
-      this.db.exec("ROLLBACK");
-      throw error;
-    }
-
-    return this.listChatSessions(100).find((s) => s.id === id)!;
-  }
-
-  deleteChatSession(id: string): void {
-    this.db.prepare("DELETE FROM chat_sessions WHERE id = ?").run(id);
-  }
+  readonly listChatSessions = this.bindDb(chatHistory.listChatSessions);
+  readonly getChatSession = this.bindDb(chatHistory.getChatSession);
+  readonly upsertChatSession = this.bindDb(chatHistory.upsertChatSession);
+  readonly deleteChatSession = this.bindDb(chatHistory.deleteChatSession);
 }
