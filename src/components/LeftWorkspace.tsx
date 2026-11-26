@@ -262,6 +262,8 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
   const pendingPersistRef = useRef<{ sid: string | null; hid?: string | null; exclude?: string } | null>(null);
   // Blocks a second Enter before the engine reports that it started.
   const sendingRef = useRef(false);
+  // Bumped when a prompt is prefilled from elsewhere so the composer takes focus (Enter then sends).
+  const [composerFocusTick, setComposerFocusTick] = useState(0);
 
   currentSessionIdRef.current = currentSessionId;
 
@@ -437,6 +439,7 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
       void sendPrompt(text);
     } else {
       setInput(text);
+      setComposerFocusTick((n) => n + 1);
     }
   }, [pendingPrompt, onConsumePendingPrompt, modelSettings?.hasApiKey, running, sendPrompt]);
 
@@ -892,6 +895,7 @@ export const LeftWorkspace: React.FC<LeftWorkspaceProps> = ({
       surfDrawer
       value={input}
       onChange={setInput}
+      focusSignal={composerFocusTick}
       placeholder="问点点任何跨书思考与写作问题，输入 @ 挂载上下文…"
       running={running}
       autoContext={autoContext}

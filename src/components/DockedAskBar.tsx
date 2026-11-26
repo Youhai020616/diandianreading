@@ -84,6 +84,8 @@ interface DockedAskBarProps {
   onStop?: () => void;
   onCapturePage?: () => void;
   onSubmit: (composedPrompt: string, rawText: string, attachments: ContextAttachment[]) => void;
+  /** Changing this value moves focus into the input with the caret at the end. */
+  focusSignal?: number;
 }
 
 export const DockedAskBar: React.FC<DockedAskBarProps> = ({
@@ -109,6 +111,7 @@ export const DockedAskBar: React.FC<DockedAskBarProps> = ({
   onStop,
   onCapturePage,
   onSubmit,
+  focusSignal = 0,
 }) => {
   const [internalText, setInternalText] = useState("");
   const [internalAttachments, setInternalAttachments] = useState<ContextAttachment[]>([]);
@@ -153,6 +156,16 @@ export const DockedAskBar: React.FC<DockedAskBarProps> = ({
     if (onChange) onChange(next);
     if (!isControlled) setInternalText(next);
   };
+
+  useEffect(() => {
+    if (!focusSignal) return;
+    // After a prefill the clicked button still holds focus, so Enter would press it again.
+    const el = textareaRef.current;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    el.setSelectionRange(el.value.length, el.value.length);
+    el.scrollTop = el.scrollHeight;
+  }, [focusSignal]);
 
   const modelsCacheKey = `${modelSettings?.baseUrl ?? ""}|${modelSettings?.provider ?? ""}|${modelSettings?.hasApiKey ? "1" : "0"}`;
 

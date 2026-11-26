@@ -8,6 +8,7 @@ import type {
 import { shortDateLabel } from "../lib/dateLabel";
 import { ListPicker } from "./ListPicker";
 import { ObsidianExportAction } from "./ObsidianExportAction";
+import { buildWholeDraftPolishPrompt } from "../lib/draftPrompts";
 import { hasDraftChatter, prepareDraftFromAssistantReply } from "../lib/draftCleanup";
 import { copyDraftForXiaohongshu, XHS_LONG_ARTICLE_URL } from "../lib/xhsFormat";
 import { ConceptVisualModal } from "./ConceptVisualModal";
@@ -154,6 +155,13 @@ export const StudioView: React.FC<StudioViewProps> = ({
     onSelectDraftId(created.id);
     setEditorMode("edit");
     onNotify("已新建草稿", "success");
+  };
+
+  const handlePolishWholeDraft = async () => {
+    if (!detail || !contentInput.trim()) return;
+    // Keep the user's own edit in the version chain before the AI revision is appended after it.
+    if (dirty) await handleSaveHumanRevision();
+    onSendToChat(buildWholeDraftPolishPrompt(detail.id, titleInput.trim() || detail.title, contentInput.trim()));
   };
 
   const handleSaveHumanRevision = async () => {
@@ -607,14 +615,12 @@ export const StudioView: React.FC<StudioViewProps> = ({
                       <button
                         type="button"
                         className="btn sm soft"
-                        onClick={() =>
-                          onSendToChat(
-                            `请帮我审阅并润色这篇草稿（draftId: ${detail.id}，标题：《${titleInput}》），严格遵守我的 STYLE.md 去 AI 味要求，修改后请调用 draft_create_or_revise 追加为一条新的 AI 修订版本：\n\n${contentInput}`,
-                          )
-                        }
+                        disabled={!contentInput.trim()}
+                        title="润色整篇正文，结果追加为新的 AI 版本，不会覆盖你的修改"
+                        onClick={() => void handlePolishWholeDraft()}
                       >
                         <IconSparkles size={12} />
-                        <span>AI 润色追加版</span>
+                        <span>AI 润色整篇</span>
                       </button>
                       <button
                         type="button"
