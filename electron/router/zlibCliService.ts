@@ -12,6 +12,7 @@ import {
   serializeToNetscapeCookies,
   type NormalizedCookie,
 } from "../browser/cookieCodec";
+import { KNOWN_ZLIB_MIRRORS } from "../browser/zlibAuthSession";
 
 const execFileAsync = promisify(execFile);
 
@@ -33,6 +34,9 @@ const ALLOWED_SEARCH_ORDERS = new Set([
   "filesize",
   "filesizeA",
 ]);
+
+/** Returns true when the URL answers through the same network path the right-hand browser uses. */
+export type MirrorProbe = (url: string, timeoutMs: number) => Promise<boolean>;
 
 export class ZlibCliService {
   private readonly defaultDownloadDir: string;
@@ -217,9 +221,9 @@ export class ZlibCliService {
     return bin;
   }
 
-  async listHealthyDomains(): Promise<ZlibDomainHealth[]> {
+  async listHealthyDomains(timeoutMs = 25_000): Promise<ZlibDomainHealth[]> {
     const bin = this.requireBinary();
-    const { stdout } = await execFileAsync(bin, ["doctor", "--json"], { timeout: 25_000 });
+    const { stdout } = await execFileAsync(bin, ["doctor", "--json"], { timeout: timeoutMs });
     const parsed = JSON.parse(stdout.trim()) as Array<{
       domain?: string;
       status?: string;
@@ -233,6 +237,61 @@ export class ZlibCliService {
         status: String(d.status ?? "unknown"),
         httpStatus: Number(d.http_status ?? 0),
       }));
+  }
+
+  /**
+   * Resolve a fast, reachable Z-Library mirror URL to open in the right-hand browser
+   * without stalling 25s on `zlib doctor` when common mirrors respond in ~300ms.
+   */
+  async resolveLoginMirrorUrl(explicitDomain: string | undefined, probe: MirrorProbe): Promise<{
+    url: string;
+    reachable: boolean;
+    switched: boolean;
+  }> {
+    const primary = explicitDomain?.trim()
+      ? normalizeZlibDomainUrl(explicitDomain)
+      : this.preferredDomain;
+
+    if (primary && (await probe(primary, 2_800))) {
+      return { url: primary, reachable: true, switched: false };
+    }
+
+    const candidates = KNOWN_ZLIB_MIRRORS.filter((m) => m !== primary);
+    try {
+      const winner = await Promise.any(
+        candidates.map(async (candidate) => {
+          const ok = await probe(candidate, 3_600);
+          if (!ok) throw new Error("unreachable");
+          return candidate;
+        }),
+      );
+      return { url: winner, reachable: true, switched: Boolean(primary && winner !== primary) };
+    } catch {
+      // Fall back to a bounded `zlib doctor --json` check.
+    }
+
+    // `zlib doctor` checks over the CLI's own network path, so the browser must confirm its pick.
+    const healthyList = await this.listHealthyDomains(8_000).catch(() => []);
+    const healthy = healthyList.find((d) => d.status === "healthy")?.domain;
+    let cleanHealthy = "";
+    try {
+      cleanHealthy = healthy ? normalizeZlibDomainUrl(healthy) : "";
+    } catch {
+      // Ignore a malformed doctor entry.
+    }
+    if (cleanHealthy && cleanHealthy !== primary && (await probe(cleanHealthy, 3_600))) {
+      return {
+        url: cleanHealthy,
+        reachable: true,
+        switched: Boolean(primary),
+      };
+    }
+
+    return {
+      url: primary || KNOWN_ZLIB_MIRRORS[0]!,
+      reachable: false,
+      switched: false,
+    };
   }
 
   async runDoctor(): Promise<{ ok: boolean; output: string; domains: ZlibDomainHealth[] }> {

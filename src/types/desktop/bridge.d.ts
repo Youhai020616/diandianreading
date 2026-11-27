@@ -5,7 +5,7 @@ import type { BrowserStateSnapshot, CookieImportPreview, PageContentSnapshot, Pu
 import type { CardTemplateMeta, CarouselDeckPayload, CarouselSlide, ConceptVisualPayload, MonthlyPosterPayload, ReadingCardPayload } from "./cards";
 import type { BookMetadataSearchResult, BookRecord, BookSource, DraftKind, DraftRecord, HighlightRecord, ImportNotesResult, NotebookItemKind, NotebookRecord, ObsidianExportOutcome, ObsidianVaultCandidate, ReadingStatsSummary, RecallHighlightItem, RelatedHighlightItem, RevisionAuthorKind, WeReadNotebookBook, WeReadSyncOutcome } from "./library";
 import type { OpenReaderBook, ReaderAnnotation, ReaderAnnotationInput, ReaderTranslationInput, ReaderTranslationSettings, ReaderTranslationSettingsInput } from "./reader";
-import type { ConnectionsSnapshot, DownloadCoverHint, DownloadedBookFile, LocalBookImportResult, LocalBookMetadata, PublicKindleSettings, WeReadImportResult, WeReadQrEvent, ZlibBookItem, ZlibDomainHealth, ZlibDownloadHistoryPage, ZlibStatus } from "./router";
+import type { ConnectionsChangedEvent, ConnectionsSnapshot, DownloadCoverHint, DownloadedBookFile, LocalBookImportResult, LocalBookMetadata, PublicKindleSettings, WeReadImportResult, WeReadQrEvent, ZlibBookItem, ZlibDomainHealth, ZlibDownloadHistoryPage, ZlibStatus } from "./router";
 
 export interface DesktopBridgeApi {
   app: {
@@ -308,7 +308,7 @@ export interface DesktopBridgeApi {
     connections(): Promise<ConnectionsSnapshot>;
     setDomain(domain: string): Promise<{ domain: string }>;
     doctor(): Promise<{ ok: boolean; output: string; domains: ZlibDomainHealth[] }>;
-    openZlibLogin(domain?: string): Promise<{ openedUrl: string }>;
+    openZlibLogin(domain?: string): Promise<{ openedUrl: string; reachable?: boolean; switched?: boolean }>;
     syncZlibFromBrowser(preferredDomain?: string): Promise<{
       origin: string;
       cookieCount: number;
@@ -323,6 +323,7 @@ export interface DesktopBridgeApi {
     cancelWeReadQr(): Promise<{ canceled: boolean }>;
     logoutWeRead(): Promise<{ snapshot: ConnectionsSnapshot }>;
     onWeReadQrEvent(callback: (event: WeReadQrEvent) => void): () => void;
+    onConnectionsChanged(callback: (event: ConnectionsChangedEvent) => void): () => void;
     openKindleConfig(): Promise<{ launched: boolean; command: string }>;
     getKindleConfig(): Promise<PublicKindleSettings>;
     saveKindleConfig(input: {

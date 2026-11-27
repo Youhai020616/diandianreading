@@ -8,12 +8,41 @@ import { openReaderBook, resolveReaderHighlight, updateReaderMetadata } from "..
 import type { ReaderTranslationInput, ReaderTranslationSettingsInput } from "../../src/types/desktop";
 import type { DownloadCoverHint, ReaderAnnotationInput } from "../../src/types/desktop";
 import { type ConnectionsSnapshot } from "../router/zlibCliService";
+import { ZLIB_AUTO_SYNC_PAUSED_KEY, ZlibAutoSync } from "../router/zlibAutoSync";
 import { state, ipc, sendToMain, requireDb } from "../appState";
 
 export function registerRouterIpc(): void {
   // ---------- Optional Book Router (heartleo/zlib CLI adapter) ----------
 
+  // Zero-click Z-Library auto-sync when the user finishes logging in on the right-hand browser.
+  const autoSync = new ZlibAutoSync({
+    findSession: (preferredUrl, options) => {
+      if (!state.browserService) throw new Error("服务未就绪");
+      return state.browserService.findZlibAuthSession(preferredUrl, options);
+    },
+    login: (cookies, origin) => {
+      if (!state.zlibService) throw new Error("Router service unavailable");
+      return state.zlibService.loginZlibWithCookies(cookies, origin);
+    },
+    fetchSnapshot: () => {
+      if (!state.zlibService) throw new Error("Router service unavailable");
+      return state.zlibService.getConnectionsSnapshot();
+    },
+    getPreferredDomain: () => state.zlibService?.getPreferredDomain() ?? "",
+    readPaused: () => state.knowledgeDb?.getSetting(ZLIB_AUTO_SYNC_PAUSED_KEY) === "1",
+    writePaused: (paused) => {
+      if (paused) state.knowledgeDb?.setSetting(ZLIB_AUTO_SYNC_PAUSED_KEY, "1");
+      else state.knowledgeDb?.deleteSetting(ZLIB_AUTO_SYNC_PAUSED_KEY);
+    },
+    onSynced: (snapshot, origin) => {
+      requireDb().setSetting("router.zlibDomain", origin);
+      broadcastConnections(snapshot, { autoSynced: true, origin });
+    },
+  });
+  state.browserService?.setPageSettledListener((settledUrl) => autoSync.onPageSettled(settledUrl));
+
   const enrichConnectionsWithKindle = (snapshot: ConnectionsSnapshot): ConnectionsSnapshot => {
+    autoSync.noteSnapshot(snapshot);
     const appKindle = state.kindleStore?.readPublic();
     if (appKindle?.configured) {
       return {
@@ -29,6 +58,19 @@ export function registerRouterIpc(): void {
       };
     }
     return snapshot;
+  };
+
+  const broadcastConnections = (
+    snapshot: ConnectionsSnapshot,
+    extra?: { autoSynced?: boolean; origin?: string },
+  ): ConnectionsSnapshot => {
+    const enriched = enrichConnectionsWithKindle(snapshot);
+    sendToMain("router:connections-changed", {
+      snapshot: enriched,
+      ...(extra?.autoSynced ? { autoSynced: true } : {}),
+      ...(extra?.origin ? { origin: extra.origin } : {}),
+    });
+    return enriched;
   };
 
   ipc.handle("router:status", async () => {
@@ -55,29 +97,34 @@ export function registerRouterIpc(): void {
 
   ipc.handle("router:open-zlib-login", async (_win, domain?: string) => {
     if (!state.browserService || !state.zlibService) throw new Error("服务未就绪");
-    let target = (domain ?? "").trim() || state.zlibService.getPreferredDomain();
-    if (!target) {
-      const domains = await state.zlibService.listHealthyDomains().catch(() => []);
-      target = domains.find((d) => d.status === "healthy")?.domain || "https://z-lib.by";
-    }
-    const clean = state.zlibService.setPreferredDomain(target);
+    autoSync.beginLoginWatch();
+    const browser = state.browserService;
+    const resolved = await state.zlibService.resolveLoginMirrorUrl(domain, (url, timeoutMs) =>
+      browser.probeUrlReachable(url, timeoutMs),
+    );
+    const clean = state.zlibService.setPreferredDomain(resolved.url);
     requireDb().setSetting("router.zlibDomain", clean);
     await state.browserService.openUrl(clean, { newTab: false });
-    return { openedUrl: clean };
+    return {
+      openedUrl: clean,
+      reachable: resolved.reachable,
+      switched: resolved.switched,
+    };
   });
 
   ipc.handle("router:sync-zlib-from-browser", async (_win, preferredDomain?: string) => {
     if (!state.browserService || !state.zlibService) throw new Error("服务未就绪");
-    const activeUrl = state.browserService.getActiveTabUrl();
-    const candidateUrl = (preferredDomain ?? "").trim() || activeUrl || state.zlibService.getPreferredDomain();
-    if (!candidateUrl || !/^https?:\/\//i.test(candidateUrl)) {
-      throw new Error("请先在右侧浏览器打开并登录一个 Z-Library 镜像站点");
+    const found = await state.browserService.findZlibAuthSession(
+      (preferredDomain ?? "").trim() || state.zlibService.getPreferredDomain(),
+    );
+    if (!found.ok) {
+      throw new Error(found.message);
     }
-    const origin = new URL(candidateUrl).origin;
-    const cookies = await state.browserService.exportCookiesForOrigin(origin);
-    const snapshot = enrichConnectionsWithKindle(await state.zlibService.loginZlibWithCookies(cookies, origin));
-    requireDb().setSetting("router.zlibDomain", origin);
-    return { origin, cookieCount: cookies.length, snapshot };
+    const rawSnap = await state.zlibService.loginZlibWithCookies(found.cookies, found.origin);
+    autoSync.noteManualLogin(found.authKey);
+    requireDb().setSetting("router.zlibDomain", found.origin);
+    const snapshot = broadcastConnections(rawSnap, { origin: found.origin });
+    return { origin: found.origin, cookieCount: found.cookies.length, snapshot };
   });
 
   ipc.handle("router:login-zlib-cookie-file", async (win, domain?: string) => {
@@ -90,7 +137,9 @@ export function registerRouterIpc(): void {
     if (res.canceled || !res.filePaths[0]) {
       return { canceled: true as const };
     }
-    const snapshot = enrichConnectionsWithKindle(await state.zlibService.loginZlibWithCookieFile(res.filePaths[0], domain));
+    const rawSnap = await state.zlibService.loginZlibWithCookieFile(res.filePaths[0], domain);
+    autoSync.noteManualLogin();
+    const snapshot = broadcastConnections(rawSnap, { origin: rawSnap.zlib.currentDomain || undefined });
     if (snapshot.zlib.currentDomain) {
       requireDb().setSetting("router.zlibDomain", snapshot.zlib.currentDomain);
     }
@@ -99,7 +148,15 @@ export function registerRouterIpc(): void {
 
   ipc.handle("router:start-weread-qr", () => {
     if (!state.zlibService) throw new Error("Router service unavailable");
-    state.zlibService.startWeReadQrLogin((ev) => sendToMain("router:weread-qr", ev));
+    state.zlibService.startWeReadQrLogin((ev) => {
+      sendToMain("router:weread-qr", ev);
+      if (ev.kind === "success" && state.zlibService) {
+        void state.zlibService
+          .getConnectionsSnapshot()
+          .then((snap) => broadcastConnections(snap))
+          .catch(() => undefined);
+      }
+    });
     return { started: true };
   });
 
@@ -110,13 +167,15 @@ export function registerRouterIpc(): void {
 
   ipc.handle("router:logout-zlib", async () => {
     if (!state.zlibService) throw new Error("Router service unavailable");
-    const snapshot = enrichConnectionsWithKindle(await state.zlibService.logoutZlib());
+    // Pause first so a page settling during the CLI logout cannot log straight back in.
+    autoSync.noteLogout();
+    const snapshot = broadcastConnections(await state.zlibService.logoutZlib());
     return { snapshot };
   });
 
   ipc.handle("router:logout-weread", async () => {
     if (!state.zlibService) throw new Error("Router service unavailable");
-    const snapshot = enrichConnectionsWithKindle(await state.zlibService.logoutWeRead());
+    const snapshot = broadcastConnections(await state.zlibService.logoutWeRead());
     return { snapshot };
   });
 
@@ -176,7 +235,7 @@ export function registerRouterIpc(): void {
             clearPassword: input.clearPassword === true,
           });
       const snapshot = state.zlibService
-        ? enrichConnectionsWithKindle(await state.zlibService.getConnectionsSnapshot())
+        ? broadcastConnections(await state.zlibService.getConnectionsSnapshot())
         : null;
       return { config, snapshot };
     },

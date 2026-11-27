@@ -3,7 +3,7 @@ import type { ReaderTranslationInput, ReaderTranslationSettingsInput } from "../
 import type { DownloadCoverHint, ReaderAnnotationInput } from "../src/types/desktop";
 import type {
   AgentEvent, AppMenuActionEvent, AppQuickActionEvent, BrowserStateSnapshot, CarouselDeckPayload, ConceptVisualPayload,
-  DesktopBridgeApi, MonthlyPosterPayload, PetQuickQuoteEvent, PetWindowState, ReadingCardPayload, WeReadQrEvent,
+  ConnectionsChangedEvent, DesktopBridgeApi, MonthlyPosterPayload, PetQuickQuoteEvent, PetWindowState, ReadingCardPayload, WeReadQrEvent,
 } from "../src/types/desktop";
 
 const desktopApi = {
@@ -261,6 +261,13 @@ const desktopApi = {
       ipcRenderer.on("router:weread-qr", listener);
       return () => {
         ipcRenderer.removeListener("router:weread-qr", listener);
+      };
+    },
+    onConnectionsChanged: (callback: (event: ConnectionsChangedEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: ConnectionsChangedEvent) => callback(payload);
+      ipcRenderer.on("router:connections-changed", listener);
+      return () => {
+        ipcRenderer.removeListener("router:connections-changed", listener);
       };
     },
     openKindleConfig: () => ipcRenderer.invoke("router:open-kindle-config"),

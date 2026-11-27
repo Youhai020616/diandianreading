@@ -50,6 +50,12 @@ export interface ConnectionsSnapshot {
   };
 }
 
+export interface ConnectionsChangedEvent {
+  snapshot: ConnectionsSnapshot;
+  autoSynced?: boolean;
+  origin?: string;
+}
+
 export interface QrMatrix {
   size: number;
   rows: boolean[][];

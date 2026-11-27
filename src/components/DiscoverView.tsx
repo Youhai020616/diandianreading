@@ -127,16 +127,29 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   );
 
   // Initial load: fetch connection status, then immediately fetch personalized recommendations if logged in
+  const wasZlibLoggedInRef = useRef(false);
   useEffect(() => {
     let active = true;
     void refreshConnections().then((snap) => {
       if (!active) return;
+      wasZlibLoggedInRef.current = Boolean(snap?.zlib.loggedIn);
       if (snap?.status.installed && snap.zlib.loggedIn) {
         void loadFeed("recommended", false);
       }
     });
+    const offConn = window.diandian.router.onConnectionsChanged(({ snapshot }) => {
+      if (!active) return;
+      const justLoggedIn = !wasZlibLoggedInRef.current && snapshot.zlib.loggedIn;
+      wasZlibLoggedInRef.current = snapshot.zlib.loggedIn;
+      setConnections(snapshot);
+      setLoadingConn(false);
+      if (justLoggedIn && snapshot.status.installed) {
+        void loadFeed("recommended", true);
+      }
+    });
     return () => {
       active = false;
+      offConn();
     };
   }, [refreshConnections, loadFeed]);
 
@@ -261,7 +274,19 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
     onEnsureBrowserOpen();
     try {
       const res = await window.diandian.router.openZlibLogin();
-      onNotify(`已在右侧浏览器打开 ${res.openedUrl}，请登录后点击「同步右侧登录态」`, "info");
+      if (res.reachable === false) {
+        onNotify(
+          `正在右侧尝试打开 ${res.openedUrl}；若页面无法加载，请检查网络代理或前往「连接与偏好」切换镜像`,
+          "info",
+        );
+      } else if (res.switched) {
+        onNotify(
+          `已自动为你切换到可用镜像 ${res.openedUrl}，在右侧网页完成登录后将自动同步连接！`,
+          "info",
+        );
+      } else {
+        onNotify(`已在右侧浏览器打开 ${res.openedUrl}，完成登录后将自动同步书源连接！`, "info");
+      }
     } catch (error) {
       onNotify(error instanceof Error ? error.message : "打开登录页失败", "error");
     } finally {
@@ -703,9 +728,9 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
           {/* Case 2: Installed, but not logged into Z-Library yet */}
           {!loadingConn && zlibInstalled && !zlibLoggedIn && !isSearchMode && (
             <section className="discover-onboarding-card">
-              <div className="discover-onboarding-title">两步连接你的 Z-Library，解锁搜索与个性推荐</div>
+              <div className="discover-onboarding-title">连接你的 Z-Library，解锁搜书与个性推荐</div>
               <p className="discover-onboarding-desc">
-                在右侧内置浏览器登录你的 Z-Library 账号后，点击「同步右侧登录态」，这里就会自动呈现你的专属推荐书墙。
+                点击「1. 右侧打开登录」在右侧浏览器登录账号，登录完成后会自动同步书源并呈现你的专属推荐书墙（也可点右侧按钮手动立即同步）。
               </p>
               <div className="discover-onboarding-actions">
                 <button
@@ -715,7 +740,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   onClick={() => void handleOpenZlibLogin()}
                 >
                   <IconGlobe size={13} />
-                  <span>{authBusy === "open" ? "打开中…" : "1. 右侧打开登录"}</span>
+                  <span>{authBusy === "open" ? "探测镜像并打开中…" : "1. 右侧打开登录"}</span>
                 </button>
                 <button
                   type="button"
@@ -724,7 +749,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   onClick={() => void handleSyncZlibFromBrowser()}
                 >
                   <IconCheck size={13} />
-                  <span>{authBusy === "sync" ? "同步中…" : "2. 同步右侧登录态"}</span>
+                  <span>{authBusy === "sync" ? "同步中…" : "2. 手动同步登录态"}</span>
                 </button>
               </div>
             </section>

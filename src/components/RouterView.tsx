@@ -79,6 +79,12 @@ export const RouterView: React.FC<RouterViewProps> = ({
 
   useEffect(() => {
     void refreshConnections();
+    return window.diandian.router.onConnectionsChanged(({ snapshot, origin }) => {
+      setConnections(snapshot);
+      setLoadingConn(false);
+      // Only a Z-Library login carries an origin; other broadcasts must not clobber typing.
+      if (origin) setDomainInput(origin);
+    });
   }, [refreshConnections]);
 
 
@@ -122,10 +128,22 @@ export const RouterView: React.FC<RouterViewProps> = ({
     try {
       const res = await window.diandian.router.openZlibLogin(domainInput || undefined);
       setDomainInput(res.openedUrl);
-      onNotify(
-        `已在右侧浏览器打开 ${res.openedUrl}，请完成登录后回来点击「同步右侧登录态」`,
-        "info",
-      );
+      if (res.reachable === false) {
+        onNotify(
+          `正在右侧尝试打开 ${res.openedUrl}；若页面无法加载，请点「检测可用镜像」或检查代理设置`,
+          "info",
+        );
+      } else if (res.switched) {
+        onNotify(
+          `原镜像不可达，已自动切换并在右侧打开可用镜像 ${res.openedUrl}；登录完成后将自动同步！`,
+          "info",
+        );
+      } else {
+        onNotify(
+          `已在右侧浏览器打开 ${res.openedUrl}，完成登录后会自动同步（也可点第 2 步手动同步）`,
+          "info",
+        );
+      }
     } catch (error) {
       onNotify(error instanceof Error ? error.message : "打开登录页失败", "error");
     } finally {
@@ -284,7 +302,7 @@ export const RouterView: React.FC<RouterViewProps> = ({
                   <div className="conn-card-meta">
                     {connections?.zlib.loggedIn && connections.zlib.dailyRemaining !== null
                       ? `今日剩余下载额度：${connections.zlib.dailyRemaining} / ${connections.zlib.dailyAllowed ?? 10}`
-                      : "在右侧浏览器登录后，一键同步当前镜像 Cookie 到本地书源引擎"}
+                      : "在右侧浏览器登录后将自动识别并同步镜像凭据（支持 SingleLogin 自动重定向）"}
                   </div>
 
                   <div style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "center" }}>
@@ -369,7 +387,7 @@ export const RouterView: React.FC<RouterViewProps> = ({
                       onClick={() => void handleOpenZlibLogin()}
                     >
                       <IconGlobe size={12} />
-                      <span>1. 右侧打开登录</span>
+                      <span>{busyAction === "open-zlib" ? "探测镜像中…" : "1. 右侧打开登录"}</span>
                     </button>
                     <button
                       type="button"
@@ -378,7 +396,7 @@ export const RouterView: React.FC<RouterViewProps> = ({
                       onClick={() => void handleSyncZlibFromBrowser()}
                     >
                       <IconCheck size={12} />
-                      <span>{busyAction === "sync-zlib" ? "同步中…" : "2. 同步右侧登录态"}</span>
+                      <span>{busyAction === "sync-zlib" ? "同步中…" : "2. 手动同步登录态"}</span>
                     </button>
                     {connections?.zlib.loggedIn && (
                       confirmLogout === "zlib" ? (

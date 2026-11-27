@@ -7,6 +7,11 @@ import {
   normalizeDomainKey,
   type NormalizedCookie,
 } from "./cookieCodec";
+import {
+  selectZlibAuthSession,
+  type ZlibAuthSessionOptions,
+  type ZlibAuthSessionSelection,
+} from "./zlibAuthSession";
 import { buildReadPageScript } from "./pageScripts";
 import { recognizeCanvasPngLocally } from "./canvasOcr";
 import {
@@ -99,6 +104,7 @@ export class BrowserService {
   private readonly getWindow: () => BrowserWindow | null;
   private readonly onStateChanged: (snapshot: BrowserStateSnapshot) => void;
   private readonly onSelectionAction?: (event: BrowserSelectionActionEvent) => void;
+  private onPageSettledListener?: (url: string) => void;
   private readonly userDataDir: string;
 
   private readonly accounts = new Map<string, BrowserAccount>();
@@ -407,6 +413,60 @@ export class BrowserService {
     return tab.view.webContents.getURL() || tab.url || "";
   }
 
+  setPageSettledListener(listener?: (url: string) => void): void {
+    this.onPageSettledListener = listener;
+  }
+
+  /**
+   * Locate an authenticated Z-Library mirror session (`remix_userid` + `remix_userkey`)
+   * in the active account partition, automatically following SingleLogin mirror redirects
+   * and refusing non-Z-Library sites.
+   */
+  async findZlibAuthSession(
+    preferredUrl?: string,
+    options: ZlibAuthSessionOptions = {},
+  ): Promise<ZlibAuthSessionSelection> {
+    this.loadAccountsOnce();
+    const partition = `persist:reading-browser-${this.activeAccountId}`;
+    const ses = session.fromPartition(partition);
+    const allCookies = await ses.cookies.get({});
+    const openTabUrls: string[] = [];
+    for (const tab of this.tabs.values()) {
+      if (tab.accountId !== this.activeAccountId || tab.view.webContents.isDestroyed()) continue;
+      const u = tab.view.webContents.getURL() || tab.url;
+      if (u) openTabUrls.push(u);
+    }
+    return selectZlibAuthSession({
+      allCookies,
+      activeTabUrl: this.getActiveTabUrl(),
+      openTabUrls,
+      preferredUrl,
+      ...options,
+    });
+  }
+
+  /**
+   * Probe a site through the active account partition, i.e. Chromium's network stack with the
+   * same proxy and DNS as the right-hand browser. Node's `fetch` ignores the macOS system proxy
+   * and would report mirrors unreachable that the browser can open fine.
+   */
+  async probeUrlReachable(url: string, timeoutMs: number): Promise<boolean> {
+    if (!/^https?:\/\//i.test(url)) return false;
+    this.loadAccountsOnce();
+    const ses = session.fromPartition(`persist:reading-browser-${this.activeAccountId}`);
+    try {
+      const res = await ses.fetch(url, {
+        method: "GET",
+        credentials: "omit",
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      void res.body?.cancel().catch(() => undefined);
+      return res.status > 0 && res.status < 500;
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Inject parsed cookies into the currently active isolated account partition.
    * Cookie values stay strictly in main process memory.
@@ -593,6 +653,12 @@ export class BrowserService {
       record.reveal.stopped(wc.isLoading());
       this.updateZoom(record);
       sync();
+      if (!wc.isDestroyed()) {
+        const settledUrl = wc.getURL() || record.url;
+        if (/^https?:\/\//i.test(settledUrl)) {
+          this.onPageSettledListener?.(settledUrl);
+        }
+      }
     });
     wc.on("did-navigate", (_e, nextUrl) => {
       try {

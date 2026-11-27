@@ -207,6 +207,14 @@ export const App: React.FC = () => {
     void window.diandian.pet.getState().then((st) => setPetVisible(st.visible));
     const offBrowser = window.diandian.browser.onStateChanged(setBrowserState);
     const offPet = window.diandian.pet.onStateChanged((st) => setPetVisible(st.visible));
+    const offConn = window.diandian.router.onConnectionsChanged((ev) => {
+      if (ev.autoSynced && ev.snapshot.zlib.loggedIn) {
+        notify(
+          `检测到右侧 Z-Library 登录成功，已自动同步书源连接（${ev.origin || ev.snapshot.zlib.currentDomain}）`,
+          "success",
+        );
+      }
+    });
     const offQuick = window.diandian.app.onQuickAction((ev) => {
       if (ev.kind === "saved") {
         setLibraryRefreshSignal((n) => n + 1);
@@ -234,6 +242,7 @@ export const App: React.FC = () => {
     return () => {
       offBrowser();
       offPet();
+      offConn();
       offQuick();
     };
   }, [notify, handleSendQuoteToDraft]);
