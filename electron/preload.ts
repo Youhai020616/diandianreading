@@ -227,7 +227,7 @@ const desktopApi = {
       ipcRenderer.invoke("cards:bake-export-carousel-folder", deck),
     bakeCopyPoster: (payload: MonthlyPosterPayload) => ipcRenderer.invoke("cards:bake-copy-poster", payload),
     bakeSavePoster: (payload: MonthlyPosterPayload) => ipcRenderer.invoke("cards:bake-save-poster", payload),
-    extractConcept: (input: { title: string; content: string; bookTitle?: string }) =>
+    extractConcept: (input: { title: string; content: string; bookId?: string; bookTitle?: string }) =>
       ipcRenderer.invoke("cards:extract-concept", input),
     previewConceptHtml: (payload: ConceptVisualPayload) =>
       ipcRenderer.invoke("cards:preview-concept-html", payload),

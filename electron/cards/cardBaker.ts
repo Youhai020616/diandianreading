@@ -29,6 +29,11 @@ export const PRIVILEGED_CARD_SCHEMES: CustomScheme[] = [
 export const CARD_CSP =
   "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data: local:; script-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none';";
 
+export function isAllowedCardSandboxUrl(url: string): boolean {
+  if (url.startsWith(`${CARD_PROTOCOL_SCHEME}://`)) return true;
+  return /^data:image\/(?:jpeg|jpg|png|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(url);
+}
+
 export class CardBakerService {
   private readonly documents = new Map<string, string>();
   private protocolInstalled = false;
@@ -39,13 +44,10 @@ export class CardBakerService {
 
     const sandboxSession = session.fromPartition(CARD_SANDBOX_PARTITION);
 
-    // Strictly deny all external network egress from the card baker sandbox.
+    // Strictly deny all external network/disk egress from the card baker sandbox,
+    // permitting only htmlcard:// documents and inline raster data:image/* book covers.
     sandboxSession.webRequest.onBeforeRequest((details, callback) => {
-      if (details.url.startsWith(`${CARD_PROTOCOL_SCHEME}://`)) {
-        callback({ cancel: false });
-      } else {
-        callback({ cancel: true });
-      }
+      callback({ cancel: !isAllowedCardSandboxUrl(details.url) });
     });
 
     sandboxSession.protocol.handle(CARD_PROTOCOL_SCHEME, (request) => {

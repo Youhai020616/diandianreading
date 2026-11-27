@@ -171,12 +171,42 @@
 
 .cvis-stage {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 10px;
   padding: 14px;
   border-radius: 16px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
+}
+
+.cvis-stage-caption {
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  text-align: center;
+  line-height: 1.45;
+  max-width: 320px;
+}
+
+.cvis-toggles-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+.cvis-cover-bar {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 
 .cvis-frame-shell {

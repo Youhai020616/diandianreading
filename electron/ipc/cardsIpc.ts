@@ -9,6 +9,9 @@ import {
   type ConceptVisualPayload,
 } from "../cards/conceptVisualTemplates";
 import type { MonthlyPosterPayload } from "../cards/posterTemplates";
+import { listDownloadedBooks } from "../router/downloadedBooks";
+import { searchOnlineBookMetadata } from "../router/metadataService";
+import { fileNameTitle, isSameBookTitle, normalizeBookTitleKey } from "../cards/bookTitleMatch";
 import { state, ipc } from "../appState";
 
 export function registerCardsIpc(): void {
@@ -150,12 +153,80 @@ export function registerCardsIpc(): void {
 
   ipc.handle(
     "cards:extract-concept",
-    (_win, input: { title: string; content: string; bookTitle?: string }) =>
-      extractConceptVisualFromDraft(
+    async (_win, input: { title: string; content: string; bookId?: string; bookTitle?: string }) => {
+      const extracted = extractConceptVisualFromDraft(
         String(input?.title ?? ""),
         String(input?.content ?? ""),
         input?.bookTitle,
-      ),
+      );
+
+      // The extractor already prefers a real explicit book title and drops site names such as
+      // "微信读书"; a draft without a book has bookTitle "" which must not shadow 《…》 mentions.
+      let resolvedBookTitle = extracted.bookTitle ?? "";
+      let resolvedAuthor = "";
+      let coverDataUrl: string | null = null;
+
+      try {
+        const db = state.knowledgeDb;
+        if (db) {
+          let matchedBook = typeof input?.bookId === "string" && input.bookId ? db.getBook(input.bookId) : null;
+          if (!matchedBook && resolvedBookTitle) {
+            const target = resolvedBookTitle;
+            const allBooks = db.listBooks("");
+            matchedBook =
+              allBooks.find((b) => normalizeBookTitleKey(b.title) === normalizeBookTitleKey(target))
+              ?? allBooks.find((b) => isSameBookTitle(b.title, target))
+              ?? null;
+          }
+          if (matchedBook) {
+            resolvedBookTitle = matchedBook.title || resolvedBookTitle;
+            resolvedAuthor = matchedBook.author || "";
+            if (matchedBook.coverUrl && state.bookCovers) {
+              coverDataUrl = await state.bookCovers.get(matchedBook.coverUrl, true).catch(() => null);
+            }
+          }
+        }
+
+        // Check local downloaded ebooks for an embedded EPUB/PDF cover if still missing
+        if (!coverDataUrl && resolvedBookTitle && state.zlibService && state.downloadedCovers) {
+          const target = resolvedBookTitle;
+          const files = await listDownloadedBooks(state.zlibService.getDownloadDir()).catch(() => []);
+          const hit = files.find((f) => isSameBookTitle(fileNameTitle(f.fileName), target));
+          if (hit) {
+            coverDataUrl = await state.downloadedCovers.preview(hit.filePath).catch(() => null);
+          }
+        }
+
+        // Fast bounded online cover lookup (<= 2.2s); only a candidate with the same title counts.
+        if (!coverDataUrl && resolvedBookTitle && state.bookCovers) {
+          const covers = state.bookCovers;
+          const target = resolvedBookTitle;
+          const knownAuthor = resolvedAuthor;
+          const online = await Promise.race([
+            (async () => {
+              const { candidates } = await searchOnlineBookMetadata(target, { title: target, author: knownAuthor });
+              const cand = candidates.find((c) => Boolean(c.coverUrl) && isSameBookTitle(c.title, target));
+              if (!cand) return null;
+              return { cover: await covers.get(cand.coverUrl, true), author: cand.author };
+            })(),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_200)),
+          ]).catch(() => null);
+          if (online?.cover) {
+            coverDataUrl = online.cover;
+            if (!resolvedAuthor && online.author) resolvedAuthor = online.author;
+          }
+        }
+      } catch {
+        // Non-fatal: typographic clothbound hardcover cover renders automatically when coverDataUrl is absent.
+      }
+
+      return {
+        ...extracted,
+        ...(resolvedBookTitle ? { bookTitle: resolvedBookTitle } : {}),
+        ...(resolvedAuthor ? { author: resolvedAuthor } : {}),
+        ...(coverDataUrl ? { coverDataUrl } : {}),
+      };
+    },
   );
 
   ipc.handle("cards:preview-concept-html", (_win, payload: ConceptVisualPayload) => ({

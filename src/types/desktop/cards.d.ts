@@ -7,7 +7,7 @@ export type CardTemplateId =
   | "botanical-green"
   | "magazine-glass";
 
-export type ConceptVisualLayout = "cover" | "mindmap" | "infographic";
+export type ConceptVisualLayout = "cover" | "versus" | "mindmap" | "infographic";
 
 export type ConceptVisualTheme =
   | "editorial-paper"
@@ -26,6 +26,10 @@ export interface ConceptVisualPayload {
   theme: ConceptVisualTheme;
   title: string;
   subtitle: string;
+  bookTitle?: string;
+  author?: string;
+  coverDataUrl?: string;
+  showBookCover?: boolean;
   callout?: string;
   branches: ConceptBranch[];
   showColophon?: boolean;

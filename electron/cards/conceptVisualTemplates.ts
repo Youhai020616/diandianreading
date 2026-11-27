@@ -1,4 +1,6 @@
-export type ConceptVisualLayout = "cover" | "mindmap" | "infographic";
+import { isGenericSiteName } from "../siteTitles";
+
+export type ConceptVisualLayout = "cover" | "versus" | "mindmap" | "infographic";
 export type ConceptVisualTheme =
   | "editorial-paper"
   | "memo-grid"
@@ -16,6 +18,10 @@ export interface ConceptVisualPayload {
   theme: ConceptVisualTheme;
   title: string;
   subtitle: string;
+  bookTitle?: string;
+  author?: string;
+  coverDataUrl?: string;
+  showBookCover?: boolean;
   callout?: string;
   branches: ConceptBranch[];
   showColophon?: boolean;
@@ -28,6 +34,15 @@ function escapeHtml(text: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function sanitizeCoverDataUrl(raw?: string): string | null {
+  if (!raw || typeof raw !== "string") return null;
+  const compact = raw.trim().replace(/\s+/g, "");
+  if (/^data:image\/(?:jpeg|jpg|png|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(compact)) {
+    return compact;
+  }
+  return null;
 }
 
 function cleanLine(text: string): string {
@@ -50,8 +65,19 @@ function isChatFillerParagraph(text: string): boolean {
   );
 }
 
+function extractBookTitleMention(title: string, content: string, explicitBookTitle?: string): string {
+  const cleanExplicit = (explicitBookTitle ?? "").replace(/^《|》$/g, "").trim();
+  if (cleanExplicit && !isGenericSiteName(cleanExplicit)) {
+    return cleanExplicit;
+  }
+  const fromTitle = /《([^《》\n]{1,36})》/.exec(title)?.[1]?.trim();
+  if (fromTitle) return fromTitle;
+  const fromContent = /《([^《》\n]{1,36})》/.exec(content)?.[1]?.trim();
+  return fromContent || "";
+}
+
 /**
- * Distill a punchy 10-18 char Xiaohongshu-style sub-headline from a paragraph
+ * Distill a punchy 10-22 char Xiaohongshu-style sub-headline from a paragraph
  * when the Markdown heading was just a bare numeral like "一 / 二 / 三".
  */
 function distillPunchyHeading(sentence: string): { heading: string; rest: string } {
@@ -63,7 +89,6 @@ function distillPunchyHeading(sentence: string): { heading: string; rest: string
   const first = (sentences[0] ?? clean).replace(/[。！？!?]+$/, "").trim();
   const remainder = sentences.slice(1).join("").trim();
 
-  // If the first sentence is already concise enough for a punchy card heading, keep it whole (never chop mid-word)
   if (first.length <= 24) {
     return { heading: first, rest: remainder };
   }
@@ -73,7 +98,6 @@ function distillPunchyHeading(sentence: string): { heading: string; rest: string
     .map((c) => c.trim())
     .filter((c) => c.length >= 4);
 
-  // Prefer the second clause when the first is a setup like "这句话表面在讲..."
   const bestClause =
     clauses.length >= 2 && /^(这句|这个|表面|其实|所以|但是|而)/.test(clauses[0]!) && clauses[1]!.length <= 24
       ? clauses[1]!
@@ -111,7 +135,7 @@ export function extractConceptVisualFromDraft(
 
     if (trimmed.startsWith(">")) {
       const q = cleanLine(trimmed);
-      if (q.length >= 8) {
+      if (q.length >= 8 && !/^——\s*《/.test(q)) {
         if (!callout) callout = q.slice(0, 68);
         if (current) current.quotes.push(q);
       }
@@ -165,7 +189,6 @@ export function extractConceptVisualFromDraft(
     }
   }
 
-  // Upgrade bare-numeral sections ("一 / 二 / 三") using their own commentary or quote
   const branches: ConceptBranch[] = [];
   for (const sec of rawSections) {
     if (sec.bareNumeral) {
@@ -208,14 +231,16 @@ export function extractConceptVisualFromDraft(
           { heading: "行动坐标", points: ["把抽象观点落回真实生活决策"] },
         ];
 
+  const detectedBook = extractBookTitleMention(title, content, bookTitle);
   const cleanTitle = (title.trim() || "阅读思考框架").slice(0, 28);
-  const subtitle = bookTitle
-    ? `《${bookTitle}》 · 读书拆解`
+  const subtitle = detectedBook
+    ? `《${detectedBook}》 · 深度共读笔记`
     : "读书笔记 · READING NOTES";
 
   return {
     title: cleanTitle,
     subtitle,
+    ...(detectedBook ? { bookTitle: detectedBook } : {}),
     ...(callout ? { callout } : {}),
     branches: finalBranches,
   };
@@ -227,6 +252,7 @@ interface ThemePalette {
   bgPattern: string;
   frameBorder: string;
   cardBg: string;
+  cardMutedBg: string;
   cardBorder: string;
   cardShadow: string;
   ink: string;
@@ -239,116 +265,151 @@ interface ThemePalette {
   quoteBg: string;
   quoteInk: string;
   quoteBorder: string;
+  clothBg: string;
+  clothInk: string;
+  clothAccent: string;
+  tapeBg: string;
   serifTitle: boolean;
   tactileBorder: boolean;
+  isDark: boolean;
 }
 
 const PALETTES: Record<ConceptVisualTheme, ThemePalette> = {
   "editorial-paper": {
-    bgColor: "#F8F3EA",
-    bgGradient: "linear-gradient(165deg, #FAF6EE 0%, #F4ECDF 100%)",
-    bgPattern: "radial-gradient(rgba(96, 74, 48, 0.085) 1px, transparent 1px)",
-    frameBorder: "rgba(130, 102, 70, 0.22)",
+    bgColor: "#F6F0E4",
+    bgGradient: "linear-gradient(160deg, #FBF7EF 0%, #F1E7D6 100%)",
+    bgPattern: "radial-gradient(rgba(96, 74, 48, 0.075) 1px, transparent 1px)",
+    frameBorder: "rgba(116, 88, 58, 0.22)",
     cardBg: "#FFFDF9",
-    cardBorder: "rgba(130, 102, 70, 0.16)",
-    cardShadow: "0 4px 16px rgba(68, 49, 28, 0.055)",
-    ink: "#1E1915",
-    secondary: "#4A4036",
-    muted: "#7D6F61",
-    accent: "#B84324",
-    accentSoft: "rgba(184, 67, 36, 0.1)",
-    highlightMark: "linear-gradient(180deg, transparent 58%, rgba(246, 211, 148, 0.72) 58%)",
-    spineColor: "#C59A6B",
-    quoteBg: "#EFE7D8",
-    quoteInk: "#2B231C",
-    quoteBorder: "#B84324",
+    cardMutedBg: "#EDE4D5",
+    cardBorder: "rgba(116, 88, 58, 0.17)",
+    cardShadow: "0 8px 24px rgba(58, 40, 22, 0.06)",
+    ink: "#1B1612",
+    secondary: "#463C33",
+    muted: "#7A6B5D",
+    accent: "#B83B1D",
+    accentSoft: "rgba(184, 59, 29, 0.11)",
+    highlightMark: "linear-gradient(180deg, transparent 58%, rgba(245, 204, 132, 0.78) 58%)",
+    spineColor: "#BD8E60",
+    quoteBg: "#EFE6D6",
+    quoteInk: "#261E18",
+    quoteBorder: "#B83B1D",
+    clothBg: "linear-gradient(145deg, #8F331E 0%, #682112 100%)",
+    clothInk: "#FAF3E8",
+    clothAccent: "#E8C594",
+    tapeBg: "rgba(218, 174, 118, 0.36)",
     serifTitle: true,
     tactileBorder: false,
+    isDark: false,
   },
   "memo-grid": {
-    bgColor: "#FCFBF7",
-    bgGradient: "linear-gradient(180deg, #FDFCF8 0%, #F8F6F0 100%)",
+    bgColor: "#FCFBF6",
+    bgGradient: "linear-gradient(180deg, #FEFDF9 0%, #F6F3E9 100%)",
     bgPattern:
-      "linear-gradient(to right, rgba(24, 24, 27, 0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(24, 24, 27, 0.05) 1px, transparent 1px)",
-    frameBorder: "rgba(24, 24, 27, 0.16)",
+      "linear-gradient(to right, rgba(24, 24, 27, 0.055) 1px, transparent 1px), linear-gradient(to bottom, rgba(24, 24, 27, 0.055) 1px, transparent 1px)",
+    frameBorder: "rgba(24, 24, 27, 0.2)",
     cardBg: "#FFFFFF",
-    cardBorder: "#242220",
-    cardShadow: "3.5px 3.5px 0 rgba(24, 24, 27, 0.1)",
-    ink: "#18181B",
-    secondary: "#3F3F46",
-    muted: "#71717A",
-    accent: "#DC4A2D",
+    cardMutedBg: "#F1EFE7",
+    cardBorder: "#22201E",
+    cardShadow: "4px 4px 0 rgba(24, 24, 27, 0.13)",
+    ink: "#161618",
+    secondary: "#3B3B42",
+    muted: "#6E6E77",
+    accent: "#D94426",
     accentSoft: "#FEF08A",
-    highlightMark: "linear-gradient(180deg, transparent 52%, #FEF08A 52%)",
-    spineColor: "#242220",
-    quoteBg: "#FFFBE2",
+    highlightMark: "linear-gradient(180deg, transparent 52%, #FDE047 52%)",
+    spineColor: "#22201E",
+    quoteBg: "#FFFBEB",
     quoteInk: "#18181B",
-    quoteBorder: "#242220",
+    quoteBorder: "#22201E",
+    clothBg: "linear-gradient(145deg, #27272A 0%, #141416 100%)",
+    clothInk: "#FEFCE8",
+    clothAccent: "#FACC15",
+    tapeBg: "rgba(250, 204, 21, 0.55)",
     serifTitle: false,
     tactileBorder: true,
+    isDark: false,
   },
   "botanical-mist": {
-    bgColor: "#EEF4EE",
-    bgGradient: "linear-gradient(165deg, #F3F7F2 0%, #E5EFE7 100%)",
-    bgPattern: "radial-gradient(rgba(31, 78, 61, 0.085) 1px, transparent 1px)",
-    frameBorder: "rgba(31, 78, 61, 0.18)",
-    cardBg: "#FFFFFF",
-    cardBorder: "rgba(31, 78, 61, 0.15)",
-    cardShadow: "0 4px 16px rgba(24, 56, 44, 0.06)",
-    ink: "#162A22",
-    secondary: "#3A5247",
-    muted: "#647B70",
-    accent: "#1F5A45",
-    accentSoft: "rgba(31, 90, 69, 0.11)",
-    highlightMark: "linear-gradient(180deg, transparent 58%, rgba(183, 222, 194, 0.82) 58%)",
-    spineColor: "#4E836D",
-    quoteBg: "#DFEAE2",
-    quoteInk: "#162A22",
-    quoteBorder: "#1F5A45",
+    bgColor: "#ECF3EC",
+    bgGradient: "linear-gradient(160deg, #F4F8F3 0%, #E2EDE4 100%)",
+    bgPattern: "radial-gradient(rgba(28, 74, 56, 0.075) 1px, transparent 1px)",
+    frameBorder: "rgba(28, 74, 56, 0.2)",
+    cardBg: "#FCFDFC",
+    cardMutedBg: "#DCE8DF",
+    cardBorder: "rgba(28, 74, 56, 0.16)",
+    cardShadow: "0 8px 24px rgba(20, 52, 39, 0.06)",
+    ink: "#13261E",
+    secondary: "#354E43",
+    muted: "#5E776B",
+    accent: "#1B5942",
+    accentSoft: "rgba(27, 89, 66, 0.12)",
+    highlightMark: "linear-gradient(180deg, transparent 58%, rgba(173, 219, 187, 0.85) 58%)",
+    spineColor: "#497E67",
+    quoteBg: "#DDE9E0",
+    quoteInk: "#13261E",
+    quoteBorder: "#1B5942",
+    clothBg: "linear-gradient(145deg, #214E3D 0%, #133226 100%)",
+    clothInk: "#F2F7F3",
+    clothAccent: "#B7DEC2",
+    tapeBg: "rgba(116, 172, 138, 0.36)",
     serifTitle: true,
     tactileBorder: false,
+    isDark: false,
   },
   "nocturne-ink": {
     bgColor: "#111216",
-    bgGradient: "radial-gradient(circle at 18% 10%, #23242C 0%, #121318 56%, #0B0C0F 100%)",
-    bgPattern: "radial-gradient(rgba(217, 186, 130, 0.09) 1px, transparent 1px)",
-    frameBorder: "rgba(217, 186, 130, 0.24)",
-    cardBg: "#1A1C22",
-    cardBorder: "rgba(217, 186, 130, 0.22)",
-    cardShadow: "0 8px 24px rgba(0, 0, 0, 0.42)",
-    ink: "#F6F2E9",
-    secondary: "#CBC5B9",
-    muted: "#958F84",
-    accent: "#DFBF84",
-    accentSoft: "rgba(223, 191, 132, 0.15)",
-    highlightMark: "linear-gradient(180deg, transparent 60%, rgba(223, 191, 132, 0.34) 60%)",
-    spineColor: "rgba(223, 191, 132, 0.58)",
-    quoteBg: "#22211C",
-    quoteInk: "#F5EFE2",
-    quoteBorder: "#DFBF84",
+    bgGradient: "radial-gradient(circle at 18% 12%, #252630 0%, #13141A 56%, #0B0C10 100%)",
+    bgPattern: "radial-gradient(rgba(223, 191, 132, 0.085) 1px, transparent 1px)",
+    frameBorder: "rgba(223, 191, 132, 0.26)",
+    cardBg: "#1A1C23",
+    cardMutedBg: "#14161C",
+    cardBorder: "rgba(223, 191, 132, 0.22)",
+    cardShadow: "0 10px 28px rgba(0, 0, 0, 0.46)",
+    ink: "#F6F1E7",
+    secondary: "#CFC8BC",
+    muted: "#968F83",
+    accent: "#E2C185",
+    accentSoft: "rgba(226, 193, 133, 0.15)",
+    highlightMark: "linear-gradient(180deg, transparent 60%, rgba(226, 193, 133, 0.32) 60%)",
+    spineColor: "rgba(226, 193, 133, 0.6)",
+    quoteBg: "#211F1A",
+    quoteInk: "#F6EFE2",
+    quoteBorder: "#E2C185",
+    clothBg: "linear-gradient(145deg, #2D261E 0%, #191511 100%)",
+    clothInk: "#F8F1E3",
+    clothAccent: "#E2C185",
+    tapeBg: "rgba(226, 193, 133, 0.26)",
     serifTitle: true,
     tactileBorder: false,
+    isDark: true,
   },
   "cloud-blue": {
-    bgColor: "#F2F6FD",
-    bgGradient: "linear-gradient(165deg, #F8FAFD 0%, #EBF2FC 100%)",
-    bgPattern: "radial-gradient(rgba(37, 99, 235, 0.085) 1px, transparent 1px)",
-    frameBorder: "rgba(37, 99, 235, 0.16)",
+    bgColor: "#EFF4FC",
+    bgGradient: "linear-gradient(160deg, #F8FAFE 0%, #E6EEF9 100%)",
+    bgPattern: "radial-gradient(rgba(37, 99, 235, 0.075) 1px, transparent 1px)",
+    frameBorder: "rgba(30, 64, 175, 0.17)",
     cardBg: "#FFFFFF",
-    cardBorder: "rgba(30, 64, 175, 0.12)",
-    cardShadow: "0 4px 16px rgba(30, 64, 175, 0.055)",
-    ink: "#111C30",
-    secondary: "#3B4C6B",
-    muted: "#6E7F9E",
+    cardMutedBg: "#E1EBF8",
+    cardBorder: "rgba(30, 64, 175, 0.13)",
+    cardShadow: "0 8px 24px rgba(30, 64, 175, 0.06)",
+    ink: "#0F1A2E",
+    secondary: "#364766",
+    muted: "#687998",
     accent: "#2563EB",
-    accentSoft: "rgba(37, 99, 235, 0.1)",
-    highlightMark: "linear-gradient(180deg, transparent 58%, rgba(191, 219, 254, 0.85) 58%)",
-    spineColor: "#60A5FA",
-    quoteBg: "#E6EFFD",
-    quoteInk: "#111C30",
+    accentSoft: "rgba(37, 99, 235, 0.11)",
+    highlightMark: "linear-gradient(180deg, transparent 58%, rgba(186, 214, 254, 0.88) 58%)",
+    spineColor: "#5B9BF8",
+    quoteBg: "#E4EEFC",
+    quoteInk: "#0F1A2E",
     quoteBorder: "#2563EB",
+    clothBg: "linear-gradient(145deg, #1E40AF 0%, #13286E 100%)",
+    clothInk: "#F4F8FF",
+    clothAccent: "#93C5FD",
+    tapeBg: "rgba(96, 165, 250, 0.34)",
     serifTitle: false,
     tactileBorder: false,
+    isDark: false,
   },
 };
 
@@ -363,93 +424,271 @@ function formatTitleHtml(rawTitle: string): string {
   return escapeHtml(trimmed);
 }
 
+function resolveDisplayBookTitle(payload: ConceptVisualPayload): string {
+  const explicit = (payload.bookTitle ?? "").replace(/^《|》$/g, "").trim();
+  if (explicit) return explicit;
+  const fromSub = /《([^《》\n]{1,34})》/.exec(payload.subtitle)?.[1]?.trim();
+  if (fromSub) return fromSub;
+  const fromTitle = /《([^《》\n]{1,34})》/.exec(payload.title)?.[1]?.trim();
+  if (fromTitle) return fromTitle;
+  return payload.title.replace(/^《|》$/g, "").trim().slice(0, 18) || "精选共读";
+}
+
+function render3DBookHtml(
+  payload: ConceptVisualPayload,
+  size: "hero" | "mini",
+): string {
+  const safeCover = sanitizeCoverDataUrl(payload.coverDataUrl);
+  const bookLabel = resolveDisplayBookTitle(payload);
+  const authorLabel = (payload.author ?? "").trim();
+  const cls = size === "hero" ? "book-3d is-hero" : "book-3d is-mini";
+
+  if (safeCover) {
+    return `
+      <div class="${cls}">
+        <div class="book-3d-pages" aria-hidden="true"></div>
+        <div class="book-3d-face">
+          <img class="book-3d-img" src="${safeCover}" alt="" />
+          <span class="book-3d-spine" aria-hidden="true"></span>
+          <span class="book-3d-sheen" aria-hidden="true"></span>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="${cls} is-cloth">
+      <div class="book-3d-pages" aria-hidden="true"></div>
+      <div class="book-3d-face book-cloth-face">
+        <div class="book-cloth-frame">
+          <span class="book-cloth-kicker">EX LIBRIS</span>
+          <div class="book-cloth-title">${escapeHtml(bookLabel.slice(0, 20))}</div>
+          ${
+            authorLabel && size === "hero"
+              ? `<div class="book-cloth-author">${escapeHtml(authorLabel.slice(0, 16))}</div>`
+              : `<div class="book-cloth-ornament">✦</div>`
+          }
+        </div>
+        <span class="book-3d-spine" aria-hidden="true"></span>
+        <span class="book-3d-sheen" aria-hidden="true"></span>
+      </div>
+    </div>
+  `;
+}
+
+function renderBrushUnderlineSvg(color: string): string {
+  return `<svg class="brush-svg" viewBox="0 0 220 14" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M3 9.5C54 3.2 142 2.4 217 7.2" stroke="${color}" stroke-width="3.2" stroke-linecap="round" opacity="0.82"/>
+    <path d="M24 12.2C82 8.4 156 8.1 204 10.6" stroke="${color}" stroke-width="1.5" stroke-linecap="round" opacity="0.45"/>
+  </svg>`;
+}
+
 export const CONCEPT_CARD_WIDTH = 540;
 export const CONCEPT_CARD_HEIGHT = 720;
 
-function renderCoverBody(payload: ConceptVisualPayload): string {
+/**
+ * Layout 1: 爆款书封首图 (`cover`)
+ * Minimal poster copy + high-tension headline + tactile 3D book object + piercing pull-quote.
+ */
+function renderCoverBody(payload: ConceptVisualPayload, pal: ThemePalette): string {
   const branches = payload.branches.slice(0, 4);
   const focalQuote =
     payload.callout
     || branches[0]?.points[0]
     || branches[0]?.heading
-    || "把书里的判断，变成自己的坐标系。";
+    || "真正决定差距的，从来不是你知道多少，而是你用哪套坐标系做判断。";
+  const showBook = payload.showBookCover !== false;
+  const bookLabel = resolveDisplayBookTitle(payload);
+  const authorSuffix = payload.author?.trim() ? ` · ${payload.author.trim()}` : "";
 
-  const teaserItems = branches
+  const indexRows = branches
     .slice(0, 3)
     .map(
       (b, idx) => `
-        <div class="cover-teaser-row">
-          <span class="cover-teaser-num">0${idx + 1}</span>
-          <span class="cover-teaser-text">${escapeHtml(b.heading)}</span>
+        <div class="cover-idx-row">
+          <span class="cover-idx-num">0${idx + 1}</span>
+          <span class="cover-idx-text">${escapeHtml(b.heading)}</span>
         </div>
       `,
     )
     .join("");
 
   return `
-    <div class="cover-layout">
-      <div class="cover-hero">
-        <div class="cover-kicker-row">
-          <span class="kicker-tag">READING NOTES · 读后拆解</span>
-          <span class="cover-dots">✦ ✦ ✦</span>
-        </div>
-        <h1 class="cover-title ${payload.title.trim().startsWith("《") ? "hang-punct" : ""}"><span class="hl-mark">${formatTitleHtml(payload.title)}</span></h1>
-        <div class="cover-sub">${escapeHtml(payload.subtitle)}</div>
+    <div class="cover-poster">
+      <div class="cover-masthead">
+        <span class="kicker-tag">READING NOTES · 读后拆解</span>
+        <span class="cover-issue">《${escapeHtml(bookLabel.slice(0, 14))}》${escapeHtml(authorSuffix.slice(0, 10))}</span>
       </div>
 
-      <div class="cover-quote-card">
-        <div class="cover-quote-mark" aria-hidden="true">“</div>
-        <div class="cover-quote-text">${escapeHtml(focalQuote)}</div>
+      <div class="cover-headline-zone">
+        <h1 class="cover-poster-title ${payload.title.trim().startsWith("《") ? "hang-punct" : ""}">
+          <span class="hl-mark">${formatTitleHtml(payload.title)}</span>
+        </h1>
+        ${renderBrushUnderlineSvg(pal.accent)}
+        <div class="cover-poster-sub">${escapeHtml(payload.subtitle)}</div>
       </div>
 
-      <div class="cover-teasers">
-        <div class="cover-teasers-label">本篇核心拆解</div>
-        ${teaserItems}
-      </div>
+      ${
+        showBook
+          ? `
+            <div class="cover-showcase">
+              <div class="cover-book-pedestal">
+                ${render3DBookHtml(payload, "hero")}
+              </div>
+              <div class="cover-insight-col">
+                <div class="cover-pullquote">
+                  <div class="cover-qmark" aria-hidden="true">“</div>
+                  <div class="cover-qtext">${escapeHtml(focalQuote)}</div>
+                </div>
+                <div class="cover-idx-list">
+                  ${indexRows}
+                </div>
+              </div>
+            </div>
+          `
+          : `
+            <div class="cover-pure-quote">
+              <div class="cover-qmark" aria-hidden="true">“</div>
+              <div class="cover-pure-qtext">${escapeHtml(focalQuote)}</div>
+            </div>
+            <div class="cover-idx-list is-wide">
+              ${indexRows}
+            </div>
+          `
+      }
     </div>
   `;
 }
 
-function renderMindmapBody(payload: ConceptVisualPayload, pal: ThemePalette): string {
-  const branches = payload.branches.slice(0, 5);
-  const dense = branches.length >= 4;
+/**
+ * Layout 2: 认知反差对撞卡 (`versus`)
+ * High-CTR Xiaohongshu cognitive shift archetype: ❌ Common Intuition vs ✦ Book's Deep Truth.
+ */
+function renderVersusBody(payload: ConceptVisualPayload, pal: ThemePalette): string {
+  const b0 = payload.branches[0] ?? { heading: "多数人的惯性直觉", points: ["容易被表面因果与短期情绪带着走"] };
+  const b1 = payload.branches[1] ?? {
+    heading: payload.callout || "书里的底层真相",
+    points: [b0.points[0] || "穿透表象，建立可复用的长期决策坐标系"],
+  };
+  const takeaway =
+    payload.callout
+    || payload.branches[2]?.heading
+    || payload.branches[2]?.points[0]
+    || b1.points[0]
+    || "换一副眼镜看问题，答案往往在反面。";
 
-  const nodesHtml = branches
+  return `
+    <div class="page-head">
+      <div class="page-head-top">
+        <span class="kicker-tag">COGNITIVE SHIFT · 认知反差</span>
+        <span class="page-head-count">直觉误区 vs 底层真相</span>
+      </div>
+      <h1 class="page-title ${payload.title.trim().startsWith("《") ? "hang-punct" : ""}"><span class="hl-mark">${formatTitleHtml(payload.title)}</span></h1>
+      <div class="page-sub">${escapeHtml(payload.subtitle)}</div>
+    </div>
+
+    <div class="vs-arena">
+      <div class="vs-card is-myth">
+        <div class="vs-badge-row">
+          <span class="vs-pill myth">✕ 多数人的直觉 / 误区</span>
+          <span class="vs-tag-en">BEFORE</span>
+        </div>
+        <div class="vs-card-title">${escapeHtml(b0.heading)}</div>
+        ${b0.points[0] ? `<div class="vs-card-desc">${escapeHtml(b0.points[0])}</div>` : ""}
+      </div>
+
+      <div class="vs-bridge" aria-hidden="true">
+        <div class="vs-divider-line"></div>
+        <div class="vs-medallion">
+          <span>VS · 认知重构</span>
+          <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M9 3V14.5M9 14.5L4.5 10M9 14.5L13.5 10" stroke="${pal.accent}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="vs-divider-line"></div>
+      </div>
+
+      <div class="vs-card is-truth">
+        <div class="vs-badge-row">
+          <span class="vs-pill truth">✦ 书里的底层真相</span>
+          <span class="vs-tag-en">INSIGHT</span>
+        </div>
+        <div class="vs-card-title"><span class="hl-mark">${escapeHtml(b1.heading)}</span></div>
+        ${b1.points[0] ? `<div class="vs-card-desc">${escapeHtml(b1.points[0])}</div>` : ""}
+      </div>
+    </div>
+
+    <div class="vs-takeaway">
+      <span class="vs-takeaway-label">行动启示</span>
+      <span class="vs-takeaway-text">${escapeHtml(takeaway)}</span>
+    </div>
+  `;
+}
+
+/**
+ * Layout 3: 手绘感视觉笔记导图 (`mindmap`)
+ * Replaces corporate boxes-on-a-stick with a warm iPad GoodNotes / Procreate sketchnote grid
+ * featuring a hand-circled core anchor, organic curved SVG connectors, and washi-tape cards.
+ */
+function renderMindmapBody(payload: ConceptVisualPayload, pal: ThemePalette): string {
+  const branches = payload.branches.slice(0, 4);
+  const coreLabel = resolveDisplayBookTitle(payload);
+  const gridClass =
+    branches.length === 1
+      ? "sketch-grid count-1"
+      : branches.length === 2
+        ? "sketch-grid count-2"
+        : branches.length === 3
+          ? "sketch-grid count-3"
+          : "sketch-grid count-4";
+
+  const cardsHtml = branches
     .map((b, idx) => {
       const point = b.points[0] || "";
-      const isFirst = idx === 0;
-      const isLast = idx === branches.length - 1;
+      const featured = branches.length === 3 && idx === 0;
       return `
-        <div class="tree-row ${isFirst ? "is-first" : ""} ${isLast ? "is-last" : ""}">
-          <div class="tree-rail" aria-hidden="true">
-            <span class="tree-trunk"></span>
-            <svg class="tree-arm-svg" width="22" height="12" viewBox="0 0 22 12" xmlns="http://www.w3.org/2000/svg">
-              <line x1="0" y1="6" x2="18" y2="6" stroke="${pal.spineColor}" stroke-width="1.8" stroke-linecap="round" />
-              <circle cx="19" cy="6" r="2.2" fill="${pal.accent}" />
+        <div class="sketch-card ${featured ? "is-wide" : ""}">
+          <span class="sketch-tape" aria-hidden="true"></span>
+          <div class="sketch-card-top">
+            <span class="sketch-num">0${idx + 1}</span>
+            <svg class="sketch-spark" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M8 1.5L9.4 6.6L14.5 8L9.4 9.4L8 14.5L6.6 9.4L1.5 8L6.6 6.6L8 1.5Z" stroke="${pal.accent}" stroke-width="1.4" stroke-linejoin="round"/>
             </svg>
-            <span class="tree-node-badge">0${idx + 1}</span>
           </div>
-          <div class="tree-card">
-            <div class="tree-card-head">${escapeHtml(b.heading)}</div>
-            ${point ? `<div class="tree-card-sub">${escapeHtml(point)}</div>` : ""}
-          </div>
+          <div class="sketch-head">${escapeHtml(b.heading)}</div>
+          ${point ? `<div class="sketch-desc">${escapeHtml(point)}</div>` : ""}
         </div>
       `;
     })
     .join("");
 
   return `
-    <div class="page-head">
+    <div class="page-head is-compact">
       <div class="page-head-top">
-        <span class="kicker-tag">MINDMAP · 读书导图</span>
-        <span class="page-head-count">${branches.length} 个核心观点</span>
+        <span class="kicker-tag">MINDMAP · 视觉笔记</span>
+        <span class="page-head-count">${branches.length} 组核心脉络</span>
       </div>
       <h1 class="page-title ${payload.title.trim().startsWith("《") ? "hang-punct" : ""}"><span class="hl-mark">${formatTitleHtml(payload.title)}</span></h1>
-      <div class="page-sub">${escapeHtml(payload.subtitle)}</div>
     </div>
 
-    <div class="tree-wrap ${dense ? "is-dense" : ""}">
-      ${nodesHtml}
+    <div class="sketch-core-stage">
+      <div class="sketch-core-node">
+        <svg class="sketch-loop-svg" viewBox="0 0 260 56" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M16 28C16 12 68 5 132 6C198 7 246 15 245 29C244 43 192 51 128 50C62 49 14 41 20 25" stroke="${pal.accent}" stroke-width="1.8" stroke-linecap="round" opacity="0.72"/>
+          <path d="M24 31C28 16 74 9 135 9.5C194 10 239 18 238 30" stroke="${pal.spineColor}" stroke-width="1.1" stroke-linecap="round" stroke-dasharray="4 4" opacity="0.65"/>
+        </svg>
+        <span class="sketch-core-text">✦ ${escapeHtml(coreLabel.slice(0, 16))}</span>
+      </div>
+      <svg class="sketch-branches-svg" viewBox="0 0 420 26" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M210 2C168 12 118 14 96 24" stroke="${pal.spineColor}" stroke-width="1.7" stroke-linecap="round"/>
+        <path d="M210 2C252 12 302 14 324 24" stroke="${pal.spineColor}" stroke-width="1.7" stroke-linecap="round"/>
+        <circle cx="96" cy="24" r="2.6" fill="${pal.accent}"/>
+        <circle cx="324" cy="24" r="2.6" fill="${pal.accent}"/>
+      </svg>
+    </div>
+
+    <div class="${gridClass}">
+      ${cardsHtml}
     </div>
 
     ${
@@ -465,19 +704,25 @@ function renderMindmapBody(payload: ConceptVisualPayload, pal: ThemePalette): st
   `;
 }
 
+/**
+ * Layout 4: 单读风杂志书摘长图 (`infographic`)
+ * Pure Kinfolk / 单读 print broadsheet: miniature 3D book header + thick-thin double rule +
+ * oversized italic editorial numerals with zero boxy SaaS card borders.
+ */
 function renderInfographicBody(payload: ConceptVisualPayload): string {
-  const branches = payload.branches.slice(0, 5);
+  const branches = payload.branches.slice(0, 4);
   const dense = branches.length >= 4;
+  const showBook = payload.showBookCover !== false;
 
-  const cardsHtml = branches
+  const rowsHtml = branches
     .map((b, idx) => {
       const point = b.points[0] || "";
       return `
-        <div class="info-item">
-          <div class="info-idx">0${idx + 1}</div>
-          <div class="info-body">
-            <div class="info-head">${escapeHtml(b.heading)}</div>
-            ${point ? `<div class="info-desc">${escapeHtml(point)}</div>` : ""}
+        <div class="broadsheet-row">
+          <div class="broadsheet-num">0${idx + 1}</div>
+          <div class="broadsheet-content">
+            <div class="broadsheet-head"><span class="hl-mark">${escapeHtml(b.heading)}</span></div>
+            ${point ? `<div class="broadsheet-desc">${escapeHtml(point)}</div>` : ""}
           </div>
         </div>
       `;
@@ -485,17 +730,20 @@ function renderInfographicBody(payload: ConceptVisualPayload): string {
     .join("");
 
   return `
-    <div class="page-head">
-      <div class="page-head-top">
-        <span class="kicker-tag">FRAMEWORK · 干货清单</span>
-        <span class="page-head-count">${branches.length} 条关键洞察</span>
+    <div class="broadsheet-header">
+      <div class="broadsheet-header-main">
+        <div class="page-head-top">
+          <span class="kicker-tag">FRAMEWORK · 深度拆解</span>
+          <span class="page-head-count">01 — 0${branches.length}</span>
+        </div>
+        <h1 class="page-title ${payload.title.trim().startsWith("《") ? "hang-punct" : ""}">${formatTitleHtml(payload.title)}</h1>
+        <div class="page-sub">${escapeHtml(payload.subtitle)}</div>
       </div>
-      <h1 class="page-title ${payload.title.trim().startsWith("《") ? "hang-punct" : ""}"><span class="hl-mark">${formatTitleHtml(payload.title)}</span></h1>
-      <div class="page-sub">${escapeHtml(payload.subtitle)}</div>
+      ${showBook ? `<div class="broadsheet-mini-book">${render3DBookHtml(payload, "mini")}</div>` : ""}
     </div>
 
-    <div class="info-stack ${dense ? "is-dense" : ""}">
-      ${cardsHtml}
+    <div class="broadsheet-list ${dense ? "is-dense" : ""}">
+      ${rowsHtml}
     </div>
 
     ${
@@ -517,16 +765,18 @@ export function renderConceptVisualHtml(payload: ConceptVisualPayload): string {
     ? `"Songti SC", "STSong", "Noto Serif SC", "Source Han Serif SC", Georgia, serif`
     : `-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", sans-serif`;
   const titleLen = payload.title.trim().length;
-  const pageTitleSize = titleLen > 18 ? 23 : titleLen > 12 ? 26 : 30;
-  const coverTitleSize = titleLen > 18 ? 29 : titleLen > 12 ? 33 : 39;
+  const pageTitleSize = titleLen > 20 ? 22 : titleLen > 14 ? 25 : 28;
+  const coverTitleSize = titleLen > 20 ? 31 : titleLen > 14 ? 36 : 42;
   const showColophon = payload.showColophon !== false;
 
   const bodyHtml =
     payload.layout === "cover"
-      ? renderCoverBody(payload)
-      : payload.layout === "mindmap"
-        ? renderMindmapBody(payload, pal)
-        : renderInfographicBody(payload);
+      ? renderCoverBody(payload, pal)
+      : payload.layout === "versus"
+        ? renderVersusBody(payload, pal)
+        : payload.layout === "mindmap"
+          ? renderMindmapBody(payload, pal)
+          : renderInfographicBody(payload);
 
   const bgLayers = `${pal.bgPattern}, ${pal.bgGradient}`;
   const bgSizes = payload.theme === "memo-grid" ? "22px 22px, 22px 22px, 100% 100%" : "18px 18px, 100% 100%";
@@ -548,7 +798,7 @@ export function renderConceptVisualHtml(payload: ConceptVisualPayload): string {
   .canvas {
     width: ${CONCEPT_CARD_WIDTH}px;
     height: ${CONCEPT_CARD_HEIGHT}px;
-    padding: 20px;
+    padding: 18px;
     background-color: ${pal.bgColor};
     background-image: ${bgLayers};
     background-size: ${bgSizes};
@@ -557,42 +807,49 @@ export function renderConceptVisualHtml(payload: ConceptVisualPayload): string {
     flex-direction: column;
     position: relative;
   }
-  .nowrap-seg {
-    white-space: nowrap;
+  .paper-grain {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: ${pal.isDark ? "0.045" : "0.032"};
+    pointer-events: none;
+    z-index: 2;
   }
-  .hang-punct {
-    margin-left: -0.36em;
-  }
+  .nowrap-seg { white-space: nowrap; }
+  .hang-punct { margin-left: -0.34em; }
+
   .sheet {
     flex: 1;
     min-height: 0;
     border: 1px solid ${pal.frameBorder};
     border-radius: ${pal.tactileBorder ? "14px" : "20px"};
-    padding: 26px 26px 18px;
+    padding: 24px 26px 18px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
     position: relative;
     overflow: hidden;
+    z-index: 1;
   }
   .main-body {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 13px;
   }
   .kicker-tag {
     display: inline-flex;
     align-items: center;
-    padding: 3px 9px;
+    padding: 3px 10px;
     border-radius: ${pal.tactileBorder ? "6px" : "999px"};
     background: ${pal.accentSoft};
     color: ${pal.tactileBorder ? pal.ink : pal.accent};
-    border: ${pal.tactileBorder ? `1px solid ${pal.cardBorder}` : "none"};
-    font-size: 10.5px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
+    border: ${pal.tactileBorder ? `1.2px solid ${pal.cardBorder}` : "none"};
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.09em;
     text-transform: uppercase;
   }
   .hl-mark {
@@ -601,14 +858,154 @@ export function renderConceptVisualHtml(payload: ConceptVisualPayload): string {
     box-decoration-break: clone;
     -webkit-box-decoration-break: clone;
   }
+  .brush-svg {
+    width: 168px;
+    height: 11px;
+    margin-top: -2px;
+  }
 
-  /* ---- Shared Header (Mindmap & Infographic) ---- */
+  /* ---- Tactile 3D Hardcover Book Object ---- */
+  .book-3d {
+    position: relative;
+    flex-shrink: 0;
+  }
+  .book-3d.is-hero {
+    width: 146px;
+    height: 206px;
+    transform: rotate(-3deg);
+  }
+  .book-3d.is-mini {
+    width: 58px;
+    height: 82px;
+    transform: rotate(2deg);
+  }
+  .book-3d-pages {
+    position: absolute;
+    inset: 3px -6px -5px 6px;
+    border-radius: 3px 6px 6px 3px;
+    background: repeating-linear-gradient(
+      90deg,
+      #FAF7F0 0px,
+      #FAF7F0 1.5px,
+      #E3DDD1 1.5px,
+      #E3DDD1 2.5px
+    );
+    border: 1px solid rgba(0, 0, 0, 0.14);
+    box-shadow: ${
+      pal.isDark
+        ? "0 20px 34px rgba(0, 0, 0, 0.62), 0 6px 12px rgba(0, 0, 0, 0.4)"
+        : "0 20px 34px rgba(34, 24, 14, 0.22), 0 5px 12px rgba(34, 24, 14, 0.12)"
+    };
+  }
+  .book-3d.is-mini .book-3d-pages {
+    inset: 2px -3px -3px 3px;
+    box-shadow: 0 8px 16px rgba(24, 18, 12, 0.18);
+  }
+  .book-3d-face {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 3px 6px 6px 3px;
+    overflow: hidden;
+    background: ${pal.cardBg};
+    border: 1px solid rgba(0, 0, 0, 0.18);
+  }
+  .book-3d-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .book-3d-spine {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.36) 0%,
+      rgba(0, 0, 0, 0.28) 3.8%,
+      rgba(255, 255, 255, 0.22) 6.5%,
+      rgba(0, 0, 0, 0.05) 10%,
+      transparent 20%
+    );
+    pointer-events: none;
+  }
+  .book-3d-sheen {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(130deg, rgba(255, 255, 255, 0.18) 0%, transparent 46%, rgba(0, 0, 0, 0.12) 100%);
+    pointer-events: none;
+  }
+  .book-cloth-face {
+    background: ${pal.clothBg};
+    color: ${pal.clothInk};
+    padding: 12px 11px 12px 15px;
+    display: flex;
+  }
+  .book-3d.is-mini .book-cloth-face {
+    padding: 5px 5px 5px 7px;
+  }
+  .book-cloth-frame {
+    flex: 1;
+    border: 1px solid ${pal.clothAccent};
+    border-radius: 2px;
+    padding: 10px 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    text-align: center;
+  }
+  .book-3d.is-mini .book-cloth-frame {
+    padding: 4px 3px;
+  }
+  .book-cloth-kicker {
+    font-size: 7.5px;
+    letter-spacing: 0.18em;
+    color: ${pal.clothAccent};
+    font-weight: 700;
+  }
+  .book-3d.is-mini .book-cloth-kicker { display: none; }
+  .book-cloth-title {
+    font-family: "Songti SC", "STSong", "Noto Serif SC", Georgia, serif;
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1.35;
+    color: ${pal.clothInk};
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+  }
+  .book-3d.is-mini .book-cloth-title {
+    font-size: 8.5px;
+    -webkit-line-clamp: 3;
+  }
+  .book-cloth-author {
+    font-size: 9.5px;
+    color: ${pal.clothAccent};
+    letter-spacing: 0.05em;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .book-cloth-ornament {
+    font-size: 10px;
+    color: ${pal.clothAccent};
+  }
+
+  /* ---- Shared Editorial Page Head ---- */
   .page-head {
     display: flex;
     flex-direction: column;
-    gap: 7px;
-    padding-bottom: 12px;
+    gap: 6px;
+    padding-bottom: 11px;
     border-bottom: 1px solid ${pal.frameBorder};
+    flex-shrink: 0;
+  }
+  .page-head.is-compact {
+    padding-bottom: 9px;
   }
   .page-head-top {
     display: flex;
@@ -617,347 +1014,504 @@ export function renderConceptVisualHtml(payload: ConceptVisualPayload): string {
     gap: 8px;
   }
   .page-head-count {
-    font-size: 11px;
-    font-weight: 600;
+    font-size: 10.5px;
+    font-weight: 700;
     color: ${pal.muted};
-    letter-spacing: 0.03em;
+    letter-spacing: 0.05em;
   }
   .page-title {
     font-family: ${titleFont};
     font-size: ${pageTitleSize}px;
-    font-weight: 800;
-    line-height: 1.28;
-    letter-spacing: -0.015em;
+    font-weight: 900;
+    line-height: 1.26;
+    letter-spacing: -0.02em;
     color: ${pal.ink};
     word-break: break-word;
   }
   .page-sub {
-    font-size: 12px;
+    font-size: 11.5px;
     color: ${pal.muted};
-    letter-spacing: 0.02em;
+    letter-spacing: 0.03em;
   }
 
-  /* ---- Layout 1: Magazine Cover (小红书首图) ---- */
-  .cover-layout {
+  /* ---- Layout 1: Cover Poster (爆款书封首图) ---- */
+  .cover-poster {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    gap: 16px;
+    gap: 14px;
   }
-  .cover-hero {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding-top: 6px;
-  }
-  .cover-kicker-row {
+  .cover-masthead {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
+    padding-bottom: 10px;
+    border-bottom: 1.5px solid ${pal.ink};
   }
-  .cover-dots {
+  .cover-issue {
     font-size: 11px;
-    letter-spacing: 0.25em;
-    color: ${pal.accent};
-    opacity: 0.72;
+    font-weight: 600;
+    color: ${pal.secondary};
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .cover-title {
+  .cover-headline-zone {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    padding: 6px 0 2px;
+  }
+  .cover-poster-title {
     font-family: ${titleFont};
     font-size: ${coverTitleSize}px;
     font-weight: 900;
-    line-height: 1.25;
-    letter-spacing: -0.02em;
+    line-height: 1.22;
+    letter-spacing: -0.025em;
     color: ${pal.ink};
     word-break: break-word;
   }
-  .cover-sub {
-    font-size: 13px;
-    font-weight: 500;
+  .cover-poster-sub {
+    font-size: 12.5px;
+    font-weight: 600;
     color: ${pal.muted};
     letter-spacing: 0.04em;
   }
-  .cover-quote-card {
+  .cover-showcase {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 162px 1fr;
+    gap: 20px;
+    align-items: center;
+    padding: 8px 4px 4px;
+  }
+  .cover-book-pedestal {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 0;
+  }
+  .cover-insight-col {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+  }
+  .cover-pullquote {
     position: relative;
-    padding: 22px 22px 20px 24px;
-    border-radius: ${pal.tactileBorder ? "12px" : "16px"};
+    padding: 14px 16px 14px 18px;
+    border-radius: ${pal.tactileBorder ? "10px" : "14px"};
     background: ${pal.cardBg};
-    border: ${pal.tactileBorder ? `1.6px solid ${pal.cardBorder}` : `1px solid ${pal.cardBorder}`};
+    border: ${pal.tactileBorder ? `1.5px solid ${pal.cardBorder}` : `1px solid ${pal.cardBorder}`};
     box-shadow: ${pal.cardShadow};
   }
-  .cover-quote-mark {
+  .cover-qmark {
     font-family: Georgia, "Songti SC", serif;
-    font-size: 46px;
-    line-height: 0.8;
+    font-size: 36px;
+    line-height: 0.78;
     color: ${pal.accent};
-    opacity: 0.78;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
   }
-  .cover-quote-text {
+  .cover-qtext {
     font-family: ${titleFont};
-    font-size: 18px;
+    font-size: 15px;
     font-weight: 700;
-    line-height: 1.62;
+    line-height: 1.56;
     color: ${pal.ink};
     display: -webkit-box;
     -webkit-line-clamp: 4;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  .cover-teasers {
+  .cover-pure-quote {
+    padding: 22px 24px;
+    border-radius: 16px;
+    background: ${pal.cardBg};
+    border: 1px solid ${pal.cardBorder};
+    box-shadow: ${pal.cardShadow};
+  }
+  .cover-pure-qtext {
+    font-family: ${titleFont};
+    font-size: 19px;
+    font-weight: 700;
+    line-height: 1.62;
+    color: ${pal.ink};
+  }
+  .cover-idx-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 14px 16px;
-    border-radius: ${pal.tactileBorder ? "12px" : "14px"};
-    background: ${pal.quoteBg};
-    border: ${pal.tactileBorder ? `1.4px solid ${pal.cardBorder}` : `1px solid ${pal.frameBorder}`};
   }
-  .cover-teasers-label {
-    font-size: 10.5px;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    color: ${pal.muted};
-    margin-bottom: 2px;
-  }
-  .cover-teaser-row {
+  .cover-idx-row {
     display: flex;
     align-items: baseline;
-    gap: 10px;
+    gap: 9px;
+    padding: 7.5px 2px;
+    border-bottom: 1px dashed ${pal.frameBorder};
   }
-  .cover-teaser-num {
+  .cover-idx-row:last-child { border-bottom: none; }
+  .cover-idx-num {
     font-family: Georgia, serif;
+    font-style: italic;
     font-size: 13px;
     font-weight: 800;
     color: ${pal.accent};
     flex-shrink: 0;
   }
-  .cover-teaser-text {
-    font-size: 13.5px;
-    font-weight: 600;
+  .cover-idx-text {
+    font-size: 12.8px;
+    font-weight: 700;
     color: ${pal.ink};
-    line-height: 1.4;
+    line-height: 1.38;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  /* ---- Layout 2: Vertical Spine Editorial Mindmap (竖版结构导图) ---- */
-  .tree-wrap {
+  /* ---- Layout 2: Versus Cognitive Shift (认知反差卡) ---- */
+  .vs-arena {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
     justify-content: center;
+    gap: 8px;
   }
-  .tree-row {
+  .vs-card {
+    padding: 18px 20px;
+    border-radius: ${pal.tactileBorder ? "12px" : "16px"};
     display: flex;
-    align-items: stretch;
-    gap: 2px;
+    flex-direction: column;
+    gap: 8px;
   }
-  .tree-rail {
-    width: 36px;
-    flex-shrink: 0;
-    position: relative;
+  .vs-card.is-myth {
+    background: ${pal.cardMutedBg};
+    border: 1px dashed ${pal.frameBorder};
+    color: ${pal.secondary};
   }
-  .tree-trunk {
-    position: absolute;
-    left: 11px;
-    top: 0;
-    bottom: 0;
-    width: 2px;
-    background: ${pal.spineColor};
-    opacity: 0.72;
-  }
-  .tree-row.is-first .tree-trunk {
-    top: 30px;
-  }
-  .tree-row.is-last .tree-trunk {
-    bottom: auto;
-    height: 30px;
-  }
-  .tree-row.is-first.is-last .tree-trunk {
-    display: none;
-  }
-  .tree-arm-svg {
-    position: absolute;
-    left: 14px;
-    top: 24px;
-    z-index: 1;
-    overflow: visible;
-  }
-  .tree-node-badge {
-    position: absolute;
-    left: 1px;
-    top: 19px;
-    width: 22px;
-    height: 22px;
-    border-radius: 999px;
+  .vs-card.is-truth {
     background: ${pal.cardBg};
-    border: 1.8px solid ${pal.accent};
-    color: ${pal.accent};
-    font-size: 10px;
-    font-weight: 800;
+    border: ${pal.tactileBorder ? `1.8px solid ${pal.cardBorder}` : `1.5px solid ${pal.accent}`};
+    box-shadow: ${pal.cardShadow};
+  }
+  .vs-badge-row {
     display: flex;
     align-items: center;
-    justify-content: center;
-    z-index: 2;
+    justify-content: space-between;
   }
-  .tree-card {
+  .vs-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+  }
+  .vs-pill.myth {
+    background: rgba(120, 113, 108, 0.16);
+    color: ${pal.muted};
+  }
+  .vs-pill.truth {
+    background: ${pal.accentSoft};
+    color: ${pal.tactileBorder ? pal.ink : pal.accent};
+  }
+  .vs-tag-en {
+    font-size: 9.5px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    color: ${pal.muted};
+    opacity: 0.7;
+  }
+  .vs-card-title {
+    font-family: ${titleFont};
+    font-size: 19px;
+    font-weight: 800;
+    line-height: 1.35;
+    color: ${pal.ink};
+  }
+  .vs-card.is-myth .vs-card-title {
+    color: ${pal.secondary};
+    font-size: 17.5px;
+  }
+  .vs-card-desc {
+    font-size: 13px;
+    line-height: 1.56;
+    color: ${pal.secondary};
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .vs-bridge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px;
+  }
+  .vs-divider-line {
+    flex: 1;
+    height: 1px;
+    background: ${pal.frameBorder};
+  }
+  .vs-medallion {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: ${pal.cardBg};
+    border: 1.2px solid ${pal.accent};
+    color: ${pal.accent};
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+  }
+  .vs-takeaway {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 14px;
+    border-radius: 12px;
+    background: ${pal.quoteBg};
+    border-left: 3.5px solid ${pal.quoteBorder};
+    flex-shrink: 0;
+  }
+  .vs-takeaway-label {
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    padding: 2px 7px;
+    border-radius: 5px;
+    background: ${pal.accent};
+    color: ${pal.isDark ? "#111216" : "#FFFDF9"};
+    flex-shrink: 0;
+  }
+  .vs-takeaway-text {
+    font-size: 12.8px;
+    font-weight: 700;
+    color: ${pal.quoteInk};
+    line-height: 1.42;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* ---- Layout 3: Sketchnote Bento Mindmap (手绘感视觉笔记) ---- */
+  .sketch-core-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex-shrink: 0;
+    margin-top: -2px;
+  }
+  .sketch-core-node {
+    position: relative;
+    padding: 9px 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .sketch-loop-svg {
+    position: absolute;
+    inset: -4px -12px;
+    width: calc(100% + 24px);
+    height: calc(100% + 8px);
+    pointer-events: none;
+  }
+  .sketch-core-text {
+    font-family: ${titleFont};
+    font-size: 13.5px;
+    font-weight: 800;
+    color: ${pal.ink};
+    letter-spacing: 0.03em;
+    position: relative;
+    z-index: 1;
+  }
+  .sketch-branches-svg {
+    width: 340px;
+    height: 20px;
+    margin-top: -2px;
+  }
+  .sketch-grid {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    align-content: center;
+  }
+  .sketch-grid.count-1,
+  .sketch-grid.count-2 {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .sketch-card {
+    position: relative;
+    padding: 15px 15px 14px;
+    border-radius: ${pal.tactileBorder ? "10px" : "14px"};
+    background: ${pal.cardBg};
+    border: 1.4px solid ${pal.cardBorder};
+    box-shadow: 3px 3px 0 ${pal.frameBorder};
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .sketch-card.is-wide {
+    grid-column: 1 / -1;
+  }
+  .sketch-tape {
+    position: absolute;
+    top: -6px;
+    left: 18px;
+    width: 44px;
+    height: 12px;
+    border-radius: 2px;
+    background: ${pal.tapeBg};
+    transform: rotate(-2.5deg);
+  }
+  .sketch-card:nth-child(even) .sketch-tape {
+    left: auto;
+    right: 20px;
+    transform: rotate(2.5deg);
+  }
+  .sketch-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sketch-num {
+    font-family: Georgia, serif;
+    font-style: italic;
+    font-size: 14px;
+    font-weight: 900;
+    color: ${pal.accent};
+  }
+  .sketch-head {
+    font-family: ${titleFont};
+    font-size: 15.5px;
+    font-weight: 800;
+    line-height: 1.34;
+    color: ${pal.ink};
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .sketch-desc {
+    font-size: 12.2px;
+    line-height: 1.5;
+    color: ${pal.secondary};
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* ---- Layout 4: Broadsheet Magazine Infographic (单读风书摘长图) ---- */
+  .broadsheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 13px;
+    border-bottom: 2.5px double ${pal.ink};
+    flex-shrink: 0;
+  }
+  .broadsheet-header-main {
     flex: 1;
     min-width: 0;
-    margin-bottom: 12px;
-    padding: 13px 16px;
-    border-radius: ${pal.tactileBorder ? "11px" : "14px"};
-    background: ${pal.cardBg};
-    border: ${pal.tactileBorder ? `1.5px solid ${pal.cardBorder}` : `1px solid ${pal.cardBorder}`};
-    box-shadow: ${pal.cardShadow};
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .broadsheet-mini-book {
+    padding: 2px 6px 4px 2px;
+    flex-shrink: 0;
+  }
+  .broadsheet-list {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+  }
+  .broadsheet-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 12px 2px;
+    border-bottom: 1px solid ${pal.frameBorder};
+  }
+  .broadsheet-list.is-dense .broadsheet-row {
+    padding: 9px 2px;
+  }
+  .broadsheet-row:last-child {
+    border-bottom: none;
+  }
+  .broadsheet-num {
+    font-family: Georgia, "Songti SC", serif;
+    font-style: italic;
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1;
+    color: ${pal.accent};
+    width: 34px;
+    flex-shrink: 0;
+    padding-top: 2px;
+  }
+  .broadsheet-content {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 5px;
   }
-  .tree-row.is-last .tree-card {
-    margin-bottom: 0;
-  }
-  .tree-wrap.is-dense .tree-card {
-    margin-bottom: 8px;
-    padding: 9px 14px;
-    gap: 3px;
-  }
-  .tree-wrap.is-dense .tree-row.is-last .tree-card {
-    margin-bottom: 0;
-  }
-  .tree-card-head {
-    font-size: 15.5px;
-    font-weight: 750;
-    line-height: 1.35;
-    color: ${pal.ink};
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  .tree-wrap.is-dense .tree-card-head {
-    font-size: 14px;
-    -webkit-line-clamp: 1;
-  }
-  .tree-card-sub {
-    font-size: 12.5px;
-    line-height: 1.5;
-    color: ${pal.secondary};
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  .tree-wrap.is-dense .tree-card-sub {
-    font-size: 11.5px;
-    -webkit-line-clamp: 1;
-  }
-
-  /* ---- Layout 3: Editorial Infographic List (干货信息卡) ---- */
-  .info-stack {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 11px;
-  }
-  .info-stack.is-dense {
-    gap: 8px;
-  }
-  .info-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 14px;
-    padding: 14px 16px;
-    border-radius: ${pal.tactileBorder ? "11px" : "15px"};
-    background: ${pal.cardBg};
-    border: ${pal.tactileBorder ? `1.5px solid ${pal.cardBorder}` : `1px solid ${pal.cardBorder}`};
-    box-shadow: ${pal.cardShadow};
-  }
-  .info-stack.is-dense .info-item {
-    padding: 10px 14px;
-    gap: 11px;
-  }
-  .info-idx {
-    font-family: Georgia, "Songti SC", serif;
-    font-size: 22px;
+  .broadsheet-head {
+    font-family: ${titleFont};
+    font-size: 16.5px;
     font-weight: 800;
-    line-height: 1.05;
-    color: ${pal.accent};
-    flex-shrink: 0;
-    width: 32px;
-    text-align: center;
-    padding-top: 2px;
-  }
-  .info-stack.is-dense .info-idx {
-    font-size: 18px;
-    width: 26px;
-  }
-  .info-body {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .info-head {
-    font-size: 15.5px;
-    font-weight: 750;
-    line-height: 1.35;
+    line-height: 1.34;
     color: ${pal.ink};
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
   }
-  .info-stack.is-dense .info-head {
-    font-size: 14px;
-    -webkit-line-clamp: 1;
-  }
-  .info-desc {
-    font-size: 12.5px;
-    line-height: 1.52;
+  .broadsheet-desc {
+    font-size: 12.8px;
+    line-height: 1.56;
     color: ${pal.secondary};
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  .info-stack.is-dense .info-desc {
-    font-size: 11.5px;
-    -webkit-line-clamp: 1;
-  }
 
-  /* ---- Bottom Callout Quote ---- */
+  /* ---- Shared Editorial Pull-Quote Callout & Colophon ---- */
   .editorial-callout {
     display: flex;
     align-items: flex-start;
     gap: 8px;
-    padding: 11px 15px;
+    padding: 11px 14px;
     border-radius: ${pal.tactileBorder ? "10px" : "12px"};
     background: ${pal.quoteBg};
-    border-left: 3px solid ${pal.quoteBorder};
-    border-top: ${pal.tactileBorder ? `1.2px solid ${pal.cardBorder}` : "none"};
-    border-right: ${pal.tactileBorder ? `1.2px solid ${pal.cardBorder}` : "none"};
-    border-bottom: ${pal.tactileBorder ? `1.2px solid ${pal.cardBorder}` : "none"};
+    border-left: 3.5px solid ${pal.quoteBorder};
+    flex-shrink: 0;
   }
   .editorial-callout-mark {
     font-family: Georgia, serif;
-    font-size: 24px;
-    line-height: 0.9;
+    font-size: 22px;
+    line-height: 1;
     color: ${pal.accent};
     flex-shrink: 0;
-    margin-top: 2px;
   }
   .editorial-callout-text {
     font-family: ${titleFont};
-    font-size: 13px;
-    font-weight: 600;
-    line-height: 1.52;
+    font-size: 12.5px;
+    font-weight: 700;
+    line-height: 1.48;
     color: ${pal.quoteInk};
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -965,30 +1519,49 @@ export function renderConceptVisualHtml(payload: ConceptVisualPayload): string {
     overflow: hidden;
   }
 
-  /* ---- Subtle Editorial Colophon ---- */
   .colophon {
-    margin-top: 12px;
+    margin-top: 10px;
     padding-top: 9px;
     border-top: 1px solid ${pal.frameBorder};
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    justify-content: space-between;
     font-size: 10px;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.08em;
     color: ${pal.muted};
-    opacity: 0.85;
+    flex-shrink: 0;
+  }
+  .colophon-brand {
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .colophon-dot {
+    color: ${pal.accent};
   }
 </style>
 </head>
 <body>
   <div class="canvas">
+    <svg class="paper-grain" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <filter id="grain">
+        <feTurbulence type="fractalNoise" baseFrequency="0.82" numOctaves="3" stitchTiles="stitch" />
+      </filter>
+      <rect width="100%" height="100%" filter="url(#grain)" />
+    </svg>
     <div class="sheet">
       <div class="main-body">
         ${bodyHtml}
       </div>
       ${
         showColophon
-          ? `<div class="colophon"><span>READING ARCHIVE</span><span>点点读书</span></div>`
+          ? `
+            <div class="colophon">
+              <span class="colophon-brand"><span class="colophon-dot">✦</span> 点点读书 · READING STUDIO</span>
+              <span>CURATED NOTES</span>
+            </div>
+          `
           : ""
       }
     </div>

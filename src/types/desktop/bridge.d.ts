@@ -280,6 +280,7 @@ export interface DesktopBridgeApi {
     extractConcept(input: {
       title: string;
       content: string;
+      bookId?: string;
       bookTitle?: string;
     }): Promise<Omit<ConceptVisualPayload, "layout" | "theme">>;
     previewConceptHtml(payload: ConceptVisualPayload): Promise<{ html: string }>;

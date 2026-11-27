@@ -667,6 +667,7 @@ export const StudioView: React.FC<StudioViewProps> = ({
         open={visualModalOpen}
         draftTitle={titleInput || detail?.title || ""}
         draftContent={contentInput}
+        bookId={detail?.bookId ?? undefined}
         bookTitle={detail?.bookTitle}
         onClose={() => setVisualModalOpen(false)}
         onNotify={onNotify}
