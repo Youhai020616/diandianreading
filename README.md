@@ -69,7 +69,7 @@ flowchart LR
 - 选好 Obsidian 笔记库后，一本书的笔记或一篇草稿可一键导出为 Markdown。在 Obsidian 里改名、移动目录都能跟踪到；如果你在 Obsidian 里手动改过同一篇，会另存一份 `.diandian-conflict.md`，不会覆盖你的修改。
 - 桌面上的小金毛每天推一条旧划线给你，`⌘⇧D` 可随手摘录剪贴板里的句子。
 
-<p align="center"><img src="docs/screenshots/feature-6-notes.png" width="720" alt="阅读笔记：划线和想法，一键导出到 Obsidian" /></p>
+<p align="center"><img src="docs/screenshots/feature-6-notes.png" width="640" alt="阅读笔记：划线和想法，一键导出到 Obsidian" /></p>
 
 ### 7. 基于 DeepSeek Harness，兼容 Harness 插件生态
 - AI 助手运行在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 上，模型可接 DeepSeek 或任意 OpenAI 兼容接口。
