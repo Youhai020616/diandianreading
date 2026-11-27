@@ -1,4 +1,5 @@
 import React from "react";
+import { supportsWeReadImport } from "../../../electron/router/wereadFormats";
 import type { ConnectionsSnapshot } from "../../types/desktop";
 import { IconBookOpen, IconCheck, IconClose, IconFolder, IconUpload, IconWand } from "../Icons";
 import { cleanShortTitle, type DownloadedEntry } from "./discoverShared";
@@ -59,7 +60,7 @@ export const DownloadBanner: React.FC<DownloadBannerProps> = ({
           </span>
         </button>
       )}
-      {entry.filePath && connections?.weread.loggedIn && (
+      {entry.filePath && supportsWeReadImport(entry.filePath.split(".").pop() ?? "") && (
         entry.wereadUploaded ? (
           <button
             type="button"
@@ -76,6 +77,11 @@ export const DownloadBanner: React.FC<DownloadBannerProps> = ({
             className="btn sm sage"
             disabled={dispatchBusy !== null}
             onClick={() => onDispatch(entry, "weread")}
+            title={
+              connections?.weread.loggedIn
+                ? "一键导入到微信读书书架"
+                : "点击导入微信读书书架（首次将弹出二维码开通传书通道，扫完自动续传）"
+            }
           >
             <IconUpload size={12} />
             <span>

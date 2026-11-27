@@ -1,4 +1,5 @@
 import React, { useRef, useState } from "react";
+import { isWeReadAuthRequiredError, type WeReadAuthRequest } from "../../lib/wereadAuth";
 import type { LocalBookMetadata } from "../../types/desktop";
 import { IconCheck, IconFolder, IconSearch, IconUpload, IconWand } from "../Icons";
 
@@ -6,11 +7,17 @@ interface EbookToolsSectionProps {
   /** Whether the installed CLI can read and write book metadata. */
   supportsMeta: boolean;
   onBookMetadataChanged(previousPath: string, updatedPath: string, title: string): void;
+  onRequestWeReadAuth?(req: WeReadAuthRequest): void;
   onNotify(msg: string, tone?: "info" | "success" | "error"): void;
 }
 
 /** Pick a local ebook, fix its title/author/ISBN, or send it to Kindle or WeRead. */
-export const EbookToolsSection: React.FC<EbookToolsSectionProps> = ({ supportsMeta, onBookMetadataChanged, onNotify }) => {
+export const EbookToolsSection: React.FC<EbookToolsSectionProps> = ({
+  supportsMeta,
+  onBookMetadataChanged,
+  onRequestWeReadAuth,
+  onNotify,
+}) => {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [selectedEbookPath, setSelectedEbookPath] = useState("");
   const [routerLog, setRouterLog] = useState("");
@@ -128,6 +135,16 @@ export const EbookToolsSection: React.FC<EbookToolsSectionProps> = ({ supportsMe
         onNotify(res.alreadyExisted ? "微信读书书架里已经有这本书了" : "已导入微信读书书架", res.alreadyExisted ? "info" : "success");
       }
     } catch (error) {
+      if (target === "weread" && isWeReadAuthRequiredError(error) && onRequestWeReadAuth) {
+        const rawName = selectedEbookPath.split(/[/\\]/).pop() ?? "这本书";
+        const cleanTitle = rawName.replace(/\.[^.]+$/, "") || "这本书";
+        // The CLI reports "never bound" and "expired" the same way, so leave `expired` unknown.
+        onRequestWeReadAuth({
+          bookTitle: cleanTitle,
+          onAuthenticated: () => handleDispatchEbook("weread"),
+        });
+        return;
+      }
       onNotify(error instanceof Error ? error.message : "发送失败，请稍后重试", "error");
     } finally {
       setBusyAction(null);

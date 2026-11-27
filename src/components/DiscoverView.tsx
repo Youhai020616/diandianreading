@@ -10,6 +10,7 @@ import {
 import { RecommendedShelf } from "./discover/RecommendedShelf";
 import { SearchResults } from "./discover/SearchResults";
 import { WeReadReadyModal } from "./discover/WeReadReadyModal";
+import { isWeReadAuthRequiredError, type WeReadAuthRequest } from "../lib/wereadAuth";
 import {
   IconCheck,
   IconClose,
@@ -30,6 +31,7 @@ interface DiscoverViewProps {
   onOpenSiteUrl?: (url: string) => void;
   onEnsureBrowserOpen: () => void;
   onOpenRouterSettings: () => void;
+  onRequestWeReadAuth?: (req: WeReadAuthRequest) => void;
   onNotify: (msg: string, tone?: "info" | "success" | "error") => void;
 }
 
@@ -42,6 +44,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   onOpenSiteUrl,
   onEnsureBrowserOpen,
   onOpenRouterSettings,
+  onRequestWeReadAuth,
   onNotify,
 }) => {
   // Connection status
@@ -360,9 +363,27 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
     }
   };
 
-  const handleDispatchDownloaded = async (entry: DownloadedEntry, target: "weread" | "kindle") => {
+  const handleDispatchDownloaded = async (
+    entry: DownloadedEntry,
+    target: "weread" | "kindle",
+    opts?: { skipAuthPrecheck?: boolean },
+  ) => {
     if (!entry.filePath) {
       onNotify("请先在「连接与偏好」中选择下载目录里的电子书文件再分发", "info");
+      return;
+    }
+    if (
+      target === "weread"
+      && !opts?.skipAuthPrecheck
+      && connections
+      && !connections.weread.loggedIn
+      && onRequestWeReadAuth
+    ) {
+      onRequestWeReadAuth({
+        bookTitle: cleanShortTitle(entry.title),
+        expired: false,
+        onAuthenticated: () => handleDispatchDownloaded(entry, "weread", { skipAuthPrecheck: true }),
+      });
       return;
     }
     setDispatchBusy(`${entry.bookRef}:${target}`);
@@ -387,6 +408,14 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
         onNotify(`已将《${cleanShortTitle(entry.title)}》推送到 Kindle`, "success");
       }
     } catch (error) {
+      if (target === "weread" && isWeReadAuthRequiredError(error) && onRequestWeReadAuth) {
+        onRequestWeReadAuth({
+          bookTitle: cleanShortTitle(entry.title),
+          expired: connections ? connections.weread.loggedIn : undefined,
+          onAuthenticated: () => handleDispatchDownloaded(entry, "weread", { skipAuthPrecheck: true }),
+        });
+        return;
+      }
       onNotify(error instanceof Error ? error.message : "分发失败", "error");
     } finally {
       setDispatchBusy(null);

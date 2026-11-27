@@ -1,4 +1,5 @@
 import React from "react";
+import { supportsWeReadImport } from "../../../electron/router/wereadFormats";
 import type { ConnectionsSnapshot, ZlibBookItem } from "../../types/desktop";
 import {
   IconBookOpen, IconCheck, IconClose, IconDownload, IconExternalLink, IconFolder, IconSearch, IconSparkles, IconUpload, IconWand,
@@ -118,7 +119,7 @@ export const BookDetailSheet: React.FC<BookDetailSheetProps> = ({
                   </span>
                 </button>
               )}
-              {entry?.filePath && connections?.weread.loggedIn && (
+              {entry?.filePath && supportsWeReadImport(entry.filePath.split(".").pop() ?? "") && (
                 entry?.wereadUploaded ? (
                   <button
                     type="button"
@@ -135,6 +136,11 @@ export const BookDetailSheet: React.FC<BookDetailSheetProps> = ({
                     disabled={dispatchBusy !== null}
                     onClick={() =>
                       onDispatch(entry!, "weread")
+                    }
+                    title={
+                      connections?.weread.loggedIn
+                        ? "一键导入微信读书书架"
+                        : "点击导入微信读书书架（首次将弹出二维码开通传书通道，扫完自动续传）"
                     }
                   >
                     <IconUpload size={14} />

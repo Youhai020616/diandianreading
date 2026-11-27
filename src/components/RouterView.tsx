@@ -14,16 +14,18 @@ import {
   IconSettings,
 } from "./Icons";
 import { KindleConfigModal } from "./KindleConfigModal";
-import { WeReadQrModal } from "./WeReadQrModal";
 import { EbookToolsSection } from "./settings/EbookToolsSection";
 import { ObsidianExportSettings } from "./settings/ObsidianExportSettings";
 import { TwinProfileSection } from "./settings/TwinProfileSection";
+import type { WeReadAuthRequest } from "../lib/wereadAuth";
 
 interface RouterViewProps {
   onBookMetadataChanged: (previousPath: string, updatedPath: string, title: string) => void;
   initialSection?: "twin" | "obsidian" | "router";
   onModalToggle: (open: boolean) => void;
   onEnsureBrowserOpen: () => void;
+  /** Opens the app-level WeRead QR modal (the only instance, so two modals never race). */
+  onRequestWeReadAuth: (req: WeReadAuthRequest) => void;
   onNotify: (msg: string, tone?: "info" | "success" | "error") => void;
 }
 
@@ -32,6 +34,7 @@ export const RouterView: React.FC<RouterViewProps> = ({
   initialSection = "router",
   onModalToggle,
   onEnsureBrowserOpen,
+  onRequestWeReadAuth,
   onNotify,
 }) => {
   const [section, setSection] = useState<"twin" | "obsidian" | "router">(initialSection);
@@ -43,7 +46,6 @@ export const RouterView: React.FC<RouterViewProps> = ({
   const [healthyDomains, setHealthyDomains] = useState<ZlibDomainHealth[]>([]);
   const [domainInput, setDomainInput] = useState("");
   const [doctorError, setDoctorError] = useState<string | null>(null);
-  const [wereadQrOpen, setWeReadQrOpen] = useState(false);
   const [kindleModalOpen, setKindleModalOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState<"zlib" | "weread" | "kindle" | null>(null);
 
@@ -54,12 +56,12 @@ export const RouterView: React.FC<RouterViewProps> = ({
   }, [initialSection]);
 
   useEffect(() => {
-    const anyModal = wereadQrOpen || kindleModalOpen;
+    const anyModal = kindleModalOpen;
     onModalToggle(anyModal);
     return () => {
       if (anyModal) onModalToggle(false);
     };
-  }, [wereadQrOpen, kindleModalOpen, onModalToggle]);
+  }, [kindleModalOpen, onModalToggle]);
 
   const refreshConnections = useCallback(async () => {
     setLoadingConn(true);
@@ -437,14 +439,14 @@ export const RouterView: React.FC<RouterViewProps> = ({
                   <div className="conn-card-head">
                     <span className="conn-card-title">
                       <span className={`status-dot ${connections?.weread.loggedIn ? "ok" : ""}`} />
-                      微信读书书架上传
+                      微信读书 · 传书通道
                     </span>
                     <span className={`badge ${connections?.weread.loggedIn ? "sage" : "amber"}`}>
-                      {connections?.weread.loggedIn ? `已绑定 · ${connections.weread.name}` : "未绑定"}
+                      {connections?.weread.loggedIn ? `已开通 · ${connections.weread.name}` : "首次传书时扫码"}
                     </span>
                   </div>
                   <div className="conn-card-meta">
-                    独立于右侧网页阅读态，用于将本地 EPUB / PDF 一键上传到微信读书书架。
+                    网页版微信读书不开放传书接口，此处通过官方墨水屏端通道把本地 EPUB / PDF 传入你的书架（与右侧网页阅读登录互不影响；扫码一次长期免扫直传，授权过期时传书也会自动弹窗续传）。
                   </div>
                   <div className="conn-card-actions">
                     <button
@@ -453,11 +455,11 @@ export const RouterView: React.FC<RouterViewProps> = ({
                       disabled={busyAction !== null}
                       onClick={() => {
                         setConfirmLogout(null);
-                        setWeReadQrOpen(true);
+                        onRequestWeReadAuth({});
                       }}
                     >
                       <IconQrCode size={12} />
-                      <span>{connections?.weread.loggedIn ? "重新扫码绑定" : "微信扫码绑定"}</span>
+                      <span>{connections?.weread.loggedIn ? "重新扫码绑定" : "扫码开通传书通道"}</span>
                     </button>
                     {connections?.weread.loggedIn && (
                       confirmLogout === "weread" ? (
@@ -571,21 +573,13 @@ export const RouterView: React.FC<RouterViewProps> = ({
               <EbookToolsSection
                 supportsMeta={zlibStatus.supportsMeta}
                 onBookMetadataChanged={onBookMetadataChanged}
+                onRequestWeReadAuth={onRequestWeReadAuth}
                 onNotify={onNotify}
               />
             )}
           </div>
         </div>
       </div>
-
-      <WeReadQrModal
-        open={wereadQrOpen}
-        onClose={() => setWeReadQrOpen(false)}
-        onSuccess={(name) => {
-          onNotify(`微信读书书架通道已绑定：${name}`, "success");
-          void refreshConnections();
-        }}
-      />
 
       <KindleConfigModal
         open={kindleModalOpen}

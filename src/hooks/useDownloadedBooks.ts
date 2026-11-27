@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DownloadedBookFile } from "../types/desktop";
 import { downloadedBookRevision, type WeReadImportStatus } from "../components/DownloadedBooksView";
+import { isWeReadAuthRequiredError, type WeReadAuthRequest } from "../lib/wereadAuth";
 import { formatUserError } from "../utils/formatError";
 
 type Notify = (message: string, tone?: "info" | "success" | "error") => void;
 
 /** The download-directory shelf: its file list (refreshed on window focus) and per-file WeRead imports. */
-export function useDownloadedBooks(notify: Notify) {
+export function useDownloadedBooks(
+  notify: Notify,
+  requestWeReadAuth?: (req: WeReadAuthRequest) => void,
+) {
   const [files, setFiles] = useState<DownloadedBookFile[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -49,6 +53,15 @@ export function useDownloadedBooks(notify: Notify) {
       if (result.alreadyExisted) notify(`微信读书已收录《${title}》，可在微信读书中查找。`, "info");
       else notify(`《${title}》已导入微信读书书架。`, "success");
     } catch (cause) {
+      if (isWeReadAuthRequiredError(cause) && requestWeReadAuth) {
+        setStatus();
+        // The CLI reports "never bound" and "expired" the same way, so leave `expired` unknown.
+        requestWeReadAuth({
+          bookTitle: title,
+          onAuthenticated: () => importToWeRead(file),
+        });
+        return;
+      }
       const message = formatUserError(cause, "导入微信读书失败，请重试。");
       if (message.includes("连接与偏好")) setStatus("settings");
       else if (message.includes("查看微信读书书架")) setStatus("shelf");

@@ -34,6 +34,7 @@ import { NotebookView } from "./components/NotebookView";
 import { RouterView } from "./components/RouterView";
 import { SettingsModal } from "./components/SettingsModal";
 import { StudioView } from "./components/StudioView";
+import { WeReadQrModal } from "./components/WeReadQrModal";
 import { PullCordLamp } from "./components/ui/pull-cord-lamp";
 import { SurfRail, type SurfRailNavItem } from "./components/SurfRail";
 import { WorkspaceTopbar } from "./components/WorkspaceTopbar";
@@ -41,6 +42,7 @@ import {
   buildNotebookPromptSummary, DEFAULT_AI_WIDTH, DEFAULT_RAIL_WIDTH, isStartPageTabUrl, TAB_LABELS, type StudioTab,
 } from "./app/workspace";
 import { cleanQuoteDraftTitle, prepareDraftFromAssistantReply } from "./lib/draftCleanup";
+import type { WeReadAuthRequest } from "./lib/wereadAuth";
 import { formatUserError } from "./utils/formatError";
 
 export const App: React.FC = () => {
@@ -75,6 +77,10 @@ export const App: React.FC = () => {
   const [cookieModalOpen, setCookieModalOpen] = useState(false);
   const [childModalOpen, setChildModalOpen] = useState(false);
   const [historyImportOpen, setHistoryImportOpen] = useState(false);
+  const [wereadAuthModal, setWereadAuthModal] = useState<WeReadAuthRequest | null>(null);
+  const requestWeReadAuth = useCallback((req: WeReadAuthRequest) => {
+    setWereadAuthModal(req);
+  }, []);
 
   // Shared library + draft + Surf notebook summaries
   const [books, setBooks] = useState<BookRecord[]>([]);
@@ -102,7 +108,7 @@ export const App: React.FC = () => {
   const {
     files: downloadFiles, loading: downloadsLoading, error: downloadError, weReadImports,
     refresh: refreshDownloads, importToWeRead: importDownloadedToWeRead,
-  } = useDownloadedBooks(notify);
+  } = useDownloadedBooks(notify, requestWeReadAuth);
 
   const openWorkspaceTab = (tab: StudioTab) => {
     if (tab === "library") void refreshDownloads();
@@ -283,8 +289,10 @@ export const App: React.FC = () => {
 
   // Native WebContentsView always sits above HTML overlays; suppress whenever ANY modal opens.
   useEffect(() => {
-    void window.diandian.browser.setSuppressed(reading || settingsOpen || cookieModalOpen || childModalOpen || historyImportOpen);
-  }, [reading, settingsOpen, cookieModalOpen, childModalOpen, historyImportOpen]);
+    void window.diandian.browser.setSuppressed(
+      reading || settingsOpen || cookieModalOpen || childModalOpen || historyImportOpen || wereadAuthModal !== null,
+    );
+  }, [reading, settingsOpen, cookieModalOpen, childModalOpen, historyImportOpen, wereadAuthModal]);
 
   // Sync browser visibility when user toggles collapse/expand.
   useEffect(() => {
@@ -674,6 +682,7 @@ export const App: React.FC = () => {
                     setRouterInitialSection("router");
                     setActiveTab("router");
                   }}
+                  onRequestWeReadAuth={requestWeReadAuth}
                   onNotify={notify}
                 />
               </div>
@@ -768,6 +777,7 @@ export const App: React.FC = () => {
                   onBookMetadataChanged={handleBookMetadataChanged}
                   onModalToggle={setChildModalOpen}
                   onEnsureBrowserOpen={() => setBrowserOpen(true)}
+                  onRequestWeReadAuth={requestWeReadAuth}
                   onNotify={notify}
                 />
               )}
@@ -889,6 +899,26 @@ export const App: React.FC = () => {
         }
         onClose={() => setCookieModalOpen(false)}
         onNotify={notify}
+      />
+
+      <WeReadQrModal
+        open={wereadAuthModal !== null}
+        pendingBookTitle={wereadAuthModal?.bookTitle ?? null}
+        expiredRetry={wereadAuthModal?.expired}
+        onClose={() => setWereadAuthModal(null)}
+        onSuccess={(name) => {
+          const pending = wereadAuthModal;
+          notify(
+            pending?.bookTitle
+              ? `已开通微信读书传书通道（${name}），正在自动上传《${pending.bookTitle}》…`
+              : `微信读书传书通道已开通：${name}`,
+            "success",
+          );
+          if (pending?.onAuthenticated) {
+            setWereadAuthModal(null);
+            void pending.onAuthenticated();
+          }
+        }}
       />
 
       {toastStack}
