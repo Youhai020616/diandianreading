@@ -111,6 +111,16 @@ DIANDIAN_START_HIDDEN=1 pnpm dev
 | `plugins/**`、`electron/agent/sdkBridge.mjs` | 仅在后台热重启 AI Harness 子进程，主窗口不动 |
 | `electron/**/*.ts`（主进程与 IPC） | `tsc --watch` 增量编译零错误后，在后台静默重启 Electron（切回应用时自动显现） |
 
+打包与校验：
+
+```bash
+# 提交前的全量校验
+pnpm typecheck && pnpm test && pnpm build
+
+# 打包 macOS（Apple Silicon）安装包，输出到 release/<version>/
+pnpm dist:mac
+```
+
 ### 常用快捷键
 
 | 快捷键 | 功能 |
@@ -179,29 +189,3 @@ flowchart TB
 - **密钥系统钥匙串加密**：大模型 API Key、DeepL 翻译密钥与 Kindle SMTP 授权码均经 Electron `safeStorage`（系统钥匙串）加密落盘（目录 `0700` / 文件 `0600` 原子写），仅在拉起子进程或发信瞬间于内存解密，绝不写入日志、Overlay 配置或渲染层状态。
 - **电子书与卡片离线沙盒**：本地 EPUB 章节在无脚本沙盒 iframe 中渲染，强制剥离脚本/表单并设有防压缩炸弹解压上限（`epubLimits.ts`）；卡片与海报在独立 `htmlcard://` 沙盒分区离屏烘焙，拦截一切外网请求。
 - **单向非破坏性导出**：Obsidian 导出拒绝符号链接越界，遇到外部手工编辑自动分流为 `.diandian-conflict.md` 冲突副本，永不覆盖用户手稿。
-
----
-
-## 构建安装包与本地校验
-
-### 打包独立安装包
-```bash
-pnpm dist:mac   # 输出至 release/<version>/点点读书-<version>-mac-arm64.dmg
-```
-
-构建流水线（`scripts/before-build.mjs` → `fetch-binaries.mjs` → `stage-runtime.mjs`）会自动完成自包含运行时装配与 SHA-256 强校验：
-
-| 打包资源目录 | 封装内容 | 校验与裁剪机制 |
-| :--- | :--- | :--- |
-| `resources/zlib/` | `heartleo/zlib` CLI v0.0.16 | 官方 Release 拉取，SHA-256 固定在 `scripts/fetch-binaries.mjs` |
-| `resources/node/` | Node.js v24.22.3 独立运行时 | 专供 DeepSeek Harness 子进程使用，完全不依赖用户机器环境 |
-| `resources/node_modules/` | 扁平化裁剪后的生产依赖 | 基于同一份 `pnpm-lock.yaml` 安装后按 `scripts/stage-runtime.mjs` 剔除冗余组件 |
-
-> 注：当前默认生成当前宿主机架构的安装包；在配置 Apple Developer 签名与公证（Notarization）前，分发到其他 Mac 首次打开需在「系统设置 → 隐私与安全性」中点击「仍要打开」。
-
-### 全量工程校验
-提交改动前请确保类型检查、IPC 契约测试、单元测试与生产构建全部通过：
-
-```bash
-pnpm typecheck && pnpm test && pnpm build
-```

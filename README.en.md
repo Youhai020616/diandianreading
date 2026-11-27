@@ -111,6 +111,16 @@ DIANDIAN_START_HIDDEN=1 pnpm dev
 | `plugins/**`, `electron/agent/sdkBridge.mjs` | Restarts only the background AI Harness child process |
 | `electron/**/*.ts` (Main process & IPC) | Incremental `tsc --watch` build + hidden Electron restart (appears when you switch back) |
 
+Verify and package:
+
+```bash
+# Full check before committing
+pnpm typecheck && pnpm test && pnpm build
+
+# Build the macOS (Apple Silicon) installer into release/<version>/
+pnpm dist:mac
+```
+
 ### Keyboard Shortcuts
 
 | Shortcut | Action |
@@ -178,19 +188,3 @@ See **[SECURITY.md](./SECURITY.md)** for the full threat model and security boun
 - **Zero-trust IPC**: All windows run with `contextIsolation: true`, `nodeIntegration: false`, and `sandbox: true`; every `ipcMain` handler is registered through `TrustedIpcRegistry` and validates both `senderFrame === mainFrame` and exact app entry URL matching.
 - **Keychain-backed secrets**: LLM API keys, DeepL keys, and Kindle SMTP passwords are encrypted via Electron `safeStorage` (`0700` dir / `0600` atomic file writes) and never enter logs, overlay YAML files, or renderer state.
 - **Sandboxed EPUB & card rendering**: EPUB chapters render inside scriptless sandboxed iframes with strict decompression caps (`epubLimits.ts`); share cards and posters render inside a network-blocked `htmlcard://` partition.
-
----
-
-## Packaging & Verification
-
-### Build Standalone Installer
-```bash
-pnpm dist:mac   # Outputs release/<version>/点点读书-<version>-mac-arm64.dmg
-```
-
-`scripts/before-build.mjs` fetches SHA-256-pinned binaries (`heartleo/zlib` v0.0.16 and Node.js v24.22.3 in `scripts/fetch-binaries.mjs`) and stages a pruned flat production `node_modules` tree (`scripts/stage-runtime.mjs`) for the Harness `sdk` runtime.
-
-### Run Full Verification Suite
-```bash
-pnpm typecheck && pnpm test && pnpm build
-```
