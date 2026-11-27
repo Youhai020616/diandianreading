@@ -83,7 +83,9 @@ flowchart LR
 ## 下载安装与快速开始
 
 ### 方式一：安装包开箱即用（推荐普通用户）
-前往 [GitHub Releases](https://github.com/Youhai020616/diandianreading/releases) 下载对应系统的安装包（如 macOS Apple Silicon 的 `点点读书-<version>-mac-arm64.dmg`），拖入「应用程序」即可直接运行。
+前往 [GitHub Releases](https://github.com/Youhai020616/diandianreading/releases) 下载安装包（目前只提供 macOS Apple Silicon 版：`diandianreading-<version>-mac-arm64.dmg`），打开后把「点点读书」拖入「应用程序」。
+
+安装包还没有经过 Apple 签名和公证，第一次打开会被系统拦截：先打开一次，再到「系统设置 → 隐私与安全性」点「仍要打开」。也可以在终端执行 `xattr -dr com.apple.quarantine "/Applications/点点读书.app"` 后再打开。
 > 安装包已完整内置电子书路由组件与独立 Node 运行时，**无需**安装 Homebrew、Node.js、Python 或任何命令行依赖。首次打开后在左下角「模型」填入你的 DeepSeek 或任意 OpenAI 兼容 API Key 即可开始共读。
 
 ### 方式二：从源码启动（开发者）

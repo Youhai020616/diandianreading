@@ -83,7 +83,9 @@ flowchart LR
 ## Installation & Quick Start
 
 ### Option 1: Standalone Installer (Recommended)
-Download the latest installer from [GitHub Releases](https://github.com/Youhai020616/diandianreading/releases) (e.g., `点点读书-<version>-mac-arm64.dmg` for Apple Silicon Macs), drag it to **Applications**, and launch.
+Download the installer from [GitHub Releases](https://github.com/Youhai020616/diandianreading/releases) (currently macOS on Apple Silicon only: `diandianreading-<version>-mac-arm64.dmg`), open it and drag 点点读书 to **Applications**.
+
+The app is not yet signed or notarized by Apple, so macOS blocks the first launch: try to open it once, then click **Open Anyway** in **System Settings → Privacy & Security**. Alternatively run `xattr -dr com.apple.quarantine "/Applications/点点读书.app"` in Terminal before opening it.
 > Everything required at runtime—including the ebook router binary and an isolated Node.js runtime—is bundled inside the app. No Homebrew, Node.js, or terminal setup is required. Add your DeepSeek or OpenAI-compatible API key under **Model Settings** in the bottom-left corner to start co-reading.
 
 ### Option 2: Run from Source (Developers)
