@@ -444,6 +444,18 @@ async function handleGlobalShortcutSummon(): Promise<void> {
 }
 
 async function bootstrap(): Promise<void> {
+  // On macOS, Chromium's built-in UDP DNS resolver queries AAAA/HTTPS records directly even when
+  // no physical interface has global IPv6 (e.g. Clash/Surge TUN `fdfe:dcba:9876::1`), causing
+  // Happy Eyeballs to pick a blackholed TUN IPv6 socket (`ERR_CONNECTION_CLOSED` on weread.qq.com).
+  // Delegating to macOS mDNSResponder (`getaddrinfo`) matches Safari/Node and respects TUN/VPN DNS.
+  if (process.platform === "darwin") {
+    app.configureHostResolver({
+      enableBuiltInResolver: false,
+      secureDnsMode: "off",
+      enableAdditionalDnsQueryTypes: false,
+    });
+  }
+
   const userDataDir = process.env.DIANDIAN_USER_DATA_DIR || app.getPath("userData");
   state.settingsStore = new ModelSettingsStore(userDataDir, safeStorage);
   state.kindleStore = new KindleSettingsStore(userDataDir, safeStorage);
