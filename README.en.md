@@ -1,8 +1,8 @@
 <div align="center">
   <img src="build/icons/256x256.png" width="108" height="108" alt="diandianreading Logo" />
   <h1>diandianreading · 点点读书</h1>
-  <p><strong>A local-first desktop studio for deep reading, personal voice writing, and visual publishing.</strong></p>
-  <p>Bring book discovery, dual-engine co-reading, FTS5 highlight synthesis, anti-cliché writing, Xiaohongshu 3D book visuals, and Obsidian knowledge export onto one calm desk.</p>
+  <p><strong>A desktop studio that takes you from reading to writing.</strong></p>
+  <p>Bring book discovery, dual-engine co-reading, an AI reading companion, FTS5 highlight synthesis, anti-cliché writing, Xiaohongshu 3D book visuals, and Obsidian knowledge export onto one calm desk.</p>
   <p>
     <a href="./README.md">简体中文</a> · <strong>English</strong> · <a href="./SECURITY.md">Security Policy</a>
   </p>
@@ -10,18 +10,13 @@
 
 ---
 
-<!-- Screenshot slot: place screenshots in docs/screenshots/ and uncomment below -->
-<!--
 <p align="center">
   <img src="docs/screenshots/workspace-overview.png" width="92%" alt="diandianreading workspace overview" />
 </p>
--->
 
 ## Why diandianreading?
 
 For most serious readers, turning a book into lasting insight or published writing means juggling half a dozen disconnected tools: hunting down EPUBs, pushing files to WeRead or Kindle, pasting passages into a chat window, fighting generic AI-sounding prose, manually designing social cards, and copying notes over to Obsidian.
-
-**diandianreading v2** unifies that entire workflow into a single **local-first** desktop application built on Electron, a native split-screen reading browser, Node 24 SQLite FTS5, and the DeepSeek Harness plugin engine. Every highlight, revision timeline, and personal style profile (`PROFILE.md` / `STYLE.md`) lives on your own disk—no mandatory cloud account, no vendor lock-in.
 
 ```mermaid
 flowchart LR
@@ -33,31 +28,55 @@ flowchart LR
 
 ---
 
-## Highlights
+## Features
 
-### 1. Frictionless Book Discovery & Shelf Routing
-- **Zero-setup book router**: Ships with `heartleo/zlib` bundled inside the app—no Homebrew or CLI setup required. Sign in once in the right-hand browser and **diandianreading** automatically follows SingleLogin mirror redirects and syncs your session with zero extra clicks to unlock personalized recommendations.
-- **Douban reviews & metadata repair**: Jump straight to Douban ratings/reviews by ISBN in the split browser, or enrich local ebooks (`EPUB / PDF / MOBI / AZW3`) with clean titles, authors, ISBNs, and embedded high-res covers from Douban, WeRead, Open Library, and Google Books.
-- **Seamless WeRead & Kindle delivery**: Push ebooks to Kindle over encrypted SMTP, or send local books straight to your WeRead shelf—if your upload channel isn't linked yet (or its session expired), a WeChat QR modal pops up in place and **automatically resumes the pending upload the moment you scan**.
+### 1. Find and download books
+- The book-source component ships with the installer; nothing else to install.
+- Log in to Z-Library once in the built-in browser on the right and the session syncs automatically. Then search by title, author or ISBN, filter by format and sort order, browse your recommended, popular and saved lists, and see how many downloads you have left today.
+- Open the Douban rating and reviews for any book in the right-hand browser with one click.
 
-### 2. Dual Reading Engines: Native Split Browser + Bilingual EPUB Reader
-- **Multi-account native `WebContentsView` browser**: Eliminates iframe `X-Frame-Options` limits with isolated `persist:` cookie partitions per account, built-in shortcuts for WeRead, Douban, Xiaohongshu Creator Studio, and WeChat Official Accounts, plus a closed-Shadow-DOM selection bar for 1-click saving, asking AI, or starting a draft.
-- **On-device Apple Vision Canvas OCR**: For `<canvas>`-rendered web readers such as WeRead Web, macOS Vision OCR runs **entirely in local memory** to reconstruct clean paragraphs from the visible page—so your AI co-reader understands the exact page on screen without scraping external sites.
-- **Reflowable bilingual EPUB reader**: Powered by [foliate-js](https://github.com/johnfactotum/foliate-js) (with interaction patterns inspired by [Readest](https://github.com/readest/readest)), featuring CJK serif/sans/kai typography, 1/2-column pagination, footnote popovers, pull-cord night lamp theming, exact highlight jump-back, and **paragraph-by-paragraph bilingual translation** (via personal DeepL API key or any configured OpenAI-compatible LLM, cached locally for offline re-reading).
+<p align="center"><img src="docs/screenshots/feature-1-search.png" width="640" alt="Search results with format and sort filters and today's remaining downloads" /></p>
 
-### 3. Local FTS5 Knowledge Base, Topic Notebooks & Desktop Companion
-- **Sub-millisecond CJK search**: Built on Node 24's native `node:sqlite` with **FTS5 trigram indexing** for instant substring search across Chinese and English highlights; imports Kindle `My Clippings.txt` and syncs WeRead notebooks with SHA-256 deduplication.
-- **Topic Notebooks & cross-book collision**: Group books, web references, and drafts into thematic spaces so the AI can synthesize consensus, surface contradictions, and propose sharp writing angles across multiple sources.
-- **Golden Retriever desktop pet**: A lightweight floating companion that captures clipboard quotes globally (`⌘⇧D`) and gently resurfaces one forgotten highlight a day.
+### 2. Send books to WeRead or Kindle
+- Send downloaded EPUB / PDF / MOBI / AZW3 / TXT files to your WeRead shelf in one click. WeRead's web version has no upload API, so the first upload shows a QR code; scan it with WeChat and the book you were sending uploads right after.
+- Or email books to your Kindle; the SMTP authorization code is encrypted with the system keychain.
 
-### 4. Writing Studio That Sounds Like You—Not a Chatbot
-- **Immutable revision chain**: Saving an AI reply automatically strips conversational filler into a clean `v1 AI Draft`, while every edit you make appends an immutable `Human Revision` with a side-by-side diff viewer—never overwriting your words.
-- **Live FTS5 quote surfacing**: As you write, related highlights from your past reading surface automatically below the editor for 1-click citation.
-- **Self-evolving `STYLE.md`**: Whenever you revise an AI draft, the studio diffs your human edits against the AI baseline to distill concrete personal style habits, appending approved rules into `STYLE.md` so the very next AI turn writes closer to your voice.
+<p align="center"><img src="docs/screenshots/feature-2-send.png" width="616" alt="WeRead upload channel and Kindle email delivery" /></p>
 
-### 5. Xiaohongshu 3:4 Visual Studio & Non-Destructive Obsidian Export
-- **Sandboxed `1080×1440` Retina visual studio**: Automatically extracts key arguments and resolves real book covers from your drafts into four editorial `3:4` layouts (**3D Hardcover Poster Cover**, **Myth vs. Truth Contrast Card**, **Washi-Tape Sketchnote Grid**, and **Kinfolk/Broadsheet Editorial Long-Card**), alongside single-quote cards, multi-slide carousels, and monthly reading posters—baked 100% offline inside a network-blocked `htmlcard://` sandbox.
-- **Safe one-way Obsidian sync**: Tracks renamed or moved notes in your Obsidian vault via `diandian_id` frontmatter; if a note was edited manually in Obsidian, writes a `.diandian-conflict.md` copy instead of ever overwriting your edits, with `obsidian://open` deep-link support.
+### 3. Two ways to read, with Chinese–English translation
+- **Built-in browser on the right**: read WeRead's web version directly, with shortcuts to Douban, Xiaohongshu and the WeChat Official Accounts dashboard; each account keeps its cookies separate. Select text to save it as a note, ask 问点点 about it, or drop it into a draft.
+- **Local EPUB reader**: read books without uploading them anywhere, with fonts, size, line spacing, one- or two-column pages, table of contents and footnotes. Translate paragraph by paragraph between Chinese and English (the source language is detected; DeepL or your configured model does the work, and translations are cached locally).
+
+<p align="center"><img src="docs/screenshots/feature-3-reader.png" width="860" alt="Local EPUB reader with the Chinese original and its English translation" /></p>
+
+### 4. AI reading companion 问点点
+- Reads the page you have open on the right; image-rendered pages such as WeRead's web reader are first read on your Mac with macOS's built-in text recognition.
+- Searches your past highlights and thoughts to compare and explain ideas across books. Common requests are one click away, e.g. "compare with books I've read", "write a Xiaohongshu post in my voice", "add evidence to this draft and remove the AI tone".
+- Put several books, web pages and drafts into one topic notebook and 问点点 uses the whole set as context.
+- Three permission levels: read-only planning, confirm before acting, fully automatic.
+
+<p align="center"><img src="docs/screenshots/feature-4-ask.png" width="360" alt="问点点 comparing 《窄门》 with highlights from your other books" /></p>
+
+### 5. From reading notes to Xiaohongshu and WeChat posts
+- Send a single highlight to a draft, or let the AI read all of a book's highlights and thoughts and draft a review.
+- The writing studio keeps the AI's original and every revision you make, ready to compare. When you save a revision it suggests writing habits drawn from your edits; the ones you accept go into `STYLE.md`, and the AI follows them from then on.
+- When the piece is done, generate 3:4 Xiaohongshu images (1080×1440, four layouts, five color themes, real book covers matched automatically), or copy it as rich text with headings, quotes and lists and paste it into Xiaohongshu's long-post editor or the WeChat Official Accounts dashboard, both available in the right-hand browser. The library can also produce a monthly reading poster.
+
+<p align="center"><img src="docs/screenshots/feature-5-visual.png" width="760" alt="Xiaohongshu image studio: cover layout with the real book cover" /></p>
+
+### 6. One-click Obsidian export for a personal reading knowledge base
+- Highlights and thoughts live in a local SQLite database with Chinese and English full-text search. Kindle `My Clippings.txt` files and WeRead highlights can be imported too, without duplicates.
+- After choosing an Obsidian vault, export a book's notes or a draft as Markdown in one click. Renames and moves inside Obsidian are tracked; if you edited the same note by hand in Obsidian, a `.diandian-conflict.md` copy is written instead of overwriting your changes.
+- The desktop golden retriever brings back one old highlight a day, and `⌘⇧D` captures whatever sentence is on your clipboard.
+
+<p align="center"><img src="docs/screenshots/feature-6-notes.png" width="720" alt="Reading notes with highlights and thoughts, exported to Obsidian in one click" /></p>
+
+### 7. Built on DeepSeek Harness, compatible with Harness plugins
+- The AI companion runs on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), with DeepSeek or any OpenAI-compatible model.
+- diandianreading's own AI capabilities are native Harness plugins (five under `plugins/`). Third-party or your own Harness plugins load the same way: add them and register each with one line in `electron/agent/supervisor.ts`. The safety guard only blocks the tools on its list, so a new plugin's tools work out of the box. Under `pnpm dev`, editing a plugin only restarts the AI engine in the background.
+- For safety, Harness's built-in shell, workflow, skill loading and plugin manager are turned off. Plugins that depend on them need those restrictions lifted in `electron/agent/overlay.ts` and `plugins/runtime-safety/tool-policy.json` first (see [SECURITY.md](./SECURITY.md) for why). If a new plugin has tools that write, add them to `planDenied` in `tool-policy.json` so read-only mode actually blocks them.
+
+<p align="center"><img src="docs/screenshots/feature-7-guard.png" width="360" alt="The three permission levels of the AI companion: read-only planning, confirm, fully automatic" /></p>
 
 ---
 
@@ -173,11 +192,3 @@ pnpm dist:mac   # Outputs release/<version>/点点读书-<version>-mac-arm64.dmg
 ```bash
 pnpm typecheck && pnpm test && pnpm build
 ```
-
----
-
-## Credits & Acknowledgments
-
-- Local EPUB rendering is powered by [foliate-js](https://github.com/johnfactotum/foliate-js), with reader interactions inspired by [Readest](https://github.com/readest/readest) (see [EPUB Reader License Notices](./public/licenses/epub-reader.txt)).
-- Optional ebook search, metadata repair, and shelf delivery are powered by the bundled [heartleo/zlib](https://github.com/heartleo/zlib) CLI (MIT).
-- Co-reading agent runtime built on `@deepseek-ai/dsh` (DeepSeek Harness SDK) and Cordis.

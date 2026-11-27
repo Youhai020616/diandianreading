@@ -1,8 +1,8 @@
 <div align="center">
   <img src="build/icons/256x256.png" width="108" height="108" alt="点点读书 Logo" />
   <h1>点点读书 · diandianreading</h1>
-  <p><strong>本地优先的个人共读与表达桌面工作台</strong></p>
-  <p>把「找书 · 双引擎沉浸共读 · 划线碰撞 · 去 AI 味写作 · 小红书视觉出图 · Obsidian 知识沉淀」收进同一张书桌。</p>
+  <p><strong>从读书到写作的桌面工作台</strong></p>
+  <p>把「找书 · 双引擎沉浸共读 · AI 伴读 · 划线碰撞 · 去 AI 味写作 · 小红书视觉出图 · Obsidian 知识沉淀」收进同一张书桌。</p>
   <p>
     <strong>简体中文</strong> · <a href="./README.en.md">English</a> · <a href="./SECURITY.md">安全策略 (SECURITY)</a>
   </p>
@@ -10,18 +10,13 @@
 
 ---
 
-<!-- 截图展示位：将实机截图放入 docs/screenshots/ 后取消下方注释即可展示 -->
-<!--
 <p align="center">
   <img src="docs/screenshots/workspace-overview.png" width="92%" alt="点点读书工作台总览" />
 </p>
--->
 
 ## 为什么做点点读书？
 
 大多数深度读者的日常被切碎在六七个彼此割裂的工具里：去书源网站找书、想办法传进微信读书或 Kindle、一边看书一边把段落复制进聊天窗口问 AI、忍受满屏套话的「AI 腔」总结、手动去排版工具做小红书配图，最后还要再整理一份塞进 Obsidian。
-
-**点点读书（diandianreading v2）** 用一套 **Local-First（本地优先）** 的桌面工作台把整条链路彻底打通——所有阅读笔记、划线索引、个人画像（`PROFILE.md` / `STYLE.md`）与版本历史全部保存在你本机的 SQLite 与本地目录中，不绑定云端账号，不劫持你的数据资产。
 
 ```mermaid
 flowchart LR
@@ -33,43 +28,55 @@ flowchart LR
 
 ---
 
-## 核心体验
+## 主要功能
 
-### 1. 搜书发现与零门槛传书路由
-- **开箱即用的书源连接**：安装包已内置 `heartleo/zlib` 引擎，无需手动安装任何命令行工具。在右侧网页登录一次账号，即可自动跟随 SingleLogin 镜像跳转并**零点击同步登录态**，呈现你的专属推荐书墙与热门书单。
-- **豆瓣书评联动与元数据修整**：搜书结果支持一键按 ISBN 在右侧打开豆瓣评分与长评；本地电子书支持在线匹配豆瓣 / 微信读书 / Open Library / Google Books 补全书名、作者、ISBN 与内嵌高清封面。
-- **无感传入微信读书书架 & Kindle 推送**：下载或导入的 `EPUB / PDF / MOBI / AZW3 / TXT` 支持一键传入微信读书书架（首次传书或授权过期时自动弹出微信扫码窗，**手机一扫完立即自动续传原书**），也支持通过加密保存的邮箱配置一键推送至 Kindle。
+### 1. 搜书与下载
+- 安装包已内置书源组件，不用另装命令行工具。
+- 在右侧内置浏览器登录一次 Z-Library，登录状态会自动同步过来；之后可按书名、作者、ISBN 搜索，按格式和排序筛选，浏览推荐、热门和收藏书单，并随时看到当天剩余的下载次数。
+- 书籍详情页可一键在右侧打开豆瓣评分和书评。
 
-### 2. 右侧原生网页 + 本地双语 EPUB 双阅读引擎
-- **多账号隔离内置阅读浏览器**：右侧基于 Electron 原生 `WebContentsView` 构建（告别 iframe 跨域受限），按账号使用独立 `persist:` 分区隔离 Cookie，内置微信读书、豆瓣读书、小红书创作服务平台、微信公众号后台快捷入口与划词浮条（一键存笔记 / 问点点 / 写草稿）。
-- **本机离线 Vision OCR 读页**：面对微信读书网页版等 `<canvas>` 渲染页面，自动调用 macOS 原生视觉引擎在**本机内存**完成版面识别与段落还原，让「问点点」精准读懂你眼前这一屏，绝不爬取第三方盗版站点。
-- **高品质本地双语 EPUB 阅读器**：基于 [foliate-js](https://github.com/johnfactotum/foliate-js)（交互参考 [Readest](https://github.com/readest/readest)），支持宋体 / 黑体 / 楷体切换、字号行距调节、单双栏分页、目录与脚注弹窗、拉绳台灯夜读切换，以及**逐段中英双语对照翻译**（支持个人 DeepL API Key 或已配置的兼容大模型，译文自动本地缓存供离线重读）。
+<p align="center"><img src="docs/screenshots/feature-1-search.png" width="640" alt="搜书：按格式和排序筛选，显示当天剩余下载次数" /></p>
 
-### 3. 本地知识库、跨书碰撞与「小金毛」桌宠
-- **毫秒级中文全文检索**：基于 Node 24 原生 `node:sqlite` + **FTS5 Trigram 索引**，无需分词词典即可对中英文划线与批注实现毫秒级子串检索；支持一键导入 Kindle `My Clippings.txt` 与同步微信读书划线笔记（SHA-256 指纹自动去重），点击本地阅读划线可一键**回到原文精确位置**。
-- **主题空间（Notebooks）与跨书碰撞**：按研究母题把多本书籍、网页参考与草稿收进同一个主题空间，让 AI 基于整组关联素材做结构化综述与矛盾观点碰撞。
-- **桌面陪伴小金毛**：常驻桌面的轻量金毛犬窗口，支持全局快捷键 `⌘⇧D` 随时摘录剪贴板金句，每天轻推一条沉睡在书库里的旧划线，帮知识重新浮出水面。
+### 2. 一键传到微信读书或 Kindle
+- 下载好的 EPUB / PDF / MOBI / AZW3 / TXT 可一键传进微信读书书架。网页版微信读书没有传书接口，第一次传书时会弹出二维码，用微信扫一下即可开通，扫完自动接着上传刚才那本书。
+- 也可以通过邮件推送到 Kindle，邮箱授权码用系统钥匙串加密保存。
 
-### 4. 像你本人动笔的创作工作台
-- **不可变版本链（Immutable Revisions）**：从对话一键存为初稿（自动剥离 AI 寒暄与过渡废话）后，`v1 AI 原稿` 与你的每一次 `人工修订` 均以不可变版本节点分层留存，随时开启「对照 AI 原稿」双栏审阅，绝不覆盖你的手写文字。
-- **写作时旧划线自动浮现**：在你敲字改稿的同时，底部通过 FTS5 实时浮现书库里与当前段落呼应的旧书摘，一键插入引用。
-- **从改稿差异自动进化 `STYLE.md`**：每次保存人工修订后，工作台会自动对比「AI 初稿 vs 你的改稿」，提炼出你的真实表达习惯（例如删掉连接词、偏好短句、用亲历开篇），经你确认后无损写入 `STYLE.md`，下一轮对话与润色立即遵循。
+<p align="center"><img src="docs/screenshots/feature-2-send.png" width="616" alt="微信读书传书通道与 Kindle 邮件推送" /></p>
 
-### 5. 小红书 3:4 视觉工坊与 Obsidian 资产沉淀
-- **小红书封面与视觉配图工坊**：自动从当前草稿提炼核心框架并匹配真实书封，内置四套告别「死板流程图」的 `1080×1440`（原生 3:4）高清版式与五套纸感配色：
-  - **书封首图**：微倾 3D 立体精装书封（真实封面或烫金布面书封）+ 手绘笔刷大字报标题 + 焦点金句；
-  - **认知反差卡**：「✕ 多数人的直觉误区」vs「✦ 书里的底层真相」高收藏率对撞结构；
-  - **视觉笔记**：手绘双圈核心命题 + 和纸胶带四宫格手账导图；
-  - **杂志书摘**：*单读 / Kinfolk* 纸本排印风无框长图；
-  - 同时支持**金句单卡**、**多页图文套卡拆分批量导出**、**月度阅读海报**，以及一键复制富文本直达小红书「写长文」套用官方排版。
-- **无损单向导出至 Obsidian**：通过 frontmatter `diandian_id` 跟踪笔记库中的文件改名与目录移动；若检测到你在 Obsidian 中手工改过同一篇笔记，自动生成 `.diandian-conflict.md` 冲突副本而**绝不静默覆盖**，并支持 `obsidian://open` 一键唤起定位。
+### 3. 两种阅读方式，内置中英互译
+- **右侧内置浏览器**：直接读微信读书网页版，也内置豆瓣、小红书、公众号后台等入口，不同账号的 Cookie 互相隔离。选中文字可一键存为笔记、发给问点点或写进草稿。
+- **本地 EPUB 阅读器**：不传微信读书也能在应用里读，支持字体、字号、行距、单双栏、目录和脚注；可逐段中英互译（自动识别原文语言，用 DeepL 或你配置的大模型翻译，译文缓存在本地）。
 
-<!-- 预留功能动图或分栏截图位 -->
-<!--
-| 搜书与双栏沉浸共读 | 创作工作台与小红书 3D 书封工坊 |
-| :---: | :---: |
-| ![搜书与共读](docs/screenshots/discover-and-read.png) | ![视觉工坊](docs/screenshots/xhs-visual-studio.png) |
--->
+<p align="center"><img src="docs/screenshots/feature-3-reader.png" width="860" alt="本地 EPUB 阅读器：中文原文与英文译文对照" /></p>
+
+### 4. AI 伴读「问点点」
+- 能读你右侧正在看的页面；微信读书网页版这类图片式渲染的页面，会先在本机用 macOS 自带的文字识别读出这一屏。
+- 能检索你书库里的旧划线和想法，做跨书对照和讲解；常用动作一键发起，如「和我读过的书碰一碰」「按我的口吻写小红书长文」「给当前草稿加论据 & 去 AI 味」。
+- 可以把几本书、网页和草稿放进同一个主题空间，问点点会把整组材料当作上下文。
+- 权限分三档：只读规划、安全确认、全自动。
+
+<p align="center"><img src="docs/screenshots/feature-4-ask.png" width="360" alt="问点点把《窄门》和你在其他书里的划线做对照" /></p>
+
+### 5. 从读书笔记到小红书、公众号
+- 阅读笔记里的单条划线可一键写入草稿，也可以让 AI 读完一本书的全部划线和想法，起草一篇书评初稿。
+- 创作工作台保留 AI 原稿和你的每一次修改，随时可以对照；保存修改后，会从你的改动里提炼写作习惯，经你确认后写进 `STYLE.md`，之后 AI 按你的口吻来写。
+- 定稿后可生成小红书 3:4 配图（1080×1440，4 种版式、5 套配色，自动匹配真实书封），或复制带标题、引用、列表格式的富文本，在右侧内置浏览器打开的小红书「写长文」或公众号后台粘贴发布。书库还能生成月度阅读海报。
+
+<p align="center"><img src="docs/screenshots/feature-5-visual.png" width="760" alt="小红书配图工坊：书封首图版式，自动匹配真实书封" /></p>
+
+### 6. 一键导出到 Obsidian，搭建个人读书知识库
+- 划线和想法存在本机 SQLite，支持中英文全文检索；Kindle 的 `My Clippings.txt` 和微信读书的划线也能导入进来，自动去重。
+- 选好 Obsidian 笔记库后，一本书的笔记或一篇草稿可一键导出为 Markdown。在 Obsidian 里改名、移动目录都能跟踪到；如果你在 Obsidian 里手动改过同一篇，会另存一份 `.diandian-conflict.md`，不会覆盖你的修改。
+- 桌面上的小金毛每天推一条旧划线给你，`⌘⇧D` 可随手摘录剪贴板里的句子。
+
+<p align="center"><img src="docs/screenshots/feature-6-notes.png" width="720" alt="阅读笔记：划线和想法，一键导出到 Obsidian" /></p>
+
+### 7. 基于 DeepSeek Harness，兼容 Harness 插件生态
+- AI 助手运行在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 上，模型可接 DeepSeek 或任意 OpenAI 兼容接口。
+- 点点读书自己的 AI 能力都是 Harness 原生插件（`plugins/` 下 5 个）。第三方或自己写的 Harness 插件，放进来后在 `electron/agent/supervisor.ts` 登记一行即可加载；安全守卫只拦截名单里的工具，新插件的工具默认可用。`pnpm dev` 下改插件只会在后台重启 AI 引擎。
+- 为了安全，默认关闭了 Harness 自带的 shell、workflow、技能加载和插件管理器。依赖这些能力的插件，需先在 `electron/agent/overlay.ts` 和 `plugins/runtime-safety/tool-policy.json` 中解除限制（原因见 [SECURITY.md](./SECURITY.md)）。新插件带写入类工具时，建议加进 `tool-policy.json` 的 `planDenied`，只读模式下才会被拦住。
+
+<p align="center"><img src="docs/screenshots/feature-7-guard.png" width="360" alt="问点点的三档权限：只读规划、安全确认、全自动" /></p>
 
 ---
 
@@ -196,11 +203,3 @@ pnpm dist:mac   # 输出至 release/<version>/点点读书-<version>-mac-arm64.d
 ```bash
 pnpm typecheck && pnpm test && pnpm build
 ```
-
----
-
-## 致谢与第三方声明
-
-- 本地 EPUB 排版引擎基于 [foliate-js](https://github.com/johnfactotum/foliate-js)，阅读器交互设计参考了 [Readest](https://github.com/readest/readest)（详见 [阅读引擎许可声明](./public/licenses/epub-reader.txt)）。
-- 可选电子书检索、元数据修整与书架传输能力由内置的 [heartleo/zlib](https://github.com/heartleo/zlib)（MIT）驱动。
-- 共读 Agent 运行时基于 `@deepseek-ai/dsh`（DeepSeek Harness SDK）与 Cordis 插件体系构建。
