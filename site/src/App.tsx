@@ -18,6 +18,7 @@ import {
   type SiteCopy,
 } from "./content";
 import { useLang, type Lang } from "./i18n";
+import { detectInstallerDevice, type InstallerDevice } from "./installerDevice";
 import { useTheme } from "./theme";
 
 function DownloadIcon() {
@@ -294,21 +295,53 @@ function Developers({ copy }: { copy: SiteCopy["dev"] }) {
 }
 
 function Download({ copy, faq }: { copy: SiteCopy["download"]; faq: SiteCopy["faq"] }) {
+  const [device, setDevice] = useState<InstallerDevice | null>(null);
+  useEffect(() => {
+    let active = true;
+    void detectInstallerDevice(navigator).then(result => {
+      if (active) setDevice(result);
+    });
+    return () => { active = false; };
+  }, []);
+
+  const match = INSTALLERS.find(installer => installer.platform === device?.os && installer.cpu === device.cpu);
+  const note = device && !match ? (device.os === "macOS" ? copy.chooseMac : copy.checkCPU) : null;
+
   return (
     <section className="section download" id="download">
       <div className="wrap download-grid">
         <div className="download-card">
-          <img src={appIcon} alt="" width={72} height={72} />
-          <h2 className="h2">{copy.title}</h2>
-          <p className="meta">{copy.meta}</p>
-          <div className="installer-grid">
-            {INSTALLERS.map(({ platform, arch, url }) => (
-              <a key={url} className="btn btn-ghost" href={url}>
-                <DownloadIcon /> {platform} · {arch}
-              </a>
-            ))}
+          <div className="download-heading">
+            <img src={appIcon} alt="" width={56} height={56} />
+            <div>
+              <h2 className="h2">{copy.title}</h2>
+              <p className="download-version">{copy.meta}</p>
+            </div>
           </div>
-          <a className="release-link" href={RELEASES_URL} target="_blank" rel="noreferrer">{copy.all}</a>
+          <div className="installer-grid">
+            {INSTALLERS.map(installer => {
+              const recommended = installer === match;
+              const osMatch = !match && device?.cpu === "unknown" && device.os === installer.platform;
+              return (
+                <a key={installer.url} className="installer" href={installer.url}
+                  data-match={recommended ? "device" : osMatch ? "os" : undefined}>
+                  <span className="installer-mark" aria-hidden="true">
+                    <span className="platform-logo" data-platform={installer.platform} />
+                  </span>
+                  <span className="installer-label">
+                    <strong>{installer.platform}</strong>
+                    <span>{installer.arch} · {installer.format}</span>
+                  </span>
+                  {recommended && <span className="installer-recommended">{copy.recommended}</span>}
+                  <DownloadIcon />
+                </a>
+              );
+            })}
+          </div>
+          {note && <p className="installer-note">{note}</p>}
+          <a className="release-link" href={RELEASES_URL} target="_blank" rel="noreferrer">
+            {copy.all}<span aria-hidden="true">↗</span>
+          </a>
         </div>
         <div className="install-help">
           <dl>

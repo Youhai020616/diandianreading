@@ -15,17 +15,18 @@ import visualSrc from "@shots/feature-5-visual.png?w=1720&quality=82&format=webp
 import obsidianSet from "@shots/feature-6-obsidian.jpg?w=1000;2000&quality=82&format=webp&as=srcset";
 import obsidianSrc from "@shots/feature-6-obsidian.jpg?w=2000&quality=82&format=webp";
 import type { Lang } from "./i18n";
+import type { DesktopOS, InstallerCPU } from "./installerDevice";
 
 export const REPO = "https://github.com/Youhai020616/diandianreading";
 export const VERSION = "2.0.0-alpha.0";
-export const INSTALLERS = [
-  { platform: "macOS", arch: "Apple Silicon", file: "mac-arm64.dmg" },
-  { platform: "macOS", arch: "Intel", file: "mac-x64.dmg" },
-  { platform: "Windows", arch: "x64", file: "win-x64.exe" },
-  { platform: "Linux", arch: "x64", file: "linux-x86_64.AppImage" },
-].map(({ platform, arch, file }) => ({
-  platform,
-  arch,
+const packages = [
+  { platform: "macOS", cpu: "arm64", arch: "Apple Silicon", format: "DMG", file: "mac-arm64.dmg" },
+  { platform: "macOS", cpu: "x64", arch: "Intel", format: "DMG", file: "mac-x64.dmg" },
+  { platform: "Windows", cpu: "x64", arch: "x64", format: "EXE", file: "win-x64.exe" },
+  { platform: "Linux", cpu: "x64", arch: "x64", format: "AppImage", file: "linux-x86_64.AppImage" },
+] satisfies Array<{ platform: DesktopOS; cpu: InstallerCPU; arch: string; format: string; file: string }>;
+export const INSTALLERS = packages.map(({ file, ...installer }) => ({
+  ...installer,
   url: `${REPO}/releases/download/v${VERSION}/diandianreading-${VERSION}-${file}`,
 }));
 export const RELEASES_URL = `${REPO}/releases`;
@@ -74,7 +75,16 @@ export interface SiteCopy {
   fragments: { eyebrow: string; title: string; notes: string[]; answer: string; flow: string[]; flowLabel: string };
   features: { title: string; items: Feature[] };
   dev: { eyebrow: string; title: string; lede: string; notePrefix: string; noteSuffix: string; button: string; code: string };
-  download: { title: string; meta: string; all: string; install: Record<"macOS" | "Windows" | "Linux", string>; firstLaunch: string };
+  download: {
+    title: string;
+    meta: string;
+    all: string;
+    recommended: string;
+    chooseMac: string;
+    checkCPU: string;
+    install: Record<DesktopOS, string>;
+    firstLaunch: string;
+  };
   faq: { title: string; items: Array<{ q: string; a: string }> };
   footer: { tagline: string; releases: string; security: string; license: string; linksLabel: string };
 }
@@ -243,7 +253,10 @@ const ZH: SiteCopy = {
   },
   download: {
     title: "下载点点读书",
-    meta: `v${VERSION}（预发布）· 选择适合你电脑的安装包`,
+    meta: `v${VERSION} · 预发布版`,
+    recommended: "本机推荐",
+    chooseMac: "已识别为 Mac，可在「关于本机」查看芯片后选择。",
+    checkCPU: "此系统提供 x64 安装包，请确认电脑使用 Intel 或 AMD 64 位处理器。",
     all: "全部版本",
     install: {
       macOS: "在「关于本机」查看芯片型号。打开对应的 DMG，把「点点读书」拖入「应用程序」。",
@@ -409,7 +422,10 @@ const EN: SiteCopy = {
   },
   download: {
     title: "Download 点点读书",
-    meta: `v${VERSION} (pre-release) · Choose your installer`,
+    meta: `v${VERSION} · Pre-release`,
+    recommended: "For this device",
+    chooseMac: "Mac detected. Check your chip in About This Mac to choose a download.",
+    checkCPU: "The installer for this system requires a 64-bit Intel or AMD processor.",
     all: "All releases",
     install: {
       macOS: "Check your chip in About This Mac. Open the matching DMG and drag 点点读书 to Applications.",
