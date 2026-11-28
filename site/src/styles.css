@@ -722,7 +722,7 @@ code {
   gap: 2px;
 }
 
-.installer-mirror {
+.installer-fallback {
   justify-self: end;
   padding: 5px 8px;
   font-size: 13px;
@@ -818,7 +818,7 @@ code {
 
 .release-link:hover { text-decoration: underline; }
 .installer:focus-visible,
-.installer-mirror:focus-visible,
+.installer-fallback:focus-visible,
 .release-link:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 3px;
