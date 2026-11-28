@@ -346,10 +346,10 @@ function Download({ copy, faq }: { copy: SiteCopy["download"]; faq: SiteCopy["fa
                     {recommended && <span className="installer-recommended">{copy.recommended}</span>}
                     <DownloadIcon />
                   </a>
-                  {installer.mirrorUrl && (
-                    <a className="installer-mirror" href={installer.mirrorUrl}
-                      aria-label={`${copy.mirror} · ${installer.platform} ${installer.arch}`}>
-                      {copy.mirror}
+                  {installer.fallbackUrl && (
+                    <a className="installer-fallback" href={installer.fallbackUrl}
+                      aria-label={`${copy.fallback} · ${installer.platform} ${installer.arch}`}>
+                      {copy.fallback}
                     </a>
                   )}
                 </div>

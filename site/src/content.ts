@@ -21,10 +21,11 @@ const packages = [
 ] satisfies Array<{ platform: DesktopOS; cpu: InstallerCPU; arch: string; format: string; file: string }>;
 export const INSTALLERS = packages.map(({ file, ...installer }) => {
   const assetPath = `v${VERSION}/diandianreading-${VERSION}-${file}`;
+  const githubUrl = `${REPO}/releases/download/${assetPath}`;
   return {
     ...installer,
-    url: `${REPO}/releases/download/${assetPath}`,
-    mirrorUrl: mirrorBase ? `${mirrorBase}/${assetPath}` : undefined,
+    url: mirrorBase ? `${mirrorBase}/${assetPath}` : githubUrl,
+    fallbackUrl: mirrorBase ? githubUrl : undefined,
   };
 });
 export const RELEASES_URL = `${REPO}/releases`;
@@ -76,7 +77,7 @@ export interface SiteCopy {
     meta: string;
     all: string;
     recommended: string;
-    mirror: string;
+    fallback: string;
     chooseMac: string;
     checkCPU: string;
     install: Record<DesktopOS, string>;
@@ -252,7 +253,7 @@ const ZH: SiteCopy = {
     title: "下载点点读书",
     meta: `v${VERSION} · 预发布版`,
     recommended: "本机推荐",
-    mirror: "国内备用下载",
+    fallback: "GitHub 备用下载",
     chooseMac: "已识别为 Mac，可在「关于本机」查看芯片后选择。",
     checkCPU: "此系统提供 x64 安装包，请确认电脑使用 Intel 或 AMD 64 位处理器。",
     all: "全部版本",
@@ -422,7 +423,7 @@ const EN: SiteCopy = {
     title: "Download 点点读书",
     meta: `v${VERSION} · Pre-release`,
     recommended: "For this device",
-    mirror: "Mainland China mirror",
+    fallback: "Download from GitHub",
     chooseMac: "Mac detected. Check your chip in About This Mac to choose a download.",
     checkCPU: "The installer for this system requires a 64-bit Intel or AMD processor.",
     all: "All releases",
