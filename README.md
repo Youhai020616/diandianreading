@@ -46,8 +46,11 @@ flowchart LR
 ### 3. 两种阅读方式，内置中英互译
 - **右侧内置浏览器**：直接读微信读书网页版，也内置豆瓣、小红书、公众号后台等入口，不同账号的 Cookie 互相隔离。选中文字可一键存为笔记、发给问点点或写进草稿。
 - **本地 EPUB 阅读器**：不传微信读书也能在应用里读，支持字体、字号、行距、单双栏、目录和脚注；可逐段中英互译（自动识别原文语言，用 DeepL 或你配置的大模型翻译，译文缓存在本地）。
+- **阅读体验**：选中文字可以划线（5 种颜色）、写想法、复制、翻译或发给问点点；日夜模式、9 套配色（白纸、暖纸、Solarized、Nord 等）和纸张质感可以随时切换。
 
 <p align="center"><img src="docs/screenshots/feature-3-reader.png" width="860" alt="本地 EPUB 阅读器：中文原文与英文译文对照" /></p>
+
+<p align="center"><img src="docs/screenshots/feature-3-reader-themes.jpg" width="780" alt="阅读器：划词工具条、日夜模式、9 套配色与纸张质感" /></p>
 
 ### 4. AI 伴读「问点点」
 - 能读你右侧正在看的页面；微信读书网页版这类图片式渲染的页面，会先在本机用 macOS 自带的文字识别读出这一屏。
@@ -70,6 +73,8 @@ flowchart LR
 - 桌面上的小金毛每天推一条旧划线给你，`⌘⇧D` 可随手摘录剪贴板里的句子。
 
 <p align="center"><img src="docs/screenshots/feature-6-notes.png" width="640" alt="阅读笔记：划线和想法，一键导出到 Obsidian" /></p>
+
+<p align="center"><img src="docs/screenshots/feature-6-obsidian.jpg" width="860" alt="左边是点点读书的阅读笔记，右边是导出到 Obsidian 的同一本书" /></p>
 
 ### 7. 基于 DeepSeek Harness，兼容 Harness 插件生态
 - AI 助手运行在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 上，模型可接 DeepSeek 或任意 OpenAI 兼容接口。

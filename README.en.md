@@ -46,8 +46,11 @@ flowchart LR
 ### 3. Two ways to read, with Chinese–English translation
 - **Built-in browser on the right**: read WeRead's web version directly, with shortcuts to Douban, Xiaohongshu and the WeChat Official Accounts dashboard; each account keeps its cookies separate. Select text to save it as a note, ask 问点点 about it, or drop it into a draft.
 - **Local EPUB reader**: read books without uploading them anywhere, with fonts, size, line spacing, one- or two-column pages, table of contents and footnotes. Translate paragraph by paragraph between Chinese and English (the source language is detected; DeepL or your configured model does the work, and translations are cached locally).
+- **Reading comfort**: select text to highlight it (5 colors), add a note, copy, translate or ask 问点点; switch between day and night modes, 9 color themes (white paper, warm paper, Solarized, Nord and more) and paper textures at any time.
 
 <p align="center"><img src="docs/screenshots/feature-3-reader.png" width="860" alt="Local EPUB reader with the Chinese original and its English translation" /></p>
+
+<p align="center"><img src="docs/screenshots/feature-3-reader-themes.jpg" width="780" alt="Reader: selection toolbar, day and night modes, 9 color themes and paper textures" /></p>
 
 ### 4. AI reading companion 问点点
 - Reads the page you have open on the right; image-rendered pages such as WeRead's web reader are first read on your Mac with macOS's built-in text recognition.
@@ -70,6 +73,8 @@ flowchart LR
 - The desktop golden retriever brings back one old highlight a day, and `⌘⇧D` captures whatever sentence is on your clipboard.
 
 <p align="center"><img src="docs/screenshots/feature-6-notes.png" width="640" alt="Reading notes with highlights and thoughts, exported to Obsidian in one click" /></p>
+
+<p align="center"><img src="docs/screenshots/feature-6-obsidian.jpg" width="860" alt="Reading notes in diandianreading (left) and the same book exported to Obsidian (right)" /></p>
 
 ### 7. Built on DeepSeek Harness, compatible with Harness plugins
 - The AI companion runs on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), with DeepSeek or any OpenAI-compatible model.
