@@ -333,18 +333,26 @@ function Download({ copy, faq }: { copy: SiteCopy["download"]; faq: SiteCopy["fa
               const recommended = installer === match;
               const osMatch = !match && device?.cpu === "unknown" && device.os === installer.platform;
               return (
-                <a key={installer.url} className="installer" href={installer.url}
-                  data-match={recommended ? "device" : osMatch ? "os" : undefined}>
-                  <span className="installer-mark" aria-hidden="true">
-                    <span className="platform-logo" data-platform={installer.platform} />
-                  </span>
-                  <span className="installer-label">
-                    <strong>{installer.platform}</strong>
-                    <span>{installer.arch} · {installer.format}</span>
-                  </span>
-                  {recommended && <span className="installer-recommended">{copy.recommended}</span>}
-                  <DownloadIcon />
-                </a>
+                <div key={installer.url} className="installer-option">
+                  <a className="installer" href={installer.url}
+                    data-match={recommended ? "device" : osMatch ? "os" : undefined}>
+                    <span className="installer-mark" aria-hidden="true">
+                      <span className="platform-logo" data-platform={installer.platform} />
+                    </span>
+                    <span className="installer-label">
+                      <strong>{installer.platform}</strong>
+                      <span>{installer.arch} · {installer.format}</span>
+                    </span>
+                    {recommended && <span className="installer-recommended">{copy.recommended}</span>}
+                    <DownloadIcon />
+                  </a>
+                  {installer.mirrorUrl && (
+                    <a className="installer-mirror" href={installer.mirrorUrl}
+                      aria-label={`${copy.mirror} · ${installer.platform} ${installer.arch}`}>
+                      {copy.mirror}
+                    </a>
+                  )}
+                </div>
               );
             })}
           </div>

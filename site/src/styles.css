@@ -717,6 +717,20 @@ code {
   gap: 8px;
 }
 
+.installer-option {
+  display: grid;
+  gap: 2px;
+}
+
+.installer-mirror {
+  justify-self: end;
+  padding: 5px 8px;
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .installer {
   display: flex;
   align-items: center;
@@ -804,6 +818,7 @@ code {
 
 .release-link:hover { text-decoration: underline; }
 .installer:focus-visible,
+.installer-mirror:focus-visible,
 .release-link:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 3px;
