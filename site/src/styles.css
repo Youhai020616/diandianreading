@@ -153,7 +153,7 @@ code {
 
 .lede,
 .points li,
-.steps li,
+.install-help,
 .faq p,
 .dev-note {
   font-family: var(--editorial);
@@ -185,10 +185,6 @@ code {
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 30px;
-}
-
-.cta-row.center {
-  justify-content: center;
 }
 
 .btn {
@@ -686,32 +682,52 @@ code {
   border-radius: 16px;
 }
 
-.steps {
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.installer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 165px), 1fr));
+  gap: 10px;
+  margin: 20px 0 16px;
 }
 
-.steps li {
-  display: flex;
-  gap: 16px;
-  align-items: flex-start;
-  margin: 22px 0;
+.installer-grid .btn {
+  justify-content: center;
+  padding-inline: 10px;
+}
+
+.release-link {
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.install-help {
   color: var(--ink-2);
   line-height: 1.75;
 }
 
-.step-num {
-  flex: none;
+.install-help dl {
+  margin: 0;
+}
+
+.install-help dl > div {
   display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 1px solid var(--accent);
-  color: var(--accent);
-  font-family: var(--serif);
-  font-size: 15px;
+  grid-template-columns: 5em 1fr;
+  gap: 12px;
+  margin-block: 16px;
+}
+
+.install-help dt {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.install-help dd {
+  margin: 0;
+}
+
+.install-help p {
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
 }
 
 .faq {

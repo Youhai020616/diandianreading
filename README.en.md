@@ -88,9 +88,15 @@ flowchart LR
 ## Installation & Quick Start
 
 ### Option 1: Standalone Installer (Recommended)
-Download the installer from [GitHub Releases](https://github.com/Youhai020616/diandianreading/releases) (currently macOS on Apple Silicon only: `diandianreading-<version>-mac-arm64.dmg`), open it and drag 点点读书 to **Applications**.
+Choose an installer on the [download page](https://diandianreading.com/#download) or in [GitHub Releases](https://github.com/Youhai020616/diandianreading/releases).
 
-The app is not yet signed or notarized by Apple, so macOS blocks the first launch: try to open it once, then click **Open Anyway** in **System Settings → Privacy & Security**. Alternatively run `xattr -dr com.apple.quarantine "/Applications/点点读书.app"` in Terminal before opening it.
+| System | Installation |
+| --- | --- |
+| macOS (Apple Silicon or Intel) | Check your chip in About This Mac, open the matching DMG and drag 点点读书 to Applications. |
+| Windows x64 | Run the downloaded `.exe` installer. |
+| Linux x64 | Mark the AppImage as executable in its file properties, then open it. |
+
+The Mac app is not yet signed or notarized by Apple, so macOS blocks the first launch: try to open it once, then click **Open Anyway** in **System Settings → Privacy & Security**. Alternatively run `xattr -dr com.apple.quarantine "/Applications/点点读书.app"` in Terminal before opening it.
 > Everything required at runtime—including the ebook router binary and an isolated Node.js runtime—is bundled inside the app. No Homebrew, Node.js, or terminal setup is required. Add your DeepSeek or OpenAI-compatible API key under **Model Settings** in the bottom-left corner to start co-reading.
 
 ### Option 2: Run from Source (Developers)
@@ -122,8 +128,10 @@ Verify and package:
 # Full check before committing
 pnpm typecheck && pnpm test && pnpm build
 
-# Build the macOS (Apple Silicon) installer into release/<version>/
-pnpm dist:mac
+# Run the matching command on the target OS and CPU. Output: release/<version>/
+pnpm dist:mac    # Apple Silicon or Intel
+pnpm dist:win    # Windows x64
+pnpm dist:linux  # Linux x64
 ```
 
 ### Keyboard Shortcuts

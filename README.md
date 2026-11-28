@@ -88,9 +88,15 @@ flowchart LR
 ## 下载安装与快速开始
 
 ### 方式一：安装包开箱即用（推荐普通用户）
-前往 [GitHub Releases](https://github.com/Youhai020616/diandianreading/releases) 下载安装包（目前只提供 macOS Apple Silicon 版：`diandianreading-<version>-mac-arm64.dmg`），打开后把「点点读书」拖入「应用程序」。
+在[官网下载页](https://diandianreading.com/#download)选择对应安装包。所有版本也可从 [GitHub Releases](https://github.com/Youhai020616/diandianreading/releases) 下载。
 
-安装包还没有经过 Apple 签名和公证，第一次打开会被系统拦截：先打开一次，再到「系统设置 → 隐私与安全性」点「仍要打开」。也可以在终端执行 `xattr -dr com.apple.quarantine "/Applications/点点读书.app"` 后再打开。
+| 系统 | 安装方式 |
+| --- | --- |
+| macOS（Apple Silicon 或 Intel） | 在「关于本机」查看芯片，打开对应的 DMG，把「点点读书」拖入「应用程序」。 |
+| Windows x64 | 运行下载的 `.exe` 安装程序。 |
+| Linux x64 | 在文件属性中允许 AppImage 作为程序执行，然后打开。 |
+
+Mac 安装包还没有经过 Apple 签名和公证，第一次打开会被系统拦截：先打开一次，再到「系统设置 → 隐私与安全性」点「仍要打开」。也可以在终端执行 `xattr -dr com.apple.quarantine "/Applications/点点读书.app"` 后再打开。
 > 安装包已完整内置电子书路由组件与独立 Node 运行时，**无需**安装 Homebrew、Node.js、Python 或任何命令行依赖。首次打开后在左下角「模型」填入你的 DeepSeek 或任意 OpenAI 兼容 API Key 即可开始共读。
 
 ### 方式二：从源码启动（开发者）
@@ -122,8 +128,10 @@ DIANDIAN_START_HIDDEN=1 pnpm dev
 # 提交前的全量校验
 pnpm typecheck && pnpm test && pnpm build
 
-# 打包 macOS（Apple Silicon）安装包，输出到 release/<version>/
-pnpm dist:mac
+# 在目标系统和架构上运行对应命令，输出到 release/<version>/
+pnpm dist:mac    # Apple Silicon 或 Intel
+pnpm dist:win    # Windows x64
+pnpm dist:linux  # Linux x64
 ```
 
 ### 常用快捷键

@@ -18,11 +18,19 @@ import type { Lang } from "./i18n";
 
 export const REPO = "https://github.com/Youhai020616/diandianreading";
 export const VERSION = "2.0.0-alpha.0";
-export const DMG_URL = `${REPO}/releases/download/v${VERSION}/diandianreading-${VERSION}-mac-arm64.dmg`;
+export const INSTALLERS = [
+  { platform: "macOS", arch: "Apple Silicon", file: "mac-arm64.dmg" },
+  { platform: "macOS", arch: "Intel", file: "mac-x64.dmg" },
+  { platform: "Windows", arch: "x64", file: "win-x64.exe" },
+  { platform: "Linux", arch: "x64", file: "linux-x86_64.AppImage" },
+].map(({ platform, arch, file }) => ({
+  platform,
+  arch,
+  url: `${REPO}/releases/download/v${VERSION}/diandianreading-${VERSION}-${file}`,
+}));
 export const RELEASES_URL = `${REPO}/releases`;
 export const SECURITY_URL = `${REPO}/blob/main/SECURITY.md`;
 export const PLUGINS_URL = `${REPO}/tree/main/plugins`;
-export const DMG_SIZE = "202 MB";
 
 export interface Shot {
   src: string;
@@ -66,7 +74,7 @@ export interface SiteCopy {
   fragments: { eyebrow: string; title: string; notes: string[]; answer: string; flow: string[]; flowLabel: string };
   features: { title: string; items: Feature[] };
   dev: { eyebrow: string; title: string; lede: string; notePrefix: string; noteSuffix: string; button: string; code: string };
-  download: { title: string; meta: string; dmg: string; all: string; steps: string[] };
+  download: { title: string; meta: string; all: string; install: Record<"macOS" | "Windows" | "Linux", string>; firstLaunch: string };
   faq: { title: string; items: Array<{ q: string; a: string }> };
   footer: { tagline: string; releases: string; security: string; license: string; linksLabel: string };
 }
@@ -113,9 +121,9 @@ const ZH: SiteCopy = {
     eyebrow: "DIANDIAN READING · 点点读书",
     title: [[{ text: "个人读书" }], [{ text: "创作发布", mark: true }, { text: "工作台" }]],
     lede: "找书、传书、阅读、划线、问 AI、写作、出图、导出 Obsidian——原本散在六七个工具里的事，点点读书把它们收进一张书桌。前一步留下的划线和想法，直接成为下一步的素材。",
-    download: "下载 macOS 版",
+    download: "下载桌面版",
     source: "在 GitHub 查看源码",
-    meta: `v${VERSION} · Apple Silicon · ${DMG_SIZE} · 免费开源（MIT）`,
+    meta: `v${VERSION} · macOS · Windows · Linux · 免费开源（MIT）`,
     dayAlt: "点点读书的搜书页、右侧微信读书和 AI 伴读面板（白天模式）",
     nightAlt: "同一画面的夜读模式",
     lampOff: "拉绳关灯，切换夜读模式",
@@ -235,14 +243,14 @@ const ZH: SiteCopy = {
   },
   download: {
     title: "下载点点读书",
-    meta: `v${VERSION}（预发布）· macOS · Apple Silicon · ${DMG_SIZE}`,
-    dmg: "下载 DMG",
+    meta: `v${VERSION}（预发布）· 选择适合你电脑的安装包`,
     all: "全部版本",
-    steps: [
-      "打开 DMG，把「点点读书」拖入「应用程序」。",
-      "第一次打开会被系统拦截：到「系统设置 → 隐私与安全性」点「仍要打开」。",
-      "在左下角「模型」填入 DeepSeek 或任意 OpenAI 兼容接口的 API Key。",
-    ],
+    install: {
+      macOS: "在「关于本机」查看芯片型号。打开对应的 DMG，把「点点读书」拖入「应用程序」。",
+      Windows: "运行下载的 x64 安装程序（.exe）。",
+      Linux: "在文件属性中允许 AppImage 作为程序执行，然后双击打开。",
+    },
+    firstLaunch: "要使用 AI 伴读，请在左下角「模型」填入 DeepSeek 或兼容 OpenAI 接口的 API Key。",
   },
   faq: {
     title: "常见问题",
@@ -253,7 +261,7 @@ const ZH: SiteCopy = {
       },
       {
         q: "支持哪些电脑？",
-        a: "目前只提供 Apple Silicon（M 系列芯片）的 Mac 版。Intel Mac、Windows、Linux 暂未提供。",
+        a: "支持 Apple Silicon 和 Intel Mac，以及使用 Intel 或 AMD 64 位处理器的 Windows 和 Linux 电脑。图像文字识别和从本机浏览器导入登录状态目前仅支持 macOS；其他系统可直接在应用内登录。",
       },
       {
         q: "需要准备什么？",
@@ -279,9 +287,9 @@ const EN: SiteCopy = {
     eyebrow: "DIANDIAN READING · 点点读书",
     title: [[{ text: "A personal studio for" }], [{ text: "reading, " }, { text: "writing & publishing", mark: true }]],
     lede: "Finding books, sending them to your reader, reading, highlighting, asking AI, writing, making images and exporting to Obsidian used to take six or seven tools. 点点读书 puts them on one desk, so every highlight and thought becomes material for the next step.",
-    download: "Download for macOS",
+    download: "Download the desktop app",
     source: "View source on GitHub",
-    meta: `v${VERSION} · Apple Silicon · ${DMG_SIZE} · Free, open source (MIT) · Chinese interface`,
+    meta: `v${VERSION} · macOS · Windows · Linux · Free, open source (MIT) · Chinese interface`,
     dayAlt: "点点读书's discover page, the WeRead web reader and the AI companion (day mode)",
     nightAlt: "The same screen in night-reading mode",
     lampOff: "Pull the cord to turn the lamp off and switch to night reading",
@@ -401,14 +409,14 @@ const EN: SiteCopy = {
   },
   download: {
     title: "Download 点点读书",
-    meta: `v${VERSION} (pre-release) · macOS · Apple Silicon · ${DMG_SIZE}`,
-    dmg: "Download DMG",
+    meta: `v${VERSION} (pre-release) · Choose your installer`,
     all: "All releases",
-    steps: [
-      "Open the DMG and drag 点点读书 to Applications.",
-      "macOS blocks the first launch: go to System Settings → Privacy & Security and click Open Anyway.",
-      "Add a DeepSeek or OpenAI-compatible API key under 模型 (Model) in the bottom-left corner.",
-    ],
+    install: {
+      macOS: "Check your chip in About This Mac. Open the matching DMG and drag 点点读书 to Applications.",
+      Windows: "Run the downloaded x64 installer (.exe).",
+      Linux: "Mark the AppImage as executable in its file properties, then open it.",
+    },
+    firstLaunch: "To use the AI companion, add a DeepSeek or OpenAI-compatible API key under 模型 (Model) in the bottom-left corner.",
   },
   faq: {
     title: "FAQ",
@@ -423,7 +431,7 @@ const EN: SiteCopy = {
       },
       {
         q: "Which computers are supported?",
-        a: "Macs with Apple Silicon (M-series) only for now. Intel Macs, Windows and Linux are not available yet.",
+        a: "Installers are available for Apple Silicon and Intel Macs, and for Windows and Linux PCs with 64-bit Intel or AMD processors. Image-based page OCR and importing a local browser profile are available on macOS. On other platforms you can sign in using the built-in browser.",
       },
       {
         q: "What do I need?",

@@ -7,7 +7,7 @@ import heroNightSet from "./assets/hero-night.jpg?w=960;1440;2000&quality=82&for
 import heroNight from "./assets/hero-night.jpg?w=1440&quality=82&format=webp";
 import {
   COPY,
-  DMG_URL,
+  INSTALLERS,
   META,
   PLUGINS_URL,
   RELEASES_URL,
@@ -146,7 +146,7 @@ function Hero({ copy, lang, night, onLamp }: { copy: SiteCopy["hero"]; lang: Lan
         </h1>
         <p className="lede">{copy.lede}</p>
         <div className="cta-row">
-          <a className="btn" href={DMG_URL}>
+          <a className="btn" href="#download">
             <DownloadIcon />
             {copy.download}
           </a>
@@ -301,24 +301,26 @@ function Download({ copy, faq }: { copy: SiteCopy["download"]; faq: SiteCopy["fa
           <img src={appIcon} alt="" width={72} height={72} />
           <h2 className="h2">{copy.title}</h2>
           <p className="meta">{copy.meta}</p>
-          <div className="cta-row center">
-            <a className="btn" href={DMG_URL}>
-              <DownloadIcon />
-              {copy.dmg}
-            </a>
-            <a className="btn btn-ghost" href={RELEASES_URL} target="_blank" rel="noreferrer">
-              {copy.all}
-            </a>
+          <div className="installer-grid">
+            {INSTALLERS.map(({ platform, arch, url }) => (
+              <a key={url} className="btn btn-ghost" href={url}>
+                <DownloadIcon /> {platform} · {arch}
+              </a>
+            ))}
           </div>
+          <a className="release-link" href={RELEASES_URL} target="_blank" rel="noreferrer">{copy.all}</a>
         </div>
-        <ol className="steps">
-          {copy.steps.map((s, i) => (
-            <li key={s}>
-              <span className="step-num">{i + 1}</span>
-              <span>{s}</span>
-            </li>
-          ))}
-        </ol>
+        <div className="install-help">
+          <dl>
+            {Object.entries(copy.install).map(([platform, instruction]) => (
+              <div key={platform}>
+                <dt>{platform}</dt>
+                <dd>{instruction}</dd>
+              </div>
+            ))}
+          </dl>
+          <p>{copy.firstLaunch}</p>
+        </div>
       </div>
 
       <div className="wrap faq" id="faq">
