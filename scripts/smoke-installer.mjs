@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -14,8 +15,29 @@ const temp = fs.mkdtempSync(path.join(os.tmpdir(), "diandian-smoke-"));
 const profile = path.join(temp, "profile");
 const run = { cwd: resources, encoding: "utf8", timeout: 30_000 };
 assert.equal(execFileSync(node, ["-p", "process.platform + '-' + process.arch"], run).trim(), process.platform + "-" + process.arch);
-execFileSync(node, ["-e", "require('sharp'); require('node:sqlite'); import('@deepseek-ai/dsh-sdk-client')"], run);
+execFileSync(node, ["-e", "require('sharp'); require('node:sqlite')"], run);
 assert.match(execFileSync(zlib, ["--version"], run), /zlib version/);
+
+// Boot the SDK with the shipped plugins and a loopback-only provider. No model request is made.
+const unpacked = path.join(resources, "app.asar.unpacked");
+const { writeOverlayPatch, ROUTE_PROVIDER_ID } = createRequire(import.meta.url)(path.join(unpacked, "dist-electron/agent/overlay.js"));
+const dshHome = path.join(temp, "dsh");
+const plugins = ["reading-browser", "reading-studio", "twin-context", "runtime-safety", "live-stream"];
+const patch = writeOverlayPatch({
+  dshHome,
+  settings: { provider: "openai-compatible", baseUrl: "http://127.0.0.1:9/v1", model: "offline-test" },
+  pluginEntries: plugins.map(name => ({ id: "diandian-" + name, entryPath: path.join(unpacked, "plugins", name, "index.mjs") })),
+});
+const boot = `
+  import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client';
+  const [patch, home, provider] = process.argv.slice(1);
+  const sdk = new DeepSeekHarness({ patches: [patch], dshHome: home, cwd: home, processCwd: home, provider, model: 'offline-test' });
+  try { await sdk.start(); } finally { await sdk.close(); }
+`;
+execFileSync(node, ["--input-type=module", "-e", boot, patch, dshHome, ROUTE_PROVIDER_ID], {
+  ...run, timeout: 100_000, stdio: "inherit",
+  env: { ...process.env, DSH_HOME: dshHome, DIANDIAN_LLM_API_KEY: "offline-test" },
+});
 
 const child = spawn(app, [`--user-data-dir=${profile}`, "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0"], {
   cwd: temp,
