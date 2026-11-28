@@ -72,9 +72,9 @@ flowchart LR
 - After choosing an Obsidian vault, export a book's notes or a draft as Markdown in one click. Renames and moves inside Obsidian are tracked; if you edited the same note by hand in Obsidian, a `.diandian-conflict.md` copy is written instead of overwriting your changes.
 - The desktop golden retriever brings back one old highlight a day, and `⌘⇧D` captures whatever sentence is on your clipboard.
 
-<p align="center"><img src="docs/screenshots/feature-6-notes.png" width="640" alt="Reading notes with highlights and thoughts, exported to Obsidian in one click" /></p>
+<p align="center"><img src="docs/screenshots/feature-6-notes.png" width="860" alt="Reading notes with highlights and thoughts, exported to Obsidian in one click" /></p>
 
-<p align="center"><img src="docs/screenshots/feature-6-obsidian.jpg" width="860" alt="Reading notes in diandianreading (left) and the same book exported to Obsidian (right)" /></p>
+<p align="center"><img src="docs/screenshots/feature-6-obsidian.png" width="860" alt="Reading notes in diandianreading (left) and the same book exported to Obsidian (right)" /></p>
 
 ### 7. Built on DeepSeek Harness, compatible with Harness plugins
 - The AI companion runs on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), with DeepSeek or any OpenAI-compatible model.
