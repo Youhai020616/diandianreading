@@ -11,7 +11,7 @@
 ---
 
 <p align="center">
-  <img src="docs/screenshots/workspace-overview.png" width="92%" alt="diandianreading workspace overview" />
+  <img src="docs/media/hero_en.gif" width="900" alt="diandianreading: search, send to WeRead or Kindle, highlight, Xiaohongshu cards, export to Obsidian" />
 </p>
 
 ## Why diandianreading?
@@ -30,25 +30,62 @@ flowchart LR
 
 ## Features
 
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/media/search_en.gif" width="420" alt="Search by title, author or ISBN" /><br />
+      Search by title, author or ISBN
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/media/send_en.gif" width="420" alt="Send to WeRead or Kindle" /><br />
+      Send to WeRead or Kindle
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/media/reader_en.gif" width="420" alt="Bilingual reading" /><br />
+      Bilingual reading
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/media/notes_en.gif" width="420" alt="Highlights, notes, and Obsidian export" /><br />
+      Highlights, notes, and Obsidian export
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/media/ask_en.gif" width="420" alt="AI reading companion" /><br />
+      AI reading companion
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/media/studio_en.gif" width="420" alt="Xiaohongshu image studio" /><br />
+      Xiaohongshu image studio
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/media/guard_en.gif" width="420" alt="Three permission tiers: read-only, confirm, fully automatic" /><br />
+      Three permission tiers: read-only, confirm, fully automatic
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/media/pet_en.gif" width="320" alt="Desktop golden retriever" /><br />
+      Desktop golden retriever
+    </td>
+  </tr>
+</table>
+
 ### 1. Find and download books
 - The book-source component ships with the installer; nothing else to install.
 - Log in to Z-Library once in the built-in browser on the right and the session syncs automatically. Then search by title, author or ISBN, filter by format and sort order, browse your recommended, popular and saved lists, and see how many downloads you have left today.
 - Open the Douban rating and reviews for any book in the right-hand browser with one click.
 
-<p align="center"><img src="docs/screenshots/feature-1-search.png" width="640" alt="Search results with format and sort filters and today's remaining downloads" /></p>
-
 ### 2. Send books to WeRead or Kindle
 - Send downloaded EPUB / PDF / MOBI / AZW3 / TXT files to your WeRead shelf in one click. WeRead's web version has no upload API, so the first upload shows a QR code; scan it with WeChat and the book you were sending uploads right after.
 - Or email books to your Kindle; the SMTP authorization code is encrypted with the system keychain.
-
-<p align="center"><img src="docs/screenshots/feature-2-send.png" width="616" alt="WeRead upload channel and Kindle email delivery" /></p>
 
 ### 3. Two ways to read, with Chinese–English translation
 - **Built-in browser on the right**: read WeRead's web version directly, with shortcuts to Douban, Xiaohongshu and the WeChat Official Accounts dashboard; each account keeps its cookies separate. Select text to save it as a note, ask 问点点 about it, or drop it into a draft.
 - **Local EPUB reader**: read books without uploading them anywhere, with fonts, size, line spacing, one- or two-column pages, table of contents and footnotes. Translate paragraph by paragraph between Chinese and English (the source language is detected; DeepL or your configured model does the work, and translations are cached locally).
 - **Reading comfort**: select text to highlight it (5 colors), add a note, copy, translate or ask 问点点; switch between day and night modes, 9 color themes (white paper, warm paper, Solarized, Nord and more) and paper textures at any time.
-
-<p align="center"><img src="docs/screenshots/feature-3-reader.png" width="860" alt="Local EPUB reader with the Chinese original and its English translation" /></p>
 
 <p align="center"><img src="docs/screenshots/feature-3-reader-themes.jpg" width="780" alt="Reader: selection toolbar, day and night modes, 9 color themes and paper textures" /></p>
 
@@ -58,30 +95,20 @@ flowchart LR
 - Put several books, web pages and drafts into one topic notebook and 问点点 uses the whole set as context.
 - Three permission levels: read-only planning, confirm before acting, fully automatic.
 
-<p align="center"><img src="docs/screenshots/feature-4-ask.png" width="360" alt="问点点 comparing 《窄门》 with highlights from your other books" /></p>
-
 ### 5. From reading notes to Xiaohongshu and WeChat posts
 - Send a single highlight to a draft, or let the AI read all of a book's highlights and thoughts and draft a review.
 - The writing studio keeps the AI's original and every revision you make, ready to compare. When you save a revision it suggests writing habits drawn from your edits; the ones you accept go into `STYLE.md`, and the AI follows them from then on.
 - When the piece is done, generate 3:4 Xiaohongshu images (1080×1440, four layouts, five color themes, real book covers matched automatically), or copy it as rich text with headings, quotes and lists and paste it into Xiaohongshu's long-post editor or the WeChat Official Accounts dashboard, both available in the right-hand browser. The library can also produce a monthly reading poster.
-
-<p align="center"><img src="docs/screenshots/feature-5-visual.png" width="760" alt="Xiaohongshu image studio: cover layout with the real book cover" /></p>
 
 ### 6. One-click Obsidian export for a personal reading knowledge base
 - Highlights and thoughts live in a local SQLite database with Chinese and English full-text search. Kindle `My Clippings.txt` files and WeRead highlights can be imported too, without duplicates.
 - After choosing an Obsidian vault, export a book's notes or a draft as Markdown in one click. Renames and moves inside Obsidian are tracked; if you edited the same note by hand in Obsidian, a `.diandian-conflict.md` copy is written instead of overwriting your changes.
 - The desktop golden retriever brings back one old highlight a day, and `⌘⇧D` captures whatever sentence is on your clipboard.
 
-<p align="center"><img src="docs/screenshots/feature-6-notes.png" width="860" alt="Reading notes with highlights and thoughts, exported to Obsidian in one click" /></p>
-
-<p align="center"><img src="docs/screenshots/feature-6-obsidian.png" width="860" alt="Reading notes in diandianreading (left) and the same book exported to Obsidian (right)" /></p>
-
 ### 7. Built on DeepSeek Harness, compatible with Harness plugins
 - The AI companion runs on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), with DeepSeek or any OpenAI-compatible model.
 - diandianreading's own AI capabilities are native Harness plugins (five under `plugins/`). Third-party or your own Harness plugins load the same way: add them and register each with one line in `electron/agent/supervisor.ts`. The safety guard only blocks the tools on its list, so a new plugin's tools work out of the box. Under `pnpm dev`, editing a plugin only restarts the AI engine in the background.
 - For safety, Harness's built-in shell, workflow, skill loading and plugin manager are turned off. Plugins that depend on them need those restrictions lifted in `electron/agent/overlay.ts` and `plugins/runtime-safety/tool-policy.json` first (see [SECURITY.md](./SECURITY.md) for why). If a new plugin has tools that write, add them to `planDenied` in `tool-policy.json` so read-only mode actually blocks them.
-
-<p align="center"><img src="docs/screenshots/feature-7-guard.png" width="360" alt="The three permission levels of the AI companion: read-only planning, confirm, fully automatic" /></p>
 
 ---
 

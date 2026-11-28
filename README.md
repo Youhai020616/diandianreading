@@ -11,7 +11,7 @@
 ---
 
 <p align="center">
-  <img src="docs/screenshots/workspace-overview.png" width="92%" alt="点点读书工作台总览" />
+  <img src="docs/media/hero_zh.gif" width="900" alt="点点读书：搜书、传到微信读书或 Kindle、划线、小红书配图、导出 Obsidian" />
 </p>
 
 ## 为什么做点点读书？
@@ -30,25 +30,62 @@ flowchart LR
 
 ## 主要功能
 
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/media/search_zh.gif" width="420" alt="搜书：按书名、作者或 ISBN" /><br />
+      搜书：按书名、作者或 ISBN
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/media/send_zh.gif" width="420" alt="传到微信读书或 Kindle" /><br />
+      传到微信读书或 Kindle
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/media/reader_zh.gif" width="420" alt="中英对照阅读" /><br />
+      中英对照阅读
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/media/notes_zh.gif" width="420" alt="划线、笔记、导出 Obsidian" /><br />
+      划线、笔记、导出 Obsidian
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/media/ask_zh.gif" width="420" alt="AI 伴读「问点点」" /><br />
+      AI 伴读「问点点」
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/media/studio_zh.gif" width="420" alt="小红书配图工坊" /><br />
+      小红书配图工坊
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/media/guard_zh.gif" width="420" alt="三档权限：只读规划、安全确认、全自动" /><br />
+      三档权限：只读规划、安全确认、全自动
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/media/pet_zh.gif" width="320" alt="桌面小金毛" /><br />
+      桌面小金毛
+    </td>
+  </tr>
+</table>
+
 ### 1. 搜书与下载
 - 安装包已内置书源组件，不用另装命令行工具。
 - 在右侧内置浏览器登录一次 Z-Library，登录状态会自动同步过来；之后可按书名、作者、ISBN 搜索，按格式和排序筛选，浏览推荐、热门和收藏书单，并随时看到当天剩余的下载次数。
 - 书籍详情页可一键在右侧打开豆瓣评分和书评。
 
-<p align="center"><img src="docs/screenshots/feature-1-search.png" width="640" alt="搜书：按格式和排序筛选，显示当天剩余下载次数" /></p>
-
 ### 2. 一键传到微信读书或 Kindle
 - 下载好的 EPUB / PDF / MOBI / AZW3 / TXT 可一键传进微信读书书架。网页版微信读书没有传书接口，第一次传书时会弹出二维码，用微信扫一下即可开通，扫完自动接着上传刚才那本书。
 - 也可以通过邮件推送到 Kindle，邮箱授权码用系统钥匙串加密保存。
-
-<p align="center"><img src="docs/screenshots/feature-2-send.png" width="616" alt="微信读书传书通道与 Kindle 邮件推送" /></p>
 
 ### 3. 两种阅读方式，内置中英互译
 - **右侧内置浏览器**：直接读微信读书网页版，也内置豆瓣、小红书、公众号后台等入口，不同账号的 Cookie 互相隔离。选中文字可一键存为笔记、发给问点点或写进草稿。
 - **本地 EPUB 阅读器**：不传微信读书也能在应用里读，支持字体、字号、行距、单双栏、目录和脚注；可逐段中英互译（自动识别原文语言，用 DeepL 或你配置的大模型翻译，译文缓存在本地）。
 - **阅读体验**：选中文字可以划线（5 种颜色）、写想法、复制、翻译或发给问点点；日夜模式、9 套配色（白纸、暖纸、Solarized、Nord 等）和纸张质感可以随时切换。
-
-<p align="center"><img src="docs/screenshots/feature-3-reader.png" width="860" alt="本地 EPUB 阅读器：中文原文与英文译文对照" /></p>
 
 <p align="center"><img src="docs/screenshots/feature-3-reader-themes.jpg" width="780" alt="阅读器：划词工具条、日夜模式、9 套配色与纸张质感" /></p>
 
@@ -58,30 +95,20 @@ flowchart LR
 - 可以把几本书、网页和草稿放进同一个主题空间，问点点会把整组材料当作上下文。
 - 权限分三档：只读规划、安全确认、全自动。
 
-<p align="center"><img src="docs/screenshots/feature-4-ask.png" width="360" alt="问点点把《窄门》和你在其他书里的划线做对照" /></p>
-
 ### 5. 从读书笔记到小红书、公众号
 - 阅读笔记里的单条划线可一键写入草稿，也可以让 AI 读完一本书的全部划线和想法，起草一篇书评初稿。
 - 创作工作台保留 AI 原稿和你的每一次修改，随时可以对照；保存修改后，会从你的改动里提炼写作习惯，经你确认后写进 `STYLE.md`，之后 AI 按你的口吻来写。
 - 定稿后可生成小红书 3:4 配图（1080×1440，4 种版式、5 套配色，自动匹配真实书封），或复制带标题、引用、列表格式的富文本，在右侧内置浏览器打开的小红书「写长文」或公众号后台粘贴发布。书库还能生成月度阅读海报。
-
-<p align="center"><img src="docs/screenshots/feature-5-visual.png" width="760" alt="小红书配图工坊：书封首图版式，自动匹配真实书封" /></p>
 
 ### 6. 一键导出到 Obsidian，搭建个人读书知识库
 - 划线和想法存在本机 SQLite，支持中英文全文检索；Kindle 的 `My Clippings.txt` 和微信读书的划线也能导入进来，自动去重。
 - 选好 Obsidian 笔记库后，一本书的笔记或一篇草稿可一键导出为 Markdown。在 Obsidian 里改名、移动目录都能跟踪到；如果你在 Obsidian 里手动改过同一篇，会另存一份 `.diandian-conflict.md`，不会覆盖你的修改。
 - 桌面上的小金毛每天推一条旧划线给你，`⌘⇧D` 可随手摘录剪贴板里的句子。
 
-<p align="center"><img src="docs/screenshots/feature-6-notes.png" width="860" alt="阅读笔记：划线和想法，一键导出到 Obsidian" /></p>
-
-<p align="center"><img src="docs/screenshots/feature-6-obsidian.png" width="860" alt="左边是点点读书的阅读笔记，右边是导出到 Obsidian 的同一本书" /></p>
-
 ### 7. 基于 DeepSeek Harness，兼容 Harness 插件生态
 - AI 助手运行在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 上，模型可接 DeepSeek 或任意 OpenAI 兼容接口。
 - 点点读书自己的 AI 能力都是 Harness 原生插件（`plugins/` 下 5 个）。第三方或自己写的 Harness 插件，放进来后在 `electron/agent/supervisor.ts` 登记一行即可加载；安全守卫只拦截名单里的工具，新插件的工具默认可用。`pnpm dev` 下改插件只会在后台重启 AI 引擎。
 - 为了安全，默认关闭了 Harness 自带的 shell、workflow、技能加载和插件管理器。依赖这些能力的插件，需先在 `electron/agent/overlay.ts` 和 `plugins/runtime-safety/tool-policy.json` 中解除限制（原因见 [SECURITY.md](./SECURITY.md)）。新插件带写入类工具时，建议加进 `tool-policy.json` 的 `planDenied`，只读模式下才会被拦住。
-
-<p align="center"><img src="docs/screenshots/feature-7-guard.png" width="360" alt="问点点的三档权限：只读规划、安全确认、全自动" /></p>
 
 ---
 
