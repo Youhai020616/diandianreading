@@ -1,10 +1,19 @@
-import search from "@shots/feature-1-search.png";
-import send from "@shots/feature-2-send.png";
-import reader from "@shots/feature-3-reader.png";
-import readerThemes from "@shots/feature-3-reader-themes.jpg";
-import ask from "@shots/feature-4-ask.png";
-import visual from "@shots/feature-5-visual.png";
-import obsidian from "@shots/feature-6-obsidian.jpg";
+// Each screenshot ships as WebP at its display width and twice that (for high-DPI screens), never
+// larger than the original. The originals stay in docs/screenshots for the README.
+import searchSet from "@shots/feature-1-search.png?w=640;1280&quality=82&format=webp&as=srcset";
+import searchSrc from "@shots/feature-1-search.png?w=1280&quality=82&format=webp";
+import sendSet from "@shots/feature-2-send.png?w=616;1232&quality=82&format=webp&as=srcset";
+import sendSrc from "@shots/feature-2-send.png?w=1232&quality=82&format=webp";
+import readerSet from "@shots/feature-3-reader.png?w=860;1720&quality=82&format=webp&as=srcset";
+import readerSrc from "@shots/feature-3-reader.png?w=1720&quality=82&format=webp";
+import themesSet from "@shots/feature-3-reader-themes.jpg?w=780;1560&quality=82&format=webp&as=srcset";
+import themesSrc from "@shots/feature-3-reader-themes.jpg?w=1560&quality=82&format=webp";
+import askSet from "@shots/feature-4-ask.png?w=394;788&quality=82&format=webp&as=srcset";
+import askSrc from "@shots/feature-4-ask.png?w=788&quality=82&format=webp";
+import visualSet from "@shots/feature-5-visual.png?w=860;1720&quality=82&format=webp&as=srcset";
+import visualSrc from "@shots/feature-5-visual.png?w=1720&quality=82&format=webp";
+import obsidianSet from "@shots/feature-6-obsidian.jpg?w=1000;2000&quality=82&format=webp&as=srcset";
+import obsidianSrc from "@shots/feature-6-obsidian.jpg?w=2000&quality=82&format=webp";
 import type { Lang } from "./i18n";
 
 export const REPO = "https://github.com/Youhai020616/diandianreading";
@@ -17,6 +26,7 @@ export const DMG_SIZE = "202 MB";
 
 export interface Shot {
   src: string;
+  srcSet: string;
   alt: string;
   /** Natural CSS width the screenshot was taken at; caps how wide it is shown. */
   width: number;
@@ -60,6 +70,16 @@ export interface SiteCopy {
   faq: { title: string; items: Array<{ q: string; a: string }> };
   footer: { tagline: string; releases: string; security: string; linksLabel: string };
 }
+
+const IMG = {
+  search: { src: searchSrc, srcSet: searchSet, width: 640 },
+  send: { src: sendSrc, srcSet: sendSet, width: 616 },
+  reader: { src: readerSrc, srcSet: readerSet, width: 860 },
+  themes: { src: themesSrc, srcSet: themesSet, width: 780 },
+  ask: { src: askSrc, srcSet: askSet, width: 394 },
+  visual: { src: visualSrc, srcSet: visualSet, width: 860 },
+  obsidian: { src: obsidianSrc, srcSet: obsidianSet, width: 1000 },
+};
 
 const pluginCode = (description: string, registerNote: [string, string]) => `// plugins/my-plugin/index.mjs
 import { defineTool } from "@deepseek-ai/dsh-tools";
@@ -131,7 +151,7 @@ const ZH: SiteCopy = {
           "按书名、作者、ISBN 搜索，按格式和排序筛选，随时看到当天剩余的下载次数。",
           "书籍详情页一键在右侧打开豆瓣评分和书评。",
         ],
-        shots: [{ src: search, alt: "搜书结果：格式和排序筛选、当天剩余下载次数", width: 640 }],
+        shots: [{ ...IMG.search, alt: "搜书结果：格式和排序筛选、当天剩余下载次数" }],
         layout: "split",
       },
       {
@@ -144,7 +164,7 @@ const ZH: SiteCopy = {
           "网页版微信读书没有传书接口：第一次传书时扫码开通传书通道，扫完自动接着上传那本书。",
           "也可以通过邮件推送到 Kindle，邮箱授权码用系统钥匙串加密保存。",
         ],
-        shots: [{ src: send, alt: "微信读书传书通道与 Kindle 邮件推送", width: 616 }],
+        shots: [{ ...IMG.send, alt: "微信读书传书通道与 Kindle 邮件推送" }],
         layout: "split",
       },
       {
@@ -158,8 +178,8 @@ const ZH: SiteCopy = {
           "划线 5 种颜色、写想法、划词翻译；日夜模式、9 套配色和纸张质感随时切换。",
         ],
         shots: [
-          { src: reader, alt: "本地阅读器：中文原文与英文译文对照", width: 860 },
-          { src: readerThemes, alt: "划词工具条、夜间模式、主题面板与划词翻译", width: 780 },
+          { ...IMG.reader, alt: "本地阅读器：中文原文与英文译文对照" },
+          { ...IMG.themes, alt: "划词工具条、夜间模式、主题面板与划词翻译" },
         ],
         layout: "wide",
       },
@@ -173,7 +193,7 @@ const ZH: SiteCopy = {
           "检索你书库里的旧划线和想法，做跨书对照和讲解，比如「和我读过的书碰一碰」。",
           "几本书、网页和草稿可以放进同一个主题空间，一起当作上下文。",
         ],
-        shots: [{ src: ask, alt: "问点点把《窄门》和你在其他书里的划线做对照", width: 394 }],
+        shots: [{ ...IMG.ask, alt: "问点点把《窄门》和你在其他书里的划线做对照" }],
         layout: "split",
       },
       {
@@ -186,7 +206,7 @@ const ZH: SiteCopy = {
           "创作工作台保留 AI 原稿和你的每一次修改；从你的改动里提炼写作习惯，经你确认后写进 STYLE.md。",
           "生成 3:4 小红书配图（4 种版式、5 套配色、自动匹配真实书封），或复制富文本，到右侧打开的小红书、公众号后台粘贴发布。",
         ],
-        shots: [{ src: visual, alt: "小红书配图工坊：书封首图版式，自动匹配真实书封", width: 860 }],
+        shots: [{ ...IMG.visual, alt: "小红书配图工坊：书封首图版式，自动匹配真实书封" }],
         layout: "split",
       },
       {
@@ -199,7 +219,7 @@ const ZH: SiteCopy = {
           "一本书的笔记或一篇草稿一键导出为 Markdown；你在 Obsidian 里改过的那一篇，会另存一份冲突副本，不会被覆盖。",
           "桌面上的小金毛每天推一条旧划线给你，⌘⇧D 随手摘录剪贴板里的句子。",
         ],
-        shots: [{ src: obsidian, alt: "左边是点点读书的阅读笔记，右边是导出到 Obsidian 的同一本书", width: 1000 }],
+        shots: [{ ...IMG.obsidian, alt: "左边是点点读书的阅读笔记，右边是导出到 Obsidian 的同一本书" }],
         layout: "wide",
       },
     ],
@@ -297,7 +317,7 @@ const EN: SiteCopy = {
           "Search by title, author or ISBN, filter by format and sort order, and see how many downloads you have left today.",
           "Open a book's Douban rating and reviews in the right-hand browser with one click.",
         ],
-        shots: [{ src: search, alt: "Search results with format and sort filters and today's remaining downloads", width: 640 }],
+        shots: [{ ...IMG.search, alt: "Search results with format and sort filters and today's remaining downloads" }],
         layout: "split",
       },
       {
@@ -310,7 +330,7 @@ const EN: SiteCopy = {
           "WeRead's web version has no upload API: the first upload shows a QR code, and once you scan it the book you were sending uploads right after.",
           "Or email books to your Kindle; the mailbox authorization code is encrypted with the system keychain.",
         ],
-        shots: [{ src: send, alt: "WeRead upload channel and Kindle email delivery", width: 616 }],
+        shots: [{ ...IMG.send, alt: "WeRead upload channel and Kindle email delivery" }],
         layout: "split",
       },
       {
@@ -324,8 +344,8 @@ const EN: SiteCopy = {
           "Highlights in 5 colors, notes and selection translation; day and night modes, 9 color themes and paper textures.",
         ],
         shots: [
-          { src: reader, alt: "Local reader with the Chinese original and its English translation", width: 860 },
-          { src: readerThemes, alt: "Selection toolbar, night mode, theme panel and selection translation", width: 780 },
+          { ...IMG.reader, alt: "Local reader with the Chinese original and its English translation" },
+          { ...IMG.themes, alt: "Selection toolbar, night mode, theme panel and selection translation" },
         ],
         layout: "wide",
       },
@@ -339,7 +359,7 @@ const EN: SiteCopy = {
           "Searches your past highlights and thoughts to compare and explain ideas across books, e.g. “compare with books I've read”.",
           "Put several books, web pages and drafts into one topic notebook to use them together as context.",
         ],
-        shots: [{ src: ask, alt: "问点点 comparing 《窄门》 with highlights from your other books", width: 394 }],
+        shots: [{ ...IMG.ask, alt: "问点点 comparing 《窄门》 with highlights from your other books" }],
         layout: "split",
       },
       {
@@ -352,7 +372,7 @@ const EN: SiteCopy = {
           "The writing studio keeps the AI's original and every revision you make; it suggests writing habits drawn from your edits, and the ones you accept go into STYLE.md.",
           "Make 3:4 Xiaohongshu images (4 layouts, 5 color themes, real book covers matched automatically), or copy rich text and paste it into Xiaohongshu or the WeChat Official Accounts dashboard in the right-hand browser.",
         ],
-        shots: [{ src: visual, alt: "Xiaohongshu image studio: cover layout with the real book cover", width: 860 }],
+        shots: [{ ...IMG.visual, alt: "Xiaohongshu image studio: cover layout with the real book cover" }],
         layout: "split",
       },
       {
@@ -365,7 +385,7 @@ const EN: SiteCopy = {
           "Export a book's notes or a draft as Markdown in one click; if you edited the same note in Obsidian, a conflict copy is written instead of overwriting it.",
           "The desktop golden retriever brings back one old highlight a day, and ⌘⇧D captures whatever sentence is on your clipboard.",
         ],
-        shots: [{ src: obsidian, alt: "Reading notes in 点点读书 (left) and the same book exported to Obsidian (right)", width: 1000 }],
+        shots: [{ ...IMG.obsidian, alt: "Reading notes in 点点读书 (left) and the same book exported to Obsidian (right)" }],
         layout: "wide",
       },
     ],

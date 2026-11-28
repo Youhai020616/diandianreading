@@ -1,7 +1,10 @@
+import { useEffect, useState } from "react";
 import { PullCordLamp } from "@app/components/ui/pull-cord-lamp";
-import appIcon from "@icons/256x256.png";
-import heroDay from "./assets/hero-day.jpg";
-import heroNight from "./assets/hero-night.jpg";
+import appIcon from "@icons/256x256.png?w=144&format=webp";
+import heroDaySet from "./assets/hero-day.jpg?w=960;1440;2000&quality=82&format=webp&as=srcset";
+import heroDay from "./assets/hero-day.jpg?w=1440&quality=82&format=webp";
+import heroNightSet from "./assets/hero-night.jpg?w=960;1440;2000&quality=82&format=webp&as=srcset";
+import heroNight from "./assets/hero-night.jpg?w=1440&quality=82&format=webp";
 import {
   COPY,
   DMG_URL,
@@ -33,12 +36,43 @@ function GitHubIcon() {
   );
 }
 
+const HERO_SIZES = "(max-width: 1120px) 100vw, 1024px";
+
 function Screenshot({ shot }: { shot: Shot }) {
   return (
     <figure className="shot" style={{ maxWidth: shot.width }}>
-      <img src={shot.src} alt={shot.alt} loading="lazy" decoding="async" />
+      <img
+        src={shot.src}
+        srcSet={shot.srcSet}
+        sizes={`(max-width: 720px) 100vw, ${shot.width}px`}
+        alt={shot.alt}
+        loading="lazy"
+        decoding="async"
+      />
     </figure>
   );
+}
+
+/** The night hero is only needed after a pull: fetch it once the page has loaded (or right away at night). */
+function useDeferredNight(night: boolean) {
+  const [ready, setReady] = useState(night);
+  useEffect(() => {
+    if (night || ready) {
+      setReady(true);
+      return;
+    }
+    let timer = 0;
+    const later = () => {
+      timer = window.setTimeout(() => setReady(true), 1200);
+    };
+    if (document.readyState === "complete") later();
+    else window.addEventListener("load", later, { once: true });
+    return () => {
+      window.removeEventListener("load", later);
+      window.clearTimeout(timer);
+    };
+  }, [night, ready]);
+  return ready;
 }
 
 function LangSwitch({ lang, label, onChange }: { lang: Lang; label: string; onChange: (lang: Lang) => void }) {
@@ -80,6 +114,7 @@ function Nav({ copy, lang, onLang }: { copy: SiteCopy["nav"]; lang: Lang; onLang
 }
 
 function Hero({ copy, lang, night, onLamp }: { copy: SiteCopy["hero"]; lang: Lang; night: boolean; onLamp: (on: boolean) => void }) {
+  const nightReady = useDeferredNight(night);
   return (
     <section className="hero" id="top">
       <div className="lamp-dock">
@@ -125,8 +160,18 @@ function Hero({ copy, lang, night, onLamp }: { copy: SiteCopy["hero"]; lang: Lan
 
       <div className="wrap">
         <div className="hero-shot" data-night={night}>
-          <img className="hero-day" src={heroDay} alt={copy.dayAlt} />
-          <img className="hero-night" src={heroNight} alt={copy.nightAlt} aria-hidden={!night} />
+          <img className="hero-day" src={heroDay} srcSet={heroDaySet} sizes={HERO_SIZES} alt={copy.dayAlt} fetchPriority="high" />
+          {nightReady && (
+            <img
+              className="hero-night"
+              src={heroNight}
+              srcSet={heroNightSet}
+              sizes={HERO_SIZES}
+              alt={copy.nightAlt}
+              aria-hidden={!night}
+              decoding="async"
+            />
+          )}
         </div>
       </div>
     </section>

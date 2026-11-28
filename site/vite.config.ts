@@ -1,6 +1,7 @@
 import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { imagetools } from "vite-imagetools";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
@@ -8,7 +9,8 @@ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 // README screenshots from docs/screenshots. `dedupe` keeps those files on the site's single React copy.
 export default defineConfig({
   base: "./",
-  plugins: [react()],
+  // imagetools turns `?w=…&format=webp` imports into resized WebP files at build time.
+  plugins: [react(), imagetools()],
   resolve: {
     alias: {
       "@app": fileURLToPath(new URL("../src", import.meta.url)),
