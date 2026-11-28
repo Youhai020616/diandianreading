@@ -352,6 +352,9 @@ function Footer({ copy }: { copy: SiteCopy["footer"] }) {
           <a href={SECURITY_URL} target="_blank" rel="noreferrer">
             {copy.security}
           </a>
+          <a href={`${REPO}/blob/main/LICENSE`} target="_blank" rel="noreferrer">
+            {copy.license}
+          </a>
         </nav>
       </div>
     </footer>

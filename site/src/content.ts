@@ -68,7 +68,7 @@ export interface SiteCopy {
   dev: { eyebrow: string; title: string; lede: string; notePrefix: string; noteSuffix: string; button: string; code: string };
   download: { title: string; meta: string; dmg: string; all: string; steps: string[] };
   faq: { title: string; items: Array<{ q: string; a: string }> };
-  footer: { tagline: string; releases: string; security: string; linksLabel: string };
+  footer: { tagline: string; releases: string; security: string; license: string; linksLabel: string };
 }
 
 const IMG = {
@@ -115,7 +115,7 @@ const ZH: SiteCopy = {
     lede: "找书、传书、阅读、划线、问 AI、写作、出图、导出 Obsidian——原本散在六七个工具里的事，点点读书把它们收进一张书桌。前一步留下的划线和想法，直接成为下一步的素材。",
     download: "下载 macOS 版",
     source: "在 GitHub 查看源码",
-    meta: `v${VERSION} · Apple Silicon · ${DMG_SIZE} · 免费下载`,
+    meta: `v${VERSION} · Apple Silicon · ${DMG_SIZE} · 免费开源（MIT）`,
     dayAlt: "点点读书的搜书页、右侧微信读书和 AI 伴读面板（白天模式）",
     nightAlt: "同一画面的夜读模式",
     lampOff: "拉绳关灯，切换夜读模式",
@@ -263,10 +263,10 @@ const ZH: SiteCopy = {
         q: "我的数据存在哪里？",
         a: "书库、划线、草稿和修改记录存在你电脑上的 SQLite；阅读画像和写作风格是两份本地文本文件。使用 AI 功能时，相关内容会发送给你自己配置的模型服务，详见 SECURITY.md。",
       },
-      { q: "收费吗？", a: "应用免费下载。模型调用按你自己的服务商计费。" },
+      { q: "收费吗？", a: "应用免费，以 MIT 协议开源。模型调用按你自己的服务商计费。" },
     ],
   },
-  footer: { tagline: "点点读书 · 个人读书创作发布工作台", releases: "Releases", security: "安全说明", linksLabel: "页脚链接" },
+  footer: { tagline: "点点读书 · 个人读书创作发布工作台", releases: "Releases", security: "安全说明", license: "MIT 协议", linksLabel: "页脚链接" },
 };
 
 const EN: SiteCopy = {
@@ -281,7 +281,7 @@ const EN: SiteCopy = {
     lede: "Finding books, sending them to your reader, reading, highlighting, asking AI, writing, making images and exporting to Obsidian used to take six or seven tools. 点点读书 puts them on one desk, so every highlight and thought becomes material for the next step.",
     download: "Download for macOS",
     source: "View source on GitHub",
-    meta: `v${VERSION} · Apple Silicon · ${DMG_SIZE} · Free · Chinese interface`,
+    meta: `v${VERSION} · Apple Silicon · ${DMG_SIZE} · Free, open source (MIT) · Chinese interface`,
     dayAlt: "点点读书's discover page, the WeRead web reader and the AI companion (day mode)",
     nightAlt: "The same screen in night-reading mode",
     lampOff: "Pull the cord to turn the lamp off and switch to night reading",
@@ -433,10 +433,10 @@ const EN: SiteCopy = {
         q: "Where is my data stored?",
         a: "Your library, highlights, drafts and revision history are in SQLite on your computer; your reading profile and writing style are two local text files. When you use AI features, the relevant content is sent to the model provider you configured; see SECURITY.md.",
       },
-      { q: "Does it cost anything?", a: "The app is free to download. Model usage is billed by your own provider." },
+      { q: "Does it cost anything?", a: "The app is free and open source under the MIT License. Model usage is billed by your own provider." },
     ],
   },
-  footer: { tagline: "点点读书 · A personal studio for reading, writing & publishing", releases: "Releases", security: "Security", linksLabel: "Footer links" },
+  footer: { tagline: "点点读书 · A personal studio for reading, writing & publishing", releases: "Releases", security: "Security", license: "MIT License", linksLabel: "Footer links" },
 };
 
 export const COPY: Record<Lang, SiteCopy> = { zh: ZH, en: EN };

@@ -193,3 +193,9 @@ See **[SECURITY.md](./SECURITY.md)** for the full threat model and security boun
 - **Zero-trust IPC**: All windows run with `contextIsolation: true`, `nodeIntegration: false`, and `sandbox: true`; every `ipcMain` handler is registered through `TrustedIpcRegistry` and validates both `senderFrame === mainFrame` and exact app entry URL matching.
 - **Keychain-backed secrets**: LLM API keys, DeepL keys, and Kindle SMTP passwords are encrypted via Electron `safeStorage` (`0700` dir / `0600` atomic file writes) and never enter logs, overlay YAML files, or renderer state.
 - **Sandboxed EPUB & card rendering**: EPUB chapters render inside scriptless sandboxed iframes with strict decompression caps (`epubLimits.ts`); share cards and posters render inside a network-blocked `htmlcard://` partition.
+
+---
+
+## License
+
+diandianreading is open source under the [MIT License](./LICENSE). Third-party components bundled with the app (Electron, DeepSeek Harness, foliate-js, heartleo/zlib and others) keep their own open-source licenses; see their LICENSE files and [`public/licenses/`](./public/licenses/).

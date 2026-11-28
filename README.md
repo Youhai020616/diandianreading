@@ -194,3 +194,9 @@ flowchart TB
 - **密钥系统钥匙串加密**：大模型 API Key、DeepL 翻译密钥与 Kindle SMTP 授权码均经 Electron `safeStorage`（系统钥匙串）加密落盘（目录 `0700` / 文件 `0600` 原子写），仅在拉起子进程或发信瞬间于内存解密，绝不写入日志、Overlay 配置或渲染层状态。
 - **电子书与卡片离线沙盒**：本地 EPUB 章节在无脚本沙盒 iframe 中渲染，强制剥离脚本/表单并设有防压缩炸弹解压上限（`epubLimits.ts`）；卡片与海报在独立 `htmlcard://` 沙盒分区离屏烘焙，拦截一切外网请求。
 - **单向非破坏性导出**：Obsidian 导出拒绝符号链接越界，遇到外部手工编辑自动分流为 `.diandian-conflict.md` 冲突副本，永不覆盖用户手稿。
+
+---
+
+## 许可协议
+
+点点读书以 [MIT 协议](./LICENSE) 开源。随安装包分发的第三方组件（Electron、DeepSeek Harness、foliate-js、heartleo/zlib 等）各自遵循其开源许可证，声明见各组件自带的 LICENSE 与 [`public/licenses/`](./public/licenses/)。

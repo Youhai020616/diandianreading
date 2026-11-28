@@ -2,6 +2,7 @@
   "name": "diandianreading",
   "productName": "点点读书",
   "version": "2.0.0-alpha.0",
+  "license": "MIT",
   "private": true,
   "description": "Local-first AI reading, personal voice writing, and visual card studio (Electron + DeepSeek Harness)",
   "author": "点点读书",
