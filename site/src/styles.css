@@ -74,6 +74,11 @@ html {
   scroll-padding-top: 76px;
 }
 
+/* The download links jump across the entire feature gallery. */
+html:has(#download:target) {
+  scroll-behavior: auto;
+}
+
 body {
   margin: 0;
   background: var(--paper);

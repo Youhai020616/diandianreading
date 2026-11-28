@@ -8,3 +8,9 @@ declare module "*format=webp" {
   const src: string;
   export default src;
 }
+
+// All feature screenshots provide two widths; imagetools includes both in srcset.
+declare module "*&as=img" {
+  const image: { src: string; srcset: string; w: number; h: number };
+  export default image;
+}

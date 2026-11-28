@@ -1,19 +1,12 @@
 // Each screenshot ships as WebP at its display width and twice that (for high-DPI screens), never
 // larger than the original. The originals stay in docs/screenshots for the README.
-import searchSet from "@shots/feature-1-search.png?w=640;1280&quality=82&format=webp&as=srcset";
-import searchSrc from "@shots/feature-1-search.png?w=1280&quality=82&format=webp";
-import sendSet from "@shots/feature-2-send.png?w=616;1232&quality=82&format=webp&as=srcset";
-import sendSrc from "@shots/feature-2-send.png?w=1232&quality=82&format=webp";
-import readerSet from "@shots/feature-3-reader.png?w=860;1720&quality=82&format=webp&as=srcset";
-import readerSrc from "@shots/feature-3-reader.png?w=1720&quality=82&format=webp";
-import themesSet from "@shots/feature-3-reader-themes.jpg?w=780;1560&quality=82&format=webp&as=srcset";
-import themesSrc from "@shots/feature-3-reader-themes.jpg?w=1560&quality=82&format=webp";
-import askSet from "@shots/feature-4-ask.png?w=394;788&quality=82&format=webp&as=srcset";
-import askSrc from "@shots/feature-4-ask.png?w=788&quality=82&format=webp";
-import visualSet from "@shots/feature-5-visual.png?w=860;1720&quality=82&format=webp&as=srcset";
-import visualSrc from "@shots/feature-5-visual.png?w=1720&quality=82&format=webp";
-import obsidianSet from "@shots/feature-6-obsidian.jpg?w=1000;2000&quality=82&format=webp&as=srcset";
-import obsidianSrc from "@shots/feature-6-obsidian.jpg?w=2000&quality=82&format=webp";
+import searchImg from "@shots/feature-1-search.png?w=640;1280&quality=82&format=webp&as=img";
+import sendImg from "@shots/feature-2-send.png?w=616;1232&quality=82&format=webp&as=img";
+import readerImg from "@shots/feature-3-reader.png?w=860;1720&quality=82&format=webp&as=img";
+import themesImg from "@shots/feature-3-reader-themes.jpg?w=780;1560&quality=82&format=webp&as=img";
+import askImg from "@shots/feature-4-ask.png?w=394;788&quality=82&format=webp&as=img";
+import visualImg from "@shots/feature-5-visual.png?w=860;1720&quality=82&format=webp&as=img";
+import obsidianImg from "@shots/feature-6-obsidian.jpg?w=1000;2000&quality=82&format=webp&as=img";
 import type { Lang } from "./i18n";
 import type { DesktopOS, InstallerCPU } from "./installerDevice";
 
@@ -33,13 +26,11 @@ export const RELEASES_URL = `${REPO}/releases`;
 export const SECURITY_URL = `${REPO}/blob/main/SECURITY.md`;
 export const PLUGINS_URL = `${REPO}/tree/main/plugins`;
 
-export interface Shot {
-  src: string;
-  srcSet: string;
+export type Shot = typeof searchImg & {
   alt: string;
-  /** Natural CSS width the screenshot was taken at; caps how wide it is shown. */
-  width: number;
-}
+  /** Maximum width at which the screenshot is displayed. */
+  displayWidth: number;
+};
 
 export interface Feature {
   id: string;
@@ -90,13 +81,13 @@ export interface SiteCopy {
 }
 
 const IMG = {
-  search: { src: searchSrc, srcSet: searchSet, width: 640 },
-  send: { src: sendSrc, srcSet: sendSet, width: 616 },
-  reader: { src: readerSrc, srcSet: readerSet, width: 860 },
-  themes: { src: themesSrc, srcSet: themesSet, width: 780 },
-  ask: { src: askSrc, srcSet: askSet, width: 394 },
-  visual: { src: visualSrc, srcSet: visualSet, width: 860 },
-  obsidian: { src: obsidianSrc, srcSet: obsidianSet, width: 1000 },
+  search: { ...searchImg, displayWidth: 640 },
+  send: { ...sendImg, displayWidth: 616 },
+  reader: { ...readerImg, displayWidth: 860 },
+  themes: { ...themesImg, displayWidth: 780 },
+  ask: { ...askImg, displayWidth: 394 },
+  visual: { ...visualImg, displayWidth: 860 },
+  obsidian: { ...obsidianImg, displayWidth: 1000 },
 };
 
 const pluginCode = (description: string, registerNote: [string, string]) => `// plugins/my-plugin/index.mjs

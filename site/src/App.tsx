@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { PullCordLamp } from "@app/components/ui/pull-cord-lamp";
 import appIcon from "@icons/256x256.png?w=144&format=webp";
 import heroDaySet from "./assets/hero-day.jpg?w=960;1440;2000&quality=82&format=webp&as=srcset";
@@ -41,11 +41,13 @@ const HERO_SIZES = "(max-width: 1120px) 100vw, 1024px";
 
 function Screenshot({ shot }: { shot: Shot }) {
   return (
-    <figure className="shot" style={{ maxWidth: shot.width }}>
+    <figure className="shot" style={{ maxWidth: shot.displayWidth }}>
       <img
         src={shot.src}
-        srcSet={shot.srcSet}
-        sizes={`(max-width: 720px) 100vw, ${shot.width}px`}
+        srcSet={shot.srcset}
+        width={shot.w}
+        height={shot.h}
+        sizes={`(max-width: 720px) 100vw, ${shot.displayWidth}px`}
         alt={shot.alt}
         loading="lazy"
         decoding="async"
@@ -295,6 +297,14 @@ function Developers({ copy }: { copy: SiteCopy["dev"] }) {
 }
 
 function Download({ copy, faq }: { copy: SiteCopy["download"]; faq: SiteCopy["faq"] }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    // On a direct link the browser may look for the fragment before React mounts it.
+    if (window.location.hash === "#download") {
+      cardRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
+    }
+  }, []);
+
   const [device, setDevice] = useState<InstallerDevice | null>(null);
   useEffect(() => {
     let active = true;
@@ -308,9 +318,9 @@ function Download({ copy, faq }: { copy: SiteCopy["download"]; faq: SiteCopy["fa
   const note = device && !match ? (device.os === "macOS" ? copy.chooseMac : copy.checkCPU) : null;
 
   return (
-    <section className="section download" id="download">
+    <section className="section download">
       <div className="wrap download-grid">
-        <div className="download-card">
+        <div className="download-card" id="download" ref={cardRef}>
           <div className="download-heading">
             <img src={appIcon} alt="" width={56} height={56} />
             <div>
