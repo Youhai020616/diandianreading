@@ -1,0 +1,77 @@
+name: Build desktop installers
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            platform: mac
+            arch: x64
+            extension: dmg
+          - runner: macos-15
+            platform: mac
+            arch: arm64
+            extension: dmg
+          - runner: windows-2025
+            platform: win
+            arch: x64
+            extension: exe
+          - runner: ubuntu-24.04
+            platform: linux
+            arch: x64
+            extension: AppImage
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.15.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm dist:${{ matrix.platform }}
+      - name: Mount and launch the Mac app
+        if: runner.os == 'macOS'
+        run: |
+          mkdir "$RUNNER_TEMP/diandian-dmg"
+          hdiutil attach release/*/*.dmg -nobrowse -readonly -mountpoint "$RUNNER_TEMP/diandian-dmg"
+          trap 'hdiutil detach "$RUNNER_TEMP/diandian-dmg"' EXIT
+          contents="$RUNNER_TEMP/diandian-dmg/点点读书.app/Contents"
+          node scripts/smoke-installer.mjs "$contents/MacOS/点点读书" "$contents/Resources"
+      - name: Install and launch the Windows app
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = (Get-Item release/*/*.exe).FullName
+          $dest = Join-Path $env:RUNNER_TEMP 'diandian-installed'
+          $process = Start-Process -FilePath $installer -ArgumentList '/S',"/D=$dest" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer exited with $($process.ExitCode)" }
+          node scripts/smoke-installer.mjs "$dest/点点读书.exe" "$dest/resources"
+      - name: Extract and launch the Linux AppImage
+        if: runner.os == 'Linux'
+        run: |
+          image=$(realpath release/*/*.AppImage)
+          cd "$RUNNER_TEMP"
+          "$image" --appimage-extract > /dev/null
+          sudo chown root:root squashfs-root/chrome-sandbox
+          sudo chmod 4755 squashfs-root/chrome-sandbox
+          xvfb-run -a node "$GITHUB_WORKSPACE/scripts/smoke-installer.mjs" "$PWD/squashfs-root/AppRun" "$PWD/squashfs-root/resources"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installer-${{ matrix.platform }}-${{ matrix.arch }}
+          path: release/*/diandianreading-*-${{ matrix.platform }}-${{ matrix.arch }}.${{ matrix.extension }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3

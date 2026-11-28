@@ -18,7 +18,9 @@
     "dev": "node scripts/fetch-binaries.mjs zlib --optional && pnpm run build:electron && node scripts/dev-electron.mjs",
     "start": "pnpm run build && electron .",
     "fetch:zlib": "node scripts/fetch-binaries.mjs zlib",
-    "dist:mac": "pnpm build && electron-builder --mac --arm64",
+    "dist:mac": "pnpm build && electron-builder --mac --publish never",
+    "dist:win": "pnpm build && electron-builder --win --x64 --publish never",
+    "dist:linux": "pnpm build && electron-builder --linux --x64 --publish never",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -110,7 +112,7 @@
       }
     ],
     "beforeBuild": "./scripts/before-build.mjs",
-    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
     "publish": null,
     "mac": {
       "icon": "build/icons/icon.icns",
