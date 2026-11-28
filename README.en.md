@@ -1,7 +1,7 @@
 <div align="center">
   <img src="build/icons/256x256.png" width="108" height="108" alt="diandianreading Logo" />
   <h1>diandianreading · 点点读书</h1>
-  <p><strong>A desktop studio that takes you from reading to writing.</strong></p>
+  <p><strong>A personal desktop studio for reading, writing and publishing.</strong></p>
   <p>Bring book discovery, dual-engine co-reading, an AI reading companion, FTS5 highlight synthesis, anti-cliché writing, Xiaohongshu 3D book visuals, and Obsidian knowledge export onto one calm desk.</p>
   <p>
     <a href="./README.md">简体中文</a> · <strong>English</strong> · <a href="./SECURITY.md">Security Policy</a>

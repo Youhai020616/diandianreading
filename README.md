@@ -1,7 +1,7 @@
 <div align="center">
   <img src="build/icons/256x256.png" width="108" height="108" alt="点点读书 Logo" />
   <h1>点点读书 · diandianreading</h1>
-  <p><strong>从读书到写作的桌面工作台</strong></p>
+  <p><strong>个人读书创作发布工作台</strong></p>
   <p>把「找书 · 双引擎沉浸共读 · AI 伴读 · 划线碰撞 · 去 AI 味写作 · 小红书视觉出图 · Obsidian 知识沉淀」收进同一张书桌。</p>
   <p>
     <strong>简体中文</strong> · <a href="./README.en.md">English</a> · <a href="./SECURITY.md">安全策略 (SECURITY)</a>
