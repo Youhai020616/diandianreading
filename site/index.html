@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>点点读书 · 个人读书创作发布工作台</title>
+    <meta name="description" content="点点读书把找书、传书、阅读、划线、问 AI、写作、出图和导出 Obsidian 收进一个桌面应用。前一步留下的划线和想法，直接成为下一步的素材。" />
+    <meta name="theme-color" content="#f3f1ec" />
+    <link rel="icon" type="image/png" href="./favicon.png" />
+    <script>
+      // Apply the theme before first paint so a night visitor never sees a white flash.
+      (function () {
+        try {
+          var p = new URLSearchParams(location.search).get("theme");
+          var s = localStorage.getItem("diandian-site-theme");
+          var night = p ? p === "night" || p === "dark" : s ? s === "night" : matchMedia("(prefers-color-scheme: dark)").matches;
+          if (night) document.documentElement.classList.add("dark");
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
